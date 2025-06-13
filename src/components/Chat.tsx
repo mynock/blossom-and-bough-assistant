@@ -12,7 +12,11 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { Send, Psychology } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import { chatApi } from '../services/api';
+import 'highlight.js/styles/github.css'; // Add syntax highlighting styles
 
 interface ChatMessage {
   id: string;
@@ -21,11 +25,185 @@ interface ChatMessage {
   timestamp: Date;
 }
 
+// Custom markdown component with styling
+const MarkdownMessage: React.FC<{ content: string; isUser: boolean }> = ({ content, isUser }) => {
+  if (isUser) {
+    // User messages don't need markdown parsing
+    return (
+      <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+        {content}
+      </Typography>
+    );
+  }
+
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      rehypePlugins={[rehypeHighlight]}
+      components={{
+        // Custom styling for markdown elements
+        h1: ({ children }) => (
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1, mt: 1 }}>
+            {children}
+          </Typography>
+        ),
+        h2: ({ children }) => (
+          <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1, mt: 1 }}>
+            {children}
+          </Typography>
+        ),
+        h3: ({ children }) => (
+          <Typography variant="subtitle1" sx={{ fontWeight: 'bold', mb: 0.5, mt: 1 }}>
+            {children}
+          </Typography>
+        ),
+        p: ({ children }) => (
+          <Typography variant="body1" sx={{ mb: 1, lineHeight: 1.6 }}>
+            {children}
+          </Typography>
+        ),
+        ul: ({ children }) => (
+          <Box component="ul" sx={{ pl: 2, mb: 1 }}>
+            {children}
+          </Box>
+        ),
+        ol: ({ children }) => (
+          <Box component="ol" sx={{ pl: 2, mb: 1 }}>
+            {children}
+          </Box>
+        ),
+        li: ({ children }) => (
+          <Typography component="li" variant="body1" sx={{ mb: 0.5 }}>
+            {children}
+          </Typography>
+        ),
+        strong: ({ children }) => (
+          <Typography component="strong" sx={{ fontWeight: 'bold' }}>
+            {children}
+          </Typography>
+        ),
+        em: ({ children }) => (
+          <Typography component="em" sx={{ fontStyle: 'italic' }}>
+            {children}
+          </Typography>
+        ),
+        code: ({ children, className }) => {
+          const isInline = !className;
+          return isInline ? (
+            <Typography
+              component="code"
+              sx={{
+                backgroundColor: 'grey.200',
+                padding: '2px 4px',
+                borderRadius: 1,
+                fontFamily: 'monospace',
+                fontSize: '0.875rem',
+              }}
+            >
+              {children}
+            </Typography>
+          ) : (
+            <Paper
+              sx={{
+                backgroundColor: 'grey.100',
+                p: 2,
+                mb: 1,
+                borderRadius: 1,
+                overflow: 'auto',
+              }}
+            >
+              <Typography
+                component="pre"
+                sx={{
+                  fontFamily: 'monospace',
+                  fontSize: '0.875rem',
+                  margin: 0,
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                <code className={className}>{children}</code>
+              </Typography>
+            </Paper>
+          );
+        },
+        blockquote: ({ children }) => (
+          <Paper
+            sx={{
+              borderLeft: 4,
+              borderColor: 'primary.main',
+              backgroundColor: 'grey.50',
+              p: 2,
+              mb: 1,
+              fontStyle: 'italic',
+            }}
+          >
+            {children}
+          </Paper>
+        ),
+        table: ({ children }) => (
+          <Paper sx={{ overflow: 'auto', mb: 1 }}>
+            <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+              {children}
+            </Box>
+          </Paper>
+        ),
+        th: ({ children }) => (
+          <Typography
+            component="th"
+            sx={{
+              border: 1,
+              borderColor: 'grey.300',
+              p: 1,
+              backgroundColor: 'grey.100',
+              fontWeight: 'bold',
+              textAlign: 'left',
+            }}
+          >
+            {children}
+          </Typography>
+        ),
+        td: ({ children }) => (
+          <Typography
+            component="td"
+            sx={{
+              border: 1,
+              borderColor: 'grey.300',
+              p: 1,
+            }}
+          >
+            {children}
+          </Typography>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+};
+
 const Chat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: "Hi Andrea! I'm your AI scheduling assistant. I can help you optimize your landscaping schedule, handle emergency requests, and balance your helper workloads. What would you like help with today?",
+      text: `# Welcome to Your AI Scheduling Assistant! 🌿
+
+Hi **Andrea**! I'm your intelligent scheduling assistant for your landscaping business. I can help you:
+
+## What I Can Do:
+- **Optimize schedules** considering geographic efficiency and helper capabilities
+- **Handle emergency requests** and urgent rescheduling
+- **Balance workloads** across your team members
+- **Analyze travel efficiency** and suggest route improvements
+- **Manage maintenance schedules** and client preferences
+
+## Quick Examples:
+- *"Where can I fit a 4-hour maintenance visit next week?"*
+- *"Sarah called in sick today - help me reschedule"*
+- *"I have an urgent install request - when's the earliest I can schedule it?"*
+
+Just ask me anything about your schedule, and I'll provide specific, actionable recommendations!
+
+> 💡 **Tip**: I understand your business context including helper availability, client zones, and travel constraints.`,
       isUser: false,
       timestamp: new Date(),
     },
@@ -155,9 +333,7 @@ const Chat: React.FC = () => {
                       {message.isUser ? 'You' : 'AI Assistant'} • {formatTime(message.timestamp)}
                     </Typography>
                   </Box>
-                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
-                    {message.text}
-                  </Typography>
+                  <MarkdownMessage content={message.text} isUser={message.isUser} />
                 </CardContent>
               </Card>
             </Box>

@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { People, Event, Business, Schedule } from '@mui/icons-material';
 import { helpersApi, clientsApi, calendarApi, Helper, Client, CalendarEvent } from '../services/api';
+import CalendarTemplateGenerator from './CalendarTemplateGenerator';
 
 interface DashboardStats {
   activeHelpers: number;
@@ -273,6 +274,11 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
+
+      {/* Calendar Template Generator */}
+      <Box sx={{ mt: 4 }}>
+        <CalendarTemplateGenerator />
+      </Box>
     </Container>
   );
 };

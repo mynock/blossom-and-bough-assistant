@@ -20,6 +20,12 @@ out
 .env.test.local
 .env.production.local
 
+# Google Service Account Keys (NEVER COMMIT THESE!)
+google-account-key.json
+google-service-account-key.json
+*-service-account-key.json
+service-account-*.json
+
 # Logs
 logs
 *.log

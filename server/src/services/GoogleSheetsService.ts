@@ -1,6 +1,16 @@
 import { google } from 'googleapis';
 import { Helper, Client, Project } from '../types';
 
+export interface BusinessSettings {
+  maxTravelBetweenJobsMinutes: number;
+  maxTotalTravelPerDayMinutes: number;
+  businessHoursStart: string;
+  businessHoursEnd: string;
+  bufferBetweenJobsMinutes: number;
+  bufferStartOfDayMinutes: number;
+  bufferEndOfDayMinutes: number;
+}
+
 export class GoogleSheetsService {
   private auth: any = null;
   private sheets: any = null;
@@ -23,6 +33,28 @@ export class GoogleSheetsService {
     }
   }
 
+  async getBusinessSettings(): Promise<BusinessSettings> {
+    if (!this.sheets) {
+      return this.getMockBusinessSettings();
+    }
+
+    try {
+      const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
+      const range = 'Settings!A1:C10'; // Adjust range as needed
+
+      const response = await this.sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range,
+      });
+
+      const rows = response.data.values || [];
+      return this.parseSettingsRows(rows);
+    } catch (error) {
+      console.error('Error fetching settings from Google Sheets:', error);
+      return this.getMockBusinessSettings();
+    }
+  }
+
   async getHelpers(): Promise<Helper[]> {
     if (!this.sheets) {
       return this.getMockHelpers();
@@ -30,7 +62,7 @@ export class GoogleSheetsService {
 
     try {
       const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
-      const range = 'Helpers!A2:L100'; // Adjust range as needed
+      const range = 'Helpers!A2:K100'; // Adjust range as needed
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -52,7 +84,7 @@ export class GoogleSheetsService {
 
     try {
       const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
-      const range = 'Clients!A2:Z100'; // Adjust range as needed
+      const range = 'Clients!A2:S100'; // Adjust range as needed
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -74,6 +106,19 @@ export class GoogleSheetsService {
 
     try {
       const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
+      
+      // First, check if the Projects sheet exists
+      const spreadsheetInfo = await this.sheets.spreadsheets.get({
+        spreadsheetId,
+      });
+      
+      const sheetNames = spreadsheetInfo.data.sheets?.map((sheet: any) => sheet.properties.title) || [];
+      
+      if (!sheetNames.includes('Projects')) {
+        console.log('Projects sheet not found. Available sheets:', sheetNames);
+        return []; // Return empty array if Projects sheet doesn't exist
+      }
+
       const range = 'Projects!A2:Z100'; // Adjust range as needed
 
       const response = await this.sheets.spreadsheets.values.get({
@@ -85,112 +130,251 @@ export class GoogleSheetsService {
       return rows.map((row: any[]) => this.parseProjectRow(row)).filter(Boolean);
     } catch (error) {
       console.error('Error fetching projects from Google Sheets:', error);
-      return this.getMockProjects();
+      return []; // Return empty array instead of mock projects for production use
     }
   }
 
   private parseHelperRow(row: any[]): Helper | null {
     if (!row[0]) return null; // Skip empty rows
 
+    // Based on your Helpers sheet structure:
+    // Helper_ID | Name | Regular_Workdays | Home_Address | Min_Hours_Per_Day | Max_Hours_Per_Day | Capability_Level | Hourly_Rate | Notes | Active_Status
+    
+    const workdays = (row[2] || '').split(' ').filter((day: string) => day.trim()); // Split "Mon Wed Fri" format
+    
     return {
       id: row[0] || '',
       name: row[1] || '',
-      workdays: (row[2] || '').split(',').map((day: string) => day.trim()),
+      workdays: workdays,
       homeAddress: row[3] || '',
       minHours: parseInt(row[4]) || 7,
       maxHours: parseInt(row[5]) || 8,
-      capabilityTier: row[6] as 'Beginner' | 'Intermediate' | 'Advanced' || 'Beginner',
-      skills: (row[7] || '').split(',').map((skill: string) => skill.trim()),
-      hourlyRate: parseFloat(row[8]) || 0,
-      status: row[9] as 'active' | 'inactive' || 'active',
+      capabilityTier: this.mapCapabilityLevel(row[6]) || 'Beginner',
+      skills: this.inferSkillsFromCapability(row[6], row[8]), // Infer from capability and notes
+      hourlyRate: parseFloat(row[7]) || 0,
+      status: (row[9] === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive',
     };
   }
 
   private parseClientRow(row: any[]): Client | null {
     if (!row[0]) return null; // Skip empty rows
 
+    // Based on your Clients sheet structure:
+    // Client_ID | Name | Address | Is_Maintenance_Client | Maintenance_Interval_Weeks | Maintenance_Hours_Per_Visit | 
+    // Maintenance_Rate | Last_Maintenance | Next_Maintenance | Priority_Level | Schedule_Flexibility | Preferred_Days | 
+    // Preferred_Time | Special_Notes | Active_Status
+
+    const preferredDays = (row[11] || '').split(' ').filter((day: string) => day.trim()); // Split "Mon Tue Wed" format
+    
     return {
       id: row[0] || '',
       name: row[1] || '',
       address: row[2] || '',
-      zone: row[3] || '',
-      email: row[4] || undefined,
-      phone: row[5] || undefined,
+      zone: this.inferZoneFromAddress(row[2]), // Infer zone from address
+      email: undefined, // Not in your sheet structure
+      phone: undefined, // Not in your sheet structure
       maintenanceSchedule: {
-        isMaintenance: row[6] === 'TRUE' || row[6] === 'true',
-        intervalWeeks: parseInt(row[7]) || undefined,
-        hoursPerVisit: parseInt(row[8]) || undefined,
-        lastVisit: row[9] || undefined,
-        nextTarget: row[10] || undefined,
-        rate: parseFloat(row[11]) || undefined,
+        isMaintenance: row[3] === 'TRUE',
+        intervalWeeks: parseInt(row[4]) || undefined,
+        hoursPerVisit: parseFloat(row[5]) || undefined,
+        lastVisit: row[7] || undefined,
+        nextTarget: row[8] || undefined,
+        rate: parseFloat(row[6]) || undefined,
       },
       preferences: {
-        preferredDays: (row[12] || '').split(',').map((day: string) => day.trim()),
-        preferredTime: row[13] as 'morning' | 'afternoon' | 'evening' | 'flexible' || 'flexible',
-        flexibility: row[14] as 'Fixed' | 'Preferred' | 'Flexible' || 'Flexible',
-        specialRequirements: row[15] || undefined,
+        preferredDays: preferredDays,
+        preferredTime: this.mapPreferredTime(row[12]) || 'flexible',
+        flexibility: this.mapFlexibility(row[10]) || 'Flexible',
+        specialRequirements: row[13] || undefined,
       },
-      priority: row[16] as 'High' | 'Medium' | 'Low' || 'Medium',
-      status: row[17] as 'active' | 'inactive' | 'seasonal' || 'active',
-      notes: row[18] || undefined,
+      priority: this.mapPriority(row[9]) || 'Medium',
+      status: (row[14] === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive' | 'seasonal',
+      notes: row[13] || undefined,
     };
   }
 
   private parseProjectRow(row: any[]): Project | null {
-    if (!row[0]) return null; // Skip empty rows
+    // If you don't have a Projects sheet yet, return empty for now
+    // You can add this later when you create the Projects tab
+    return null;
+  }
+
+  // Helper methods to map your data format to the application format
+  private mapCapabilityLevel(level: string): 'Beginner' | 'Intermediate' | 'Advanced' {
+    const numLevel = parseInt(level);
+    if (numLevel <= 2) return 'Beginner';
+    if (numLevel <= 4) return 'Intermediate';
+    return 'Advanced';
+  }
+
+  private inferSkillsFromCapability(capability: string, notes: string): string[] {
+    const skills: string[] = [];
+    const capNum = parseInt(capability);
+    const notesLower = (notes || '').toLowerCase();
+    
+    // Basic skills for everyone
+    skills.push('basic_maintenance');
+    
+    // Add skills based on capability level
+    if (capNum >= 3) {
+      skills.push('pruning', 'planting');
+    }
+    if (capNum >= 4) {
+      skills.push('irrigation', 'design_consultation');
+    }
+    if (capNum >= 5) {
+      skills.push('project_management', 'client_consultation');
+    }
+    
+    // Add skills based on notes
+    if (notesLower.includes('install')) skills.push('installs');
+    if (notesLower.includes('difficult')) skills.push('problem_solving');
+    if (notesLower.includes('experience')) skills.push('experienced');
+    
+    return skills;
+  }
+
+  private inferZoneFromAddress(address: string): string {
+    const addressLower = address.toLowerCase();
+    
+    // Portland area zone mapping based on common patterns
+    if (addressLower.includes('sw ') || addressLower.includes('capitol hwy')) return 'Southwest';
+    if (addressLower.includes('nw ') || addressLower.includes('nw ')) return 'Northwest';
+    if (addressLower.includes('ne ') || addressLower.includes('northeast')) return 'Northeast';
+    if (addressLower.includes('se ') || addressLower.includes('southeast')) return 'Southeast';
+    if (addressLower.includes('lake oswego') || addressLower.includes('lake bay')) return 'Lake Oswego';
+    if (addressLower.includes('downtown') || addressLower.includes('pearl')) return 'Downtown';
+    
+    return 'Portland Metro'; // Default zone
+  }
+
+  private mapPreferredTime(time: string): 'morning' | 'afternoon' | 'evening' | 'flexible' {
+    const timeLower = (time || '').toLowerCase();
+    if (timeLower.includes('morning')) return 'morning';
+    if (timeLower.includes('afternoon')) return 'afternoon';
+    if (timeLower.includes('evening')) return 'evening';
+    return 'flexible';
+  }
+
+  private mapFlexibility(flexibility: string): 'Fixed' | 'Preferred' | 'Flexible' {
+    const flexLower = (flexibility || '').toLowerCase();
+    if (flexLower.includes('fixed')) return 'Fixed';
+    if (flexLower.includes('preferred')) return 'Preferred';
+    return 'Flexible';
+  }
+
+  private mapPriority(priority: string): 'High' | 'Medium' | 'Low' {
+    const priorityLower = (priority || '').toLowerCase();
+    if (priorityLower.includes('high')) return 'High';
+    if (priorityLower.includes('low')) return 'Low';
+    return 'Medium';
+  }
+
+  private parseSettingsRows(rows: any[]): BusinessSettings {
+    const settings: any = {};
+    
+    // Parse settings from Setting | Value | Notes format
+    for (const row of rows) {
+      if (row.length >= 2) {
+        const settingName = row[0];
+        const value = row[1];
+        
+        switch (settingName) {
+          case 'Max_Travel_Between_Jobs_Minutes':
+            settings.maxTravelBetweenJobsMinutes = parseInt(value) || 30;
+            break;
+          case 'Max_Total_Travel_Per_Day_Minutes':
+            settings.maxTotalTravelPerDayMinutes = parseInt(value) || 90;
+            break;
+          case 'Business_Hours_Start':
+            settings.businessHoursStart = value || '8:00';
+            break;
+          case 'Business_Hours_End':
+            settings.businessHoursEnd = value || '18:00';
+            break;
+          case 'Buffer_Between_Jobs_Minutes':
+            settings.bufferBetweenJobsMinutes = parseInt(value) || 15;
+            break;
+          case 'Buffer_Start_Of_Day_Minutes':
+            settings.bufferStartOfDayMinutes = parseInt(value) || 15;
+            break;
+          case 'Buffer_End_Of_Day_Minutes':
+            settings.bufferEndOfDayMinutes = parseInt(value) || 15;
+            break;
+        }
+      }
+    }
 
     return {
-      id: row[0] || '',
-      clientId: row[1] || '',
-      name: row[2] || '',
-      description: row[3] || '',
-      type: row[4] as 'Design' | 'Install' | 'Pruning' | 'Maintenance' | 'Repair' | 'Other' || 'Other',
-      status: row[5] as 'Quoted' | 'Approved' | 'In Progress' | 'Completed' | 'On Hold' || 'Quoted',
-      schedulingDetails: {
-        estimatedHours: parseFloat(row[6]) || 0,
-        officeHours: parseFloat(row[7]) || undefined,
-        preferredCompletionDate: row[8] || undefined,
-        urgency: row[9] as 'Low' | 'Medium' | 'High' | 'Critical' || 'Medium',
-        weatherSensitive: row[10] === 'TRUE' || row[10] === 'true',
-      },
-      requirements: {
-        requiredCapabilityLevel: row[11] as 'Beginner' | 'Intermediate' | 'Advanced' || 'Beginner',
-        requiredSkills: (row[12] || '').split(',').map((skill: string) => skill.trim()),
-        materialsNeeded: row[13] ? (row[13] as string).split(',').map((item: string) => item.trim()) : undefined,
-        equipmentRequired: row[14] ? (row[14] as string).split(',').map((item: string) => item.trim()) : undefined,
-      },
-      financial: {
-        quotedAmount: parseFloat(row[15]) || undefined,
-        approvedBudget: parseFloat(row[16]) || undefined,
-        actualHours: parseFloat(row[17]) || undefined,
-      },
-      notes: row[18] || undefined,
+      maxTravelBetweenJobsMinutes: settings.maxTravelBetweenJobsMinutes || 30,
+      maxTotalTravelPerDayMinutes: settings.maxTotalTravelPerDayMinutes || 90,
+      businessHoursStart: settings.businessHoursStart || '8:00',
+      businessHoursEnd: settings.businessHoursEnd || '18:00',
+      bufferBetweenJobsMinutes: settings.bufferBetweenJobsMinutes || 15,
+      bufferStartOfDayMinutes: settings.bufferStartOfDayMinutes || 15,
+      bufferEndOfDayMinutes: settings.bufferEndOfDayMinutes || 15,
+    };
+  }
+
+  private getMockBusinessSettings(): BusinessSettings {
+    return {
+      maxTravelBetweenJobsMinutes: 30,
+      maxTotalTravelPerDayMinutes: 90,
+      businessHoursStart: '8:00',
+      businessHoursEnd: '18:00',
+      bufferBetweenJobsMinutes: 15,
+      bufferStartOfDayMinutes: 15,
+      bufferEndOfDayMinutes: 15,
     };
   }
 
   private getMockHelpers(): Helper[] {
     return [
       {
-        id: 'helper_001',
-        name: 'Sarah',
+        id: 'H001',
+        name: 'Sarah Martinez',
         workdays: ['Monday', 'Wednesday', 'Friday'],
-        homeAddress: '789 Elm St, Portland, OR 97210',
+        homeAddress: '456 Oak Ave Portland, OR',
         minHours: 7,
         maxHours: 8,
         capabilityTier: 'Advanced',
-        skills: ['pruning', 'maintenance', 'irrigation'],
+        skills: ['pruning', 'maintenance', 'irrigation', 'difficult_properties'],
+        hourlyRate: 23,
+        status: 'active',
+      },
+      {
+        id: 'H002',
+        name: 'Mike Thompson',
+        workdays: ['Tuesday', 'Thursday'],
+        homeAddress: '789 Pine St Portland, OR',
+        minHours: 7,
+        maxHours: 8,
+        capabilityTier: 'Intermediate',
+        skills: ['installs', 'basic_maintenance', 'strong_worker'],
+        hourlyRate: 22,
+        status: 'active',
+      },
+      {
+        id: 'H003',
+        name: 'Jessica Chen',
+        workdays: ['Wednesday', 'Friday'],
+        homeAddress: '321 Elm Dr Portland, OR',
+        minHours: 6,
+        maxHours: 8,
+        capabilityTier: 'Advanced',
+        skills: ['experienced', 'project_management', 'client_consultation'],
         hourlyRate: 25,
         status: 'active',
       },
       {
-        id: 'helper_002',
-        name: 'Mike',
-        workdays: ['Tuesday', 'Thursday'],
-        homeAddress: '321 Maple Dr, Portland, OR 97211',
+        id: 'H004',
+        name: 'Carlos Rodriguez',
+        workdays: ['Monday', 'Tuesday'],
+        homeAddress: '654 Maple Rd Portland, OR',
         minHours: 7,
         maxHours: 8,
-        capabilityTier: 'Intermediate',
-        skills: ['installs', 'basic_maintenance'],
+        capabilityTier: 'Beginner',
+        skills: ['basic_maintenance', 'learning'],
         hourlyRate: 22,
         status: 'active',
       },
@@ -200,71 +384,31 @@ export class GoogleSheetsService {
   private getMockClients(): Client[] {
     return [
       {
-        id: 'client_001',
-        name: 'Smith Property',
-        address: '123 Oak St, Portland, OR 97201',
-        zone: 'Downtown',
+        id: 'C001',
+        name: 'Thomas',
+        address: '1764 SW 123rd Pl, 97229',
+        zone: 'Southwest',
         maintenanceSchedule: {
           isMaintenance: true,
-          intervalWeeks: 2,
+          intervalWeeks: 4,
           hoursPerVisit: 4,
           lastVisit: '2024-01-01',
-          nextTarget: '2024-01-15',
+          nextTarget: '2024-01-29',
         },
         preferences: {
-          preferredDays: ['Monday', 'Tuesday', 'Wednesday'],
+          preferredDays: ['Tuesday', 'Wednesday', 'Thursday'],
           preferredTime: 'morning',
-          flexibility: 'Preferred',
+          flexibility: 'Flexible',
+          specialRequirements: 'Gate code: 1234',
         },
         priority: 'High',
         status: 'active',
       },
-      {
-        id: 'client_002',
-        name: 'Johnson Landscape',
-        address: '456 Pine Ave, Portland, OR 97202',
-        zone: 'Southeast',
-        maintenanceSchedule: {
-          isMaintenance: false,
-        },
-        preferences: {
-          preferredDays: ['Thursday', 'Friday'],
-          preferredTime: 'afternoon',
-          flexibility: 'Flexible',
-        },
-        priority: 'Medium',
-        status: 'active',
-      },
+      // Add more mock clients based on your sheet...
     ];
   }
 
   private getMockProjects(): Project[] {
-    return [
-      {
-        id: 'project_001',
-        clientId: 'client_002',
-        name: 'Garden Installation',
-        description: 'Install new perennial garden beds',
-        type: 'Install',
-        status: 'Approved',
-        schedulingDetails: {
-          estimatedHours: 12,
-          officeHours: 2,
-          preferredCompletionDate: '2024-01-20',
-          urgency: 'Medium',
-          weatherSensitive: true,
-        },
-        requirements: {
-          requiredCapabilityLevel: 'Intermediate',
-          requiredSkills: ['installs', 'planting'],
-          materialsNeeded: ['plants', 'mulch', 'soil'],
-        },
-        financial: {
-          quotedAmount: 1500,
-          approvedBudget: 1500,
-        },
-        notes: 'Client prefers native plants',
-      },
-    ];
+    return []; // Empty for now since no Projects sheet structure shown
   }
 } 

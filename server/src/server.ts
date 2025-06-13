@@ -130,6 +130,69 @@ app.get('/api/context', async (req, res) => {
   }
 });
 
+// Schedule optimization
+app.post('/api/schedule-optimization', async (req, res) => {
+  try {
+    const { requestType, constraints, preferences } = req.body;
+    
+    const result = await schedulingService.optimizeSchedule(
+      requestType,
+      constraints,
+      preferences
+    );
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Schedule optimization error:', error);
+    res.status(500).json({
+      error: 'Schedule optimization failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Business settings
+app.get('/api/settings', async (req, res) => {
+  try {
+    const settings = await googleSheetsService.getBusinessSettings();
+    res.json(settings);
+  } catch (error) {
+    console.error('Error fetching business settings:', error);
+    res.status(500).json({
+      error: 'Failed to fetch business settings',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Generate calendar event template
+app.post('/api/calendar/template', async (req, res) => {
+  try {
+    const { clientId, helperId, serviceType, options } = req.body;
+    
+    if (!clientId || !helperId || !serviceType) {
+      return res.status(400).json({ 
+        error: 'clientId, helperId, and serviceType are required' 
+      });
+    }
+
+    const template = googleCalendarService.generateEventTemplate(
+      clientId, 
+      helperId, 
+      serviceType, 
+      options || {}
+    );
+    
+    res.json({ template });
+  } catch (error) {
+    console.error('Error generating calendar template:', error);
+    res.status(500).json({
+      error: 'Failed to generate calendar template',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);

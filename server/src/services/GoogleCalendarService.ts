@@ -32,8 +32,11 @@ export class GoogleCalendarService {
       const endTime = new Date();
       endTime.setDate(now.getDate() + daysAhead);
 
+      // Use the calendar ID from environment variables, fallback to 'primary'
+      const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
+
       const response = await this.calendar.events.list({
-        calendarId: 'primary',
+        calendarId: calendarId,
         timeMin: now.toISOString(),
         timeMax: endTime.toISOString(),
         singleEvents: true,
@@ -44,6 +47,7 @@ export class GoogleCalendarService {
       return events.map((event: any) => this.parseGoogleEvent(event)).filter(Boolean);
     } catch (error) {
       console.error('Error fetching calendar events:', error);
+      console.error('Calendar ID used:', process.env.GOOGLE_CALENDAR_ID || 'primary');
       return this.getMockEvents();
     }
   }
@@ -56,23 +60,115 @@ export class GoogleCalendarService {
 
     if (!start || !end) return null;
 
+    // Parse structured data from title and description
+    const parsedData = this.parseEventData(googleEvent.summary, googleEvent.description || '');
+
     return {
       id: googleEvent.id,
       title: googleEvent.summary,
       start: start,
       end: end,
-      location: googleEvent.location,
+      location: googleEvent.location || parsedData.location,
       description: googleEvent.description,
       eventType: this.inferEventType(googleEvent.summary, googleEvent.description),
+      linkedRecords: {
+        clientId: parsedData.clientId,
+        helperId: parsedData.helperId,
+        projectId: parsedData.projectId,
+      },
       status: {
         confirmed: googleEvent.status === 'confirmed',
-        clientNotified: false, // This would need to be tracked separately
-        flexibility: 'Fixed', // Default, could be parsed from description
+        clientNotified: parsedData.clientNotified || false,
+        flexibility: parsedData.flexibility || 'Fixed',
       },
       logistics: {
-        travelTimeBuffer: 15, // Default 15 minutes
+        travelTimeBuffer: parsedData.travelTimeBuffer || 15,
+        materialsNeeded: parsedData.materialsNeeded,
+        specialNotes: parsedData.specialNotes,
       },
     };
+  }
+
+  private parseEventData(title: string, description: string) {
+    const data: any = {};
+    
+    // Parse title for client and helper names
+    // Format: "Client Name - Service Type - Helper Name"
+    const titleParts = title.split(' - ');
+    if (titleParts.length >= 3) {
+      data.clientName = titleParts[0].trim();
+      data.serviceType = titleParts[1].trim();
+      data.helperName = titleParts[2].trim();
+    }
+
+    // Parse description for structured data
+    const lines = description.split('\n');
+    for (const line of lines) {
+      const [key, value] = line.split(':').map(s => s.trim());
+      if (!key || !value) continue;
+
+      switch (key.toUpperCase()) {
+        case 'CLIENT':
+          // Extract client ID from format "Thomas (C001)"
+          const clientMatch = value.match(/\(([^)]+)\)/);
+          if (clientMatch) {
+            data.clientId = clientMatch[1];
+          }
+          break;
+        case 'HELPER':
+          // Extract helper ID from format "Sarah Martinez (H001)"
+          const helperMatch = value.match(/\(([^)]+)\)/);
+          if (helperMatch) {
+            data.helperId = helperMatch[1];
+          }
+          break;
+        case 'PROJECT':
+          const projectMatch = value.match(/\(([^)]+)\)/);
+          if (projectMatch) {
+            data.projectId = projectMatch[1];
+          }
+          break;
+        case 'LOCATION':
+          data.location = value;
+          break;
+        case 'ZONE':
+          data.zone = value;
+          break;
+        case 'HOURS':
+          data.estimatedHours = parseFloat(value);
+          break;
+        case 'RATE':
+          data.rate = value;
+          break;
+        case 'PRIORITY':
+          data.priority = value;
+          break;
+        case 'GATE CODE':
+        case 'ACCESS CODE':
+          data.accessCode = value;
+          break;
+        case 'WEATHER SENSITIVE':
+          data.weatherSensitive = value.toLowerCase() === 'yes' || value.toLowerCase() === 'true';
+          break;
+        case 'FLEXIBILITY':
+          data.flexibility = value as 'Fixed' | 'Preferred' | 'Flexible';
+          break;
+        case 'TRAVEL BUFFER':
+          data.travelTimeBuffer = parseInt(value);
+          break;
+        case 'MATERIALS':
+          data.materialsNeeded = value.split(',').map(s => s.trim());
+          break;
+        case 'NOTES':
+          data.specialNotes = value;
+          break;
+        case 'CLIENT NOTIFIED':
+          data.clientNotified = value.toLowerCase() === 'yes' || value.toLowerCase() === 'true';
+          break;
+      }
+    }
+
+    return data;
   }
 
   private inferEventType(title: string, description?: string): CalendarEvent['eventType'] {
@@ -95,15 +191,28 @@ export class GoogleCalendarService {
     return [
       {
         id: 'event_001',
-        title: 'Smith Property - Maintenance',
+        title: 'Thomas - Maintenance - Sarah',
         start: new Date(today.getTime()).toISOString(),
         end: new Date(today.getTime() + 4 * 60 * 60 * 1000).toISOString(), // 4 hours later
-        location: '123 Oak St, Portland, OR',
-        description: 'Regular maintenance with Sarah',
+        location: '1764 SW 123rd Pl, 97229',
+        description: `CLIENT: Thomas (C001)
+HELPER: Sarah Martinez (H001)
+SERVICE: Maintenance
+HOURS: 4.0
+RATE: $75/hour
+PRIORITY: High
+
+LOCATION: 1764 SW 123rd Pl, 97229
+ZONE: Southwest
+GATE CODE: 1234
+
+NOTES: Regular maintenance visit
+WEATHER SENSITIVE: No
+CLIENT NOTIFIED: Yes`,
         eventType: 'maintenance',
         linkedRecords: {
-          clientId: 'client_001',
-          helperId: 'helper_001',
+          clientId: 'C001',
+          helperId: 'H001',
         },
         status: {
           confirmed: true,
@@ -112,20 +221,34 @@ export class GoogleCalendarService {
         },
         logistics: {
           travelTimeBuffer: 15,
+          specialNotes: 'Gate code: 1234',
         },
       },
       {
         id: 'event_002',
-        title: 'Johnson Landscape - Install',
+        title: 'Nader - Install - Mike',
         start: tomorrow.toISOString(),
         end: new Date(tomorrow.getTime() + 5 * 60 * 60 * 1000).toISOString(), // 5 hours later
-        location: '456 Pine Ave, Portland, OR',
-        description: 'New plant installation with Mike',
+        location: '486 Lake Bay Ct 97034',
+        description: `CLIENT: Nader (C004)
+HELPER: Mike Thompson (H002)
+SERVICE: Install
+HOURS: 5.0
+RATE: $70/hour
+PRIORITY: Medium
+
+LOCATION: 486 Lake Bay Ct 97034
+ZONE: Lake Oswego
+PROJECT: Lakefront property (P001)
+
+MATERIALS: Plants, mulch, irrigation supplies
+WEATHER SENSITIVE: Yes
+CLIENT NOTIFIED: No`,
         eventType: 'client_visit',
         linkedRecords: {
-          clientId: 'client_002',
-          helperId: 'helper_002',
-          projectId: 'project_001',
+          clientId: 'C004',
+          helperId: 'H002',
+          projectId: 'P001',
         },
         status: {
           confirmed: true,
@@ -134,9 +257,40 @@ export class GoogleCalendarService {
         },
         logistics: {
           travelTimeBuffer: 20,
-          materialsNeeded: ['plants', 'tools'],
+          materialsNeeded: ['plants', 'mulch', 'irrigation supplies'],
+          specialNotes: 'Weather dependent installation',
         },
       },
     ];
+  }
+
+  // Helper method to generate calendar event templates
+  generateEventTemplate(clientId: string, helperId: string, serviceType: string, options: any = {}): string {
+    const title = `${options.clientName || '[Client Name]'} - ${serviceType} - ${options.helperName || '[Helper Name]'}`;
+    
+    const description = `CLIENT: ${options.clientName || '[Client Name]'} (${clientId})
+HELPER: ${options.helperName || '[Helper Name]'} (${helperId})
+SERVICE: ${serviceType}
+HOURS: ${options.hours || '[Hours]'}
+RATE: ${options.rate || '[Rate]'}
+PRIORITY: ${options.priority || 'Medium'}
+
+LOCATION: ${options.location || '[Full Address]'}
+ZONE: ${options.zone || '[Zone]'}
+${options.projectId ? `PROJECT: ${options.projectName || '[Project Name]'} (${options.projectId})` : ''}
+
+${options.gateCode ? `GATE CODE: ${options.gateCode}` : ''}
+${options.materials ? `MATERIALS: ${options.materials}` : ''}
+WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
+CLIENT NOTIFIED: ${options.clientNotified ? 'Yes' : 'No'}
+
+NOTES: ${options.notes || '[Additional notes]'}`;
+
+    return `TITLE: ${title}
+
+DESCRIPTION:
+${description}
+
+LOCATION: ${options.location || '[Full Address]'}`;
   }
 } 
