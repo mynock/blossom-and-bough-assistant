@@ -269,46 +269,14 @@ Just ask me anything about your schedule, and I'll provide specific, actionable 
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  const quickPrompts = [
-    "Where can I fit a 4-hour maintenance visit next week?",
-    "Sarah called in sick today - help me reschedule",
-    "I have an urgent install request - when's the earliest I can schedule it?",
-    "Show me this week's schedule efficiency",
-    "Help me plan around Mike's vacation next month"
-  ];
-
   return (
     <Container maxWidth="md" sx={{ py: 3 }}>
       <Typography variant="h4" gutterBottom align="center" sx={{ mb: 3 }}>
         AI Scheduling Assistant
       </Typography>
 
-      {/* Quick Action Prompts */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h6" gutterBottom>
-          Quick Actions:
-        </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-          {quickPrompts.map((prompt, index) => (
-            <Button
-              key={index}
-              variant="outlined"
-              size="small"
-              onClick={() => setInputValue(prompt)}
-              sx={{ 
-                textTransform: 'none',
-                borderRadius: 2,
-                fontSize: '0.8rem'
-              }}
-            >
-              {prompt}
-            </Button>
-          ))}
-        </Box>
-      </Box>
-
       {/* Chat Messages */}
-      <Paper sx={{ height: '500px', display: 'flex', flexDirection: 'column', mb: 2 }}>
+      <Paper sx={{ height: '700px', display: 'flex', flexDirection: 'column', mb: 2 }}>
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
           {messages.map((message) => (
             <Box
