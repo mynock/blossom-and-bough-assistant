@@ -1,7 +1,7 @@
 import React from 'react';
 import { AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Schedule, Chat, Dashboard } from '@mui/icons-material';
+import { Schedule, Chat, Dashboard, BugReport } from '@mui/icons-material';
 
 const Navigation: React.FC = () => {
   const navigate = useNavigate();
@@ -11,6 +11,7 @@ const Navigation: React.FC = () => {
     { path: '/', label: 'Dashboard', icon: <Dashboard /> },
     { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
     { path: '/chat', label: 'AI Assistant', icon: <Chat /> },
+    { path: '/debug', label: 'Debug', icon: <BugReport /> },
   ];
 
   return (

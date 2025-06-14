@@ -18,7 +18,10 @@ export class SchedulingService {
     private googleCalendarService: GoogleCalendarService,
     private anthropicService: AnthropicService,
     private travelTimeService: TravelTimeService
-  ) {}
+  ) {
+    // Inject this service into AnthropicService to avoid circular dependency
+    this.anthropicService.setSchedulingService(this);
+  }
 
   async getHelpers(): Promise<Helper[]> {
     return await this.googleSheetsService.getHelpers();
@@ -36,20 +39,366 @@ export class SchedulingService {
     return await this.googleCalendarService.getEvents(daysAhead);
   }
 
+  // New method for agentic tool calling
+  async getCalendarEventsInRange(
+    startDate: string, 
+    endDate: string, 
+    filters?: { helperId?: string; eventType?: string }
+  ): Promise<CalendarEvent[]> {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Get events for the calculated range
+    const events = await this.googleCalendarService.getEvents(daysDiff);
+    
+    // Filter events to the exact date range and apply filters
+    return events.filter(event => {
+      const eventStart = new Date(event.start);
+      const inRange = eventStart >= start && eventStart <= end;
+      
+      if (!inRange) return false;
+      
+      if (filters?.helperId && event.linkedRecords?.helperId !== filters.helperId) {
+        return false;
+      }
+      
+      if (filters?.eventType && event.eventType !== filters.eventType) {
+        return false;
+      }
+      
+      return true;
+    });
+  }
+
+  // New method for checking helper availability
+  async checkHelperAvailability(
+    helperId: string,
+    startDate: string,
+    endDate: string,
+    minHoursNeeded?: number
+  ): Promise<any> {
+    const helpers = await this.getHelpers();
+    const helper = helpers.find(h => h.id === helperId);
+    
+    if (!helper) {
+      return { available: false, reason: 'Helper not found' };
+    }
+
+    const events = await this.getCalendarEventsInRange(startDate, endDate, { helperId });
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    // Calculate availability by day
+    const availability = [];
+    const currentDate = new Date(start);
+    
+    while (currentDate <= end) {
+      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const isWorkday = helper.workdays.includes(dayName);
+      
+      if (isWorkday) {
+        const dayEvents = events.filter(event => {
+          const eventDate = new Date(event.start).toDateString();
+          return eventDate === currentDate.toDateString();
+        });
+        
+        const bookedHours = dayEvents.reduce((total, event) => {
+          const start = new Date(event.start);
+          const end = new Date(event.end);
+          return total + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        }, 0);
+        
+        const availableHours = helper.maxHours - bookedHours;
+        
+        availability.push({
+          date: currentDate.toISOString().split('T')[0],
+          dayName,
+          isWorkday: true,
+          bookedHours,
+          availableHours,
+          canFit: minHoursNeeded ? availableHours >= minHoursNeeded : availableHours > 0
+        });
+      } else {
+        availability.push({
+          date: currentDate.toISOString().split('T')[0],
+          dayName,
+          isWorkday: false,
+          bookedHours: 0,
+          availableHours: 0,
+          canFit: false
+        });
+      }
+      
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+    
+    return {
+      helper: { id: helper.id, name: helper.name, workdays: helper.workdays },
+      availability,
+      summary: {
+        totalWorkdays: availability.filter(d => d.isWorkday).length,
+        availableDays: availability.filter(d => d.canFit).length,
+        canAccommodateRequest: minHoursNeeded ? availability.some(d => d.canFit) : true
+      }
+    };
+  }
+
+  // New method for maintenance schedule
+  async getMaintenanceSchedule(clientId?: string, weeksAhead: number = 8): Promise<any> {
+    const clients = await this.getClients();
+    const maintenanceClients = clients.filter(c => 
+      c.maintenanceSchedule.isMaintenance && 
+      (!clientId || c.id === clientId)
+    );
+    
+    const schedule = [];
+    const now = new Date();
+    const endDate = new Date();
+    endDate.setDate(now.getDate() + (weeksAhead * 7));
+    
+    for (const client of maintenanceClients) {
+      if (client.maintenanceSchedule.nextTarget) {
+        const nextDate = new Date(client.maintenanceSchedule.nextTarget);
+        if (nextDate <= endDate) {
+          schedule.push({
+            clientId: client.id,
+            clientName: client.name,
+            nextMaintenanceDate: client.maintenanceSchedule.nextTarget,
+            intervalWeeks: client.maintenanceSchedule.intervalWeeks,
+            hoursPerVisit: client.maintenanceSchedule.hoursPerVisit,
+            priority: client.priority,
+            zone: client.zone,
+            address: client.address,
+            isOverdue: nextDate < now
+          });
+        }
+      }
+    }
+    
+    return {
+      maintenanceSchedule: schedule.sort((a, b) => 
+        new Date(a.nextMaintenanceDate).getTime() - new Date(b.nextMaintenanceDate).getTime()
+      ),
+      summary: {
+        totalClients: schedule.length,
+        overdueClients: schedule.filter(s => s.isOverdue).length,
+        upcomingThisWeek: schedule.filter(s => {
+          const nextWeek = new Date();
+          nextWeek.setDate(now.getDate() + 7);
+          const maintenanceDate = new Date(s.nextMaintenanceDate);
+          return maintenanceDate >= now && maintenanceDate <= nextWeek;
+        }).length
+      }
+    };
+  }
+
+  // New method for travel time calculation
+  async calculateTravelTime(origin: string, destination: string): Promise<any> {
+    return await this.travelTimeService.calculateTravelTime(origin, destination);
+  }
+
+  // New method for conflict detection
+  async findSchedulingConflicts(proposedEvent: {
+    helperId: string;
+    startTime: string;
+    durationHours: number;
+    location?: string;
+  }): Promise<any> {
+    const startTime = new Date(proposedEvent.startTime);
+    const endTime = new Date(startTime.getTime() + (proposedEvent.durationHours * 60 * 60 * 1000));
+    
+    // Get events for the day
+    const dayStart = new Date(startTime);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(startTime);
+    dayEnd.setHours(23, 59, 59, 999);
+    
+    const existingEvents = await this.getCalendarEventsInRange(
+      dayStart.toISOString().split('T')[0],
+      dayEnd.toISOString().split('T')[0],
+      { helperId: proposedEvent.helperId }
+    );
+    
+    const conflicts = [];
+    
+    for (const event of existingEvents) {
+      const eventStart = new Date(event.start);
+      const eventEnd = new Date(event.end);
+      
+      // Check for time overlap
+      if (startTime < eventEnd && endTime > eventStart) {
+        conflicts.push({
+          conflictType: 'time_overlap',
+          existingEvent: {
+            id: event.id,
+            title: event.title,
+            start: event.start,
+            end: event.end,
+            location: event.location
+          },
+          overlapMinutes: Math.min(endTime.getTime(), eventEnd.getTime()) - 
+                         Math.max(startTime.getTime(), eventStart.getTime())
+        });
+      }
+    }
+    
+    // Check helper daily hour limits
+    const helper = (await this.getHelpers()).find(h => h.id === proposedEvent.helperId);
+    if (helper) {
+      const totalHours = existingEvents.reduce((total, event) => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        return total + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      }, 0) + proposedEvent.durationHours;
+      
+      if (totalHours > helper.maxHours) {
+        conflicts.push({
+          conflictType: 'daily_hour_limit',
+          helperMaxHours: helper.maxHours,
+          currentHours: totalHours - proposedEvent.durationHours,
+          proposedHours: proposedEvent.durationHours,
+          totalHours,
+          excessHours: totalHours - helper.maxHours
+        });
+      }
+    }
+    
+    return {
+      hasConflicts: conflicts.length > 0,
+      conflicts,
+      proposedEvent: {
+        helperId: proposedEvent.helperId,
+        startTime: proposedEvent.startTime,
+        endTime: endTime.toISOString(),
+        durationHours: proposedEvent.durationHours
+      }
+    };
+  }
+
   async getSchedulingContext(): Promise<SchedulingContext> {
-    const [helpers, clients, projects, calendarEvents] = await Promise.all([
+    const [helpers, clients, projects, calendarEvents, maintenanceSchedule] = await Promise.all([
       this.getHelpers(),
       this.getClients(),
       this.getProjects(),
-      this.getCalendarEvents()
+      this.getCalendarEvents(60), // 60 days for 1-2 month planning
+      this.getMaintenanceSchedule(undefined, 12) // 3 months of maintenance data
     ]);
+
+    // Add helper availability summaries for next 8 weeks
+    const helperAvailability = await this.generateHelperAvailabilitySummary(helpers, 56); // 8 weeks
 
     return {
       helpers,
       clients,
       projects,
       calendarEvents,
-      zones: [] // TODO: Add zones support
+      zones: [], // TODO: Add zones support
+      // Add rich context for planning
+      maintenanceSchedule,
+      helperAvailability,
+      businessMetrics: await this.generateBusinessMetrics(calendarEvents, helpers, clients)
+    };
+  }
+
+  // Generate helper availability summary for planning
+  private async generateHelperAvailabilitySummary(helpers: Helper[], days: number): Promise<any> {
+    const summary = [];
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(startDate.getDate() + days);
+
+    for (const helper of helpers) {
+      const availability = await this.checkHelperAvailability(
+        helper.id,
+        startDate.toISOString().split('T')[0],
+        endDate.toISOString().split('T')[0]
+      );
+
+      // Summarize by week for easier planning
+      const weeklyAvailability = [];
+      const currentWeek = new Date(startDate);
+      
+      for (let week = 0; week < Math.ceil(days / 7); week++) {
+        const weekStart = new Date(currentWeek);
+        const weekEnd = new Date(currentWeek);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        
+        const weekDays = availability.availability.filter((day: any) => {
+          const dayDate = new Date(day.date);
+          return dayDate >= weekStart && dayDate <= weekEnd;
+        });
+
+        const totalAvailableHours = weekDays.reduce((sum: number, day: any) => 
+          sum + (day.availableHours || 0), 0);
+        const totalWorkdays = weekDays.filter((day: any) => day.isWorkday).length;
+
+        weeklyAvailability.push({
+          weekStart: weekStart.toISOString().split('T')[0],
+          weekEnd: weekEnd.toISOString().split('T')[0],
+          totalWorkdays,
+          totalAvailableHours,
+          averageAvailableHoursPerDay: totalWorkdays > 0 ? totalAvailableHours / totalWorkdays : 0,
+          fullyAvailableDays: weekDays.filter((day: any) => day.availableHours >= helper.maxHours - 1).length
+        });
+
+        currentWeek.setDate(currentWeek.getDate() + 7);
+      }
+
+      summary.push({
+        helperId: helper.id,
+        helperName: helper.name,
+        workdays: helper.workdays,
+        maxHoursPerDay: helper.maxHours,
+        weeklyAvailability,
+        notes: helper.notes
+      });
+    }
+
+    return summary;
+  }
+
+  // Generate business metrics for context
+  private async generateBusinessMetrics(events: CalendarEvent[], helpers: Helper[], clients: Client[]): Promise<any> {
+    const now = new Date();
+    const nextMonth = new Date();
+    nextMonth.setMonth(now.getMonth() + 1);
+    
+    // Analyze current workload distribution
+    const helperWorkload = helpers.map(helper => {
+      const helperEvents = events.filter(event => 
+        event.linkedRecords?.helperId === helper.id &&
+        new Date(event.start) >= now &&
+        new Date(event.start) <= nextMonth
+      );
+
+      const totalHours = helperEvents.reduce((sum, event) => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
+        return sum + (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+      }, 0);
+
+      return {
+        helperId: helper.id,
+        helperName: helper.name,
+        upcomingHours: totalHours,
+        upcomingEvents: helperEvents.length,
+        utilizationRate: totalHours / (helper.maxHours * helper.workdays.length * 4) // Rough monthly capacity
+      };
+    });
+
+    // Zone distribution analysis
+    const zoneDistribution = clients.reduce((zones: any, client) => {
+      zones[client.zone] = (zones[client.zone] || 0) + 1;
+      return zones;
+    }, {});
+
+    return {
+      helperWorkload,
+      zoneDistribution,
+      maintenanceClientCount: clients.filter(c => c.maintenanceSchedule.isMaintenance).length,
+      activeClientCount: clients.filter(c => c.status === 'active').length,
+      upcomingEventsCount: events.filter(e => new Date(e.start) >= now).length
     };
   }
 

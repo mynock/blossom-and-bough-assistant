@@ -87,18 +87,128 @@ app.get('/api/projects', async (req, res) => {
 
 // Chat endpoint for AI scheduling assistance
 app.post('/api/chat', async (req, res) => {
+  const startTime = Date.now();
+  console.log('\n🎯 === CHAT ENDPOINT START ===');
+  
   try {
     const { query } = req.body as SchedulingRequest;
     
     if (!query) {
+      console.log('❌ Chat request missing query');
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    const response = await schedulingService.getSchedulingRecommendation(query);
+    console.log(`📝 Chat query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
+    console.log(`📊 Query length: ${query.length} characters`);
+
+    // Set up timeout to prevent hanging
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Request timeout - AI processing took too long'));
+      }, 55000); // 55 second timeout (less than frontend's 60s)
+    });
+
+    // Race between the AI response and timeout
+    const responsePromise = schedulingService.getSchedulingRecommendation(query);
+    
+    const response = await Promise.race([responsePromise, timeoutPromise]);
+    
+    const totalTime = Date.now() - startTime;
+    console.log(`✅ === CHAT ENDPOINT SUCCESS === Total time: ${totalTime}ms`);
+    console.log(`📤 Response length: ${JSON.stringify(response).length} characters\n`);
+    
     res.json(response);
   } catch (error) {
-    console.error('Error processing chat request:', error);
-    res.status(500).json({ error: 'Failed to process scheduling request' });
+    const totalTime = Date.now() - startTime;
+    console.error(`❌ === CHAT ENDPOINT ERROR === Time: ${totalTime}ms`);
+    console.error('🔥 Chat error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      type: error instanceof Error ? error.constructor.name : typeof error,
+      stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join('\n') : undefined
+    });
+    
+    // Send appropriate error response
+    if (error instanceof Error && error.message.includes('timeout')) {
+      console.error('⏰ Request timed out - likely due to slow tool execution');
+      res.status(408).json({ 
+        error: 'Request timed out. The AI is taking too long to process your request. Please try a simpler query or try again later.',
+        timeout: true
+      });
+    } else if (error instanceof Error && error.name === 'RateLimitError') {
+      console.error('🚫 Rate limit hit');
+      res.status(429).json({ 
+        error: 'Rate limit exceeded. Please wait a moment before trying again.',
+        rateLimited: true
+      });
+    } else {
+      console.error('💥 General chat processing error');
+      res.status(500).json({ 
+        error: 'Failed to process scheduling request. Please try again or contact support if the issue persists.',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+    console.log(''); // Add spacing after error
+  }
+});
+
+// Test endpoint to show system prompt
+app.get('/api/debug/system-prompt', async (req, res) => {
+  try {
+    const context = await schedulingService.getSchedulingContext();
+    
+    // Query parameters
+    const showType = req.query.type as string; // 'condensed', 'full', or 'both' (default)
+    const showFullContent = req.query.fullContent === 'true'; // Show full content without truncation
+    
+    // Get both condensed and full prompts using public methods
+    const condensedPrompt = anthropicService.getCondensedSystemPrompt(context);
+    const fullPrompt = anthropicService.getFullSystemPrompt(context);
+    const currentPrompt = anthropicService.getCurrentSystemPrompt(context);
+    
+    const response: any = {
+      meta: {
+        showType: showType || 'both',
+        showFullContent: showFullContent,
+        timestamp: new Date().toISOString()
+      },
+      current: {
+        type: condensedPrompt === currentPrompt ? 'condensed' : 'full',
+        length: currentPrompt.length,
+        estimatedTokens: Math.round(currentPrompt.length / 4),
+        content: currentPrompt
+      },
+      tokenSavings: {
+        characters: fullPrompt.length - condensedPrompt.length,
+        estimatedTokens: Math.round((fullPrompt.length - condensedPrompt.length) / 4),
+        percentReduction: Math.round(((fullPrompt.length - condensedPrompt.length) / fullPrompt.length) * 100)
+      }
+    };
+
+    // Add condensed prompt if requested
+    if (!showType || showType === 'both' || showType === 'condensed') {
+      response.condensed = {
+        length: condensedPrompt.length,
+        estimatedTokens: Math.round(condensedPrompt.length / 4),
+        content: condensedPrompt
+      };
+    }
+
+    // Add full prompt if requested
+    if (!showType || showType === 'both' || showType === 'full') {
+      response.full = {
+        length: fullPrompt.length,
+        estimatedTokens: Math.round(fullPrompt.length / 4),
+        content: showFullContent ? fullPrompt : fullPrompt.substring(0, 1000) + '...[truncated for display]'
+      };
+    }
+    
+    res.json(response);
+  } catch (error) {
+    console.error('Error getting system prompt:', error);
+    res.status(500).json({ 
+      error: 'Failed to get system prompt',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

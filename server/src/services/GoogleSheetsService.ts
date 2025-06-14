@@ -62,7 +62,7 @@ export class GoogleSheetsService {
 
     try {
       const spreadsheetId = process.env.GOOGLE_SHEETS_ID;
-      const range = 'Helpers!A2:K100'; // Adjust range as needed
+      const range = 'Employees!A2:K100'; // Adjust range as needed
 
       const response = await this.sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -137,8 +137,8 @@ export class GoogleSheetsService {
   private parseHelperRow(row: any[]): Helper | null {
     if (!row[0]) return null; // Skip empty rows
 
-    // Based on your Helpers sheet structure:
-    // Helper_ID | Name | Regular_Workdays | Home_Address | Min_Hours_Per_Day | Max_Hours_Per_Day | Capability_Level | Hourly_Rate | Notes | Active_Status
+    // Based on your Employees sheet structure:
+    // Employee_ID | Name | Regular_Workdays | Home_Address | Min_Hours_Per_Day | Max_Hours_Per_Day | Capability_Level | Hourly_Rate | Notes | Active_Status
     
     const workdays = (row[2] || '').split(' ').filter((day: string) => day.trim()); // Split "Mon Wed Fri" format
     
@@ -153,6 +153,7 @@ export class GoogleSheetsService {
       skills: this.inferSkillsFromCapability(row[6], row[8]), // Infer from capability and notes
       hourlyRate: parseFloat(row[7]) || 0,
       status: (row[9] === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive',
+      notes: row[8] || undefined, // Preserve the original notes
     };
   }
 

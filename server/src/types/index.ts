@@ -9,6 +9,7 @@ export interface Helper {
   skills: string[];
   hourlyRate: number;
   status: 'active' | 'inactive';
+  notes?: string;
   communicationPreferences?: {
     noticeRequired: number; // hours
     contactMethod: 'phone' | 'email' | 'text';
@@ -138,6 +139,10 @@ export interface SchedulingContext {
   projects: Project[];
   calendarEvents: CalendarEvent[];
   zones: ServiceZone[];
+  // Rich context for 1-2 month planning
+  maintenanceSchedule?: any;
+  helperAvailability?: any;
+  businessMetrics?: any;
 }
 
 export interface SchedulingRequest {

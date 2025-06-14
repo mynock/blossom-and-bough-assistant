@@ -6,6 +6,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import Schedule from './components/Schedule';
+import Debug from './components/Debug';
 import Navigation from './components/Navigation';
 
 const theme = createTheme({
@@ -45,6 +46,7 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/schedule" element={<Schedule />} />
+              <Route path="/debug" element={<Debug />} />
             </Routes>
           </div>
         </Router>
