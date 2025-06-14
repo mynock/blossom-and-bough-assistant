@@ -147,10 +147,32 @@ export class SchedulingService {
   // New method for maintenance schedule
   async getMaintenanceSchedule(clientId?: string, weeksAhead: number = 8): Promise<any> {
     const clients = await this.getClients();
-    const maintenanceClients = clients.filter(c => 
-      c.maintenanceSchedule.isMaintenance && 
-      (!clientId || c.id === clientId)
-    );
+    
+    let maintenanceClients = clients.filter(c => c.maintenanceSchedule.isMaintenance);
+    
+    // Filter by client if specified
+    if (clientId) {
+      // Try to find by ID first, then by name (case insensitive)
+      const targetClient = clients.find(c => 
+        c.id === clientId || 
+        c.name.toLowerCase() === clientId.toLowerCase()
+      );
+      
+      if (targetClient) {
+        maintenanceClients = maintenanceClients.filter(c => c.id === targetClient.id);
+      } else {
+        // No client found, return empty but informative result
+        return {
+          maintenanceSchedule: [],
+          summary: {
+            totalClients: 0,
+            overdueClients: 0,
+            upcomingThisWeek: 0
+          },
+          error: `No client found with ID or name: ${clientId}`
+        };
+      }
+    }
     
     const schedule = [];
     const now = new Date();
@@ -191,6 +213,62 @@ export class SchedulingService {
         }).length
       }
     };
+  }
+
+  // New method for querying client information
+  async getClientInfo(
+    clientName?: string,
+    clientId?: string,
+    zone?: string,
+    maintenanceOnly?: boolean
+  ): Promise<any[]> {
+    const clients = await this.getClients();
+    
+    let filteredClients = clients;
+    
+    // Filter by client ID if provided
+    if (clientId) {
+      filteredClients = filteredClients.filter(c => c.id === clientId);
+    }
+    
+    // Filter by client name if provided (partial match, case insensitive)
+    if (clientName) {
+      const searchName = clientName.toLowerCase();
+      filteredClients = filteredClients.filter(c => 
+        c.name.toLowerCase().includes(searchName)
+      );
+    }
+    
+    // Filter by zone if provided
+    if (zone) {
+      filteredClients = filteredClients.filter(c => c.zone === zone);
+    }
+    
+    // Filter by maintenance status if requested
+    if (maintenanceOnly) {
+      filteredClients = filteredClients.filter(c => c.maintenanceSchedule.isMaintenance);
+    }
+    
+    // Return detailed client information
+    return filteredClients.map(client => ({
+      id: client.id,
+      name: client.name,
+      zone: client.zone,
+      address: client.address,
+      priority: client.priority,
+      status: client.status,
+      notes: client.notes,
+      maintenanceSchedule: client.maintenanceSchedule.isMaintenance ? {
+        isMaintenance: true,
+        intervalWeeks: client.maintenanceSchedule.intervalWeeks,
+        hoursPerVisit: client.maintenanceSchedule.hoursPerVisit,
+        rate: client.maintenanceSchedule.rate,
+        lastVisit: client.maintenanceSchedule.lastVisit,
+        nextTarget: client.maintenanceSchedule.nextTarget
+      } : {
+        isMaintenance: false
+      }
+    }));
   }
 
   // New method for travel time calculation

@@ -134,7 +134,33 @@ export class AnthropicService {
           console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
           console.log(`📝 Incomplete response: "${response.text}"`);
           
-          // Instead of forcing a tool call, return a helpful message explaining the issue
+          // If the response mentions specific tools or actions, try to force a tool call
+          if (response.text.includes('maintenance schedule') || 
+              response.text.includes('get the maintenance') ||
+              response.text.includes('Now let me get')) {
+            console.log(`🔄 Response suggests AI wants to call maintenance tools - creating a fake tool call to continue`);
+            
+            // Create a fake tool use message to trigger the tool handling flow
+            const fakeToolMessage = {
+              ...message,
+              content: [
+                ...message.content,
+                {
+                  type: 'tool_use' as const,
+                  id: 'fake_continuation_' + Date.now(),
+                  name: 'get_maintenance_schedule',
+                  input: { weeks_ahead: 8 }
+                }
+              ]
+            };
+            
+            const result = await this.handleToolCalls(fakeToolMessage, query, context);
+            const totalTime = Date.now() - startTime;
+            console.log(`✅ === ANTHROPIC API CALL COMPLETE (with forced tools) === Total time: ${totalTime}ms\n`);
+            return result;
+          }
+          
+          // Fallback response for other incomplete responses
           return {
             response: `I started analyzing your schedule but my response was cut short. Let me try a more direct approach - please ask me something more specific like:
 
@@ -246,7 +272,7 @@ This will help me give you a complete analysis without getting interrupted.`,
           properties: {
             client_id: {
               type: 'string',
-              description: 'Optional: Specific client ID, or omit for all clients'
+              description: 'Optional: Specific client ID or client name (case insensitive), or omit for all clients'
             },
             weeks_ahead: {
               type: 'number',
@@ -298,6 +324,31 @@ This will help me give you a complete analysis without getting interrupted.`,
           },
           required: ['helper_id', 'start_time', 'duration_hours']
         }
+      },
+      {
+        name: 'get_client_info',
+        description: 'Get detailed information about a specific client or search for clients by name/criteria',
+        input_schema: {
+          type: 'object' as const,
+          properties: {
+            client_name: {
+              type: 'string',
+              description: 'Client name to search for (partial matches allowed)'
+            },
+            client_id: {
+              type: 'string',
+              description: 'Specific client ID if known'
+            },
+            zone: {
+              type: 'string',
+              description: 'Filter clients by zone'
+            },
+            maintenance_only: {
+              type: 'boolean',
+              description: 'Only return maintenance clients'
+            }
+          }
+        }
       }
     ];
   }
@@ -331,6 +382,26 @@ This will help me give you a complete analysis without getting interrupted.`,
       console.log(`🔍 Round ${toolCallRound} - Message content types:`, currentMessage.content.map((c: any) => c.type));
       console.log(`🔍 Round ${toolCallRound} - Found ${toolUseContent.length} tool_use items`);
       
+      // Handle empty content array from API
+      if (!currentMessage.content || currentMessage.content.length === 0) {
+        console.log(`⚠️ Round ${toolCallRound} - Received empty content from API`);
+        console.log(`📊 Token usage in previous call may have caused truncation`);
+        
+        // Return a helpful response explaining the issue
+        return {
+          response: `I started analyzing your schedule but encountered an issue with the AI response. This sometimes happens with complex queries that require multiple data lookups. 
+
+Please try asking a more focused question like:
+• "What maintenance clients are overdue this week?"
+• "Show me conflicts in my schedule for next Monday"
+• "Which helpers are available on Friday?"
+
+This will help me provide a complete analysis without running into processing limits.`,
+          reasoning: 'Empty response received from AI - likely due to token limits or context size',
+          suggestions: []
+        };
+      }
+      
       if (toolUseContent.length === 0) {
         // No more tool calls, we have the final response
         const response = currentMessage.content.find((content: any) => content.type === 'text');
@@ -345,7 +416,51 @@ This will help me give you a complete analysis without getting interrupted.`,
             console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
             console.log(`📝 Incomplete response: "${textResponse.text}"`);
             
-            // Instead of forcing a tool call, return a helpful message explaining the issue
+            // Check if this looks like the AI is about to make another tool call
+            // If so, we should force continuation rather than giving up
+            if (textResponse.text.includes('maintenance schedule') || 
+                textResponse.text.includes('let me get') ||
+                textResponse.text.includes('Now let me get')) {
+              console.log(`🔄 Attempting to force tool continuation - looks like AI wants to call more tools`);
+              
+              // Add a follow-up message to encourage the AI to continue
+              conversationHistory.push({
+                role: 'user' as const,
+                content: 'Please continue with your analysis. Use any additional tools you need to provide a complete answer.'
+              });
+              
+              // Make another API call to continue
+              try {
+                const continuationStart = Date.now();
+                const continuationMessage = await this.client!.messages.create({
+                  model: 'claude-sonnet-4-20250514',
+                  max_tokens: 2000,
+                  temperature: 0.3,
+                  system: this.buildSystemPrompt(context),
+                  messages: conversationHistory
+                });
+
+                const continuationTime = Date.now() - continuationStart;
+                console.log(`⏱️ Continuation API call completed in ${continuationTime}ms`);
+                
+                // Update current message for next iteration
+                currentMessage = continuationMessage;
+                
+                // Add the continuation to conversation history
+                conversationHistory.push({
+                  role: 'assistant' as const,
+                  content: continuationMessage.content
+                });
+                
+                // Continue the loop to process any tool calls in the continuation
+                continue;
+              } catch (continuationError) {
+                console.error('❌ Error in continuation call:', continuationError);
+                // Fall through to the fallback response
+              }
+            }
+            
+            // Fallback response for other types of incomplete responses
             return {
               response: `I started analyzing your schedule but my response was cut short. Let me try a more direct approach - please ask me something more specific like:
 
@@ -398,6 +513,17 @@ This will help me give you a complete analysis without getting interrupted.`,
       
       console.log(`🔄 Making follow-up API call (round ${toolCallRound})...`);
       
+      // Limit conversation history to prevent token overflow
+      const maxHistoryLength = 10; // Keep last 10 messages
+      const trimmedHistory = conversationHistory.length > maxHistoryLength 
+        ? [
+            conversationHistory[0], // Keep original user query
+            ...conversationHistory.slice(-maxHistoryLength + 1) // Keep recent messages
+          ]
+        : conversationHistory;
+      
+      console.log(`📊 Conversation history: ${conversationHistory.length} messages, using ${trimmedHistory.length} for API call`);
+      
       // Continue conversation with tool results
       const followUpStart = Date.now();
       const followUpMessage = await this.client!.messages.create({
@@ -405,7 +531,7 @@ This will help me give you a complete analysis without getting interrupted.`,
         max_tokens: 2000,
         temperature: 0.3,
         system: this.buildSystemPrompt(context),
-        messages: conversationHistory
+        messages: trimmedHistory
       });
 
       const followUpTime = Date.now() - followUpStart;
@@ -415,6 +541,8 @@ This will help me give you a complete analysis without getting interrupted.`,
         output_tokens: followUpMessage.usage?.output_tokens || 'unknown',
         total_tokens: (followUpMessage.usage?.input_tokens || 0) + (followUpMessage.usage?.output_tokens || 0)
       });
+      console.log(`📋 Follow-up response content length:`, followUpMessage.content?.length || 0);
+      console.log(`📋 Follow-up response content preview:`, JSON.stringify(followUpMessage.content).substring(0, 200) + '...');
 
       // Add AI response to conversation history
       conversationHistory.push({
@@ -500,6 +628,16 @@ This will help me give you a complete analysis without getting interrupted.`,
           });
           console.log(`⚠️ find_scheduling_conflicts found ${conflicts.conflicts?.length || 0} conflicts`);
           return conflicts;
+
+        case 'get_client_info':
+          const clientInfo = await this.schedulingService.getClientInfo(
+            input.client_name,
+            input.client_id,
+            input.zone,
+            input.maintenance_only
+          );
+          console.log(`🔍 get_client_info returned ${clientInfo.length} client(s)`);
+          return clientInfo;
 
         default:
           console.error(`❌ Unknown tool: ${toolName}`);
@@ -763,16 +901,24 @@ ${maintenanceSection}
 ## Available Tools
 Use when you need details beyond this summary:
 
-**Calendar & Scheduling:**
-- \`get_calendar_events\` - Get specific date ranges, detailed event info
+**Database Tools (for client information):**
+- \`get_client_info\` - Search and retrieve detailed client information by name, zone, or other criteria
+- \`check_helper_availability\` - Detailed helper availability analysis
+
+**Calendar Tools (for scheduling data):**
+- \`get_calendar_events\` - Get specific date ranges, detailed event info, historical data
 - \`find_scheduling_conflicts\` - Check for conflicts with proposed times
-- \`check_helper_availability\` - Detailed availability analysis
 
 **Analysis Tools:**  
-- \`get_maintenance_schedule\` - Calculate overdue clients, next service dates
 - \`calculate_travel_time\` - Optimize routes between locations
+- \`get_maintenance_schedule\` - Calculate overdue clients, next service dates (use sparingly - prefer get_client_info for client details)
 
-**IMPORTANT:** When analyzing schedule concerns or suggestions, ALWAYS use both \`get_calendar_events\` AND \`get_maintenance_schedule\` tools to provide complete analysis.
+## Tool Usage Guidelines
+- **For client questions** (rates, hours, contact info): Use \`get_client_info\`
+- **For historical usage** (past visits, time spent): Use \`get_calendar_events\`
+- **For scheduling questions** (availability, conflicts): Use calendar and availability tools
+- **Choose the most direct tool** for your query - don't always use multiple tools unless necessary
+- Complete your analysis with all available data before responding
 
 ## Response Format
 1. **Acknowledge** the request and relevant constraints
