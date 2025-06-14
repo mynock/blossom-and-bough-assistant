@@ -20,24 +20,51 @@ import {
 import { ContentCopy, Event } from '@mui/icons-material';
 import { helpersApi, clientsApi, Helper, Client } from '../services/api';
 
+/**
+ * Calendar Template Generator for Maintenance Events
+ * 
+ * TITLE STRUCTURE RECOMMENDATION:
+ * Format: "[Status] Client Name - Service Type [+ Andrea]"
+ * Example: "[Tentative] Smith Property - Maintenance + Andrea"
+ * 
+ * Why this format:
+ * - Status in brackets for quick identification of confirmation level
+ * - Client name first for easy scanning in calendar view
+ * - Service type for quick identification of work type
+ * - Andrea indicator when she's on-site for supervision/consultation
+ * 
+ * DESCRIPTION STRUCTURE:
+ * Contains all detailed operational information:
+ * - Client & Helper details (IDs for reference)
+ * - Service specifics (type, hours, timing)
+ * - Logistics (location, zone, flexibility)
+ * - Status tracking (confirmation, notifications)
+ * - Special requirements (gate codes, materials, weather sensitivity)
+ * - Notes for additional context
+ * 
+ * This separation keeps the calendar view clean while ensuring all
+ * necessary information is available when viewing event details.
+ */
+
 interface TemplateOptions {
   clientId: string;
   helperId: string;
   serviceType: string;
   clientName: string;
   helperName: string;
+  andreaOnSite: boolean;
   hours: string;
-  rate: string;
+  flexibility: string;
   priority: string;
   location: string;
   zone: string;
+  clientNotified: boolean;
+  status: string;
+  notes: string;
+  // Optional fields
   projectId?: string;
   projectName?: string;
-  gateCode?: string;
-  materials?: string;
   weatherSensitive: boolean;
-  clientNotified: boolean;
-  notes: string;
 }
 
 const CalendarTemplateGenerator: React.FC = () => {
@@ -52,16 +79,18 @@ const CalendarTemplateGenerator: React.FC = () => {
     serviceType: 'Maintenance',
     clientName: '',
     helperName: '',
+    andreaOnSite: true,
     hours: '4.0',
-    rate: '$75/hour',
+    flexibility: '',
     priority: 'Medium',
     location: '',
     zone: '',
-    gateCode: '',
-    materials: '',
-    weatherSensitive: false,
     clientNotified: false,
+    status: '',
     notes: '',
+    weatherSensitive: false,
+    projectId: '',
+    projectName: '',
   });
 
   useEffect(() => {
@@ -105,7 +134,6 @@ const CalendarTemplateGenerator: React.FC = () => {
         ...prev,
         helperId,
         helperName: helper.name,
-        rate: `$${helper.hourlyRate}/hour`,
       }));
     }
   };
@@ -130,14 +158,11 @@ const CalendarTemplateGenerator: React.FC = () => {
             clientName: options.clientName,
             helperName: options.helperName,
             hours: options.hours,
-            rate: options.rate,
             priority: options.priority,
             location: options.location,
             zone: options.zone,
             projectId: options.projectId,
             projectName: options.projectName,
-            gateCode: options.gateCode,
-            materials: options.materials,
             weatherSensitive: options.weatherSensitive,
             clientNotified: options.clientNotified,
             notes: options.notes,
@@ -157,23 +182,28 @@ const CalendarTemplateGenerator: React.FC = () => {
   };
 
   const generateClientSideTemplate = () => {
-    const title = `${options.clientName} - ${options.serviceType} - ${options.helperName}`;
+    // TITLE RECOMMENDATION: Keep it concise with most critical info
+    // Format: "[Status] Client - Service [+ Andrea]"
+    const andreaIndicator = options.andreaOnSite ? ' + Andrea' : '';
+    const statusPrefix = options.status ? `[${options.status}] ` : '[Tentative] ';
+    const title = `${statusPrefix}${options.clientName} - ${options.serviceType}${andreaIndicator}`;
     
+    // DESCRIPTION: Include all detailed information
     const description = `CLIENT: ${options.clientName} (${options.clientId})
 HELPER: ${options.helperName} (${options.helperId})
 SERVICE: ${options.serviceType}
+ANDREA ON-SITE: ${options.andreaOnSite ? 'Yes' : 'No'}
 HOURS: ${options.hours}
-RATE: ${options.rate}
+FLEXIBILITY: ${options.flexibility || 'Standard'}
 PRIORITY: ${options.priority}
 
 LOCATION: ${options.location}
 ZONE: ${options.zone}
 ${options.projectId ? `PROJECT: ${options.projectName || '[Project Name]'} (${options.projectId})` : ''}
 
-${options.gateCode ? `GATE CODE: ${options.gateCode}` : ''}
-${options.materials ? `MATERIALS: ${options.materials}` : ''}
-WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
+STATUS: ${options.status || 'Tentative'}
 CLIENT NOTIFIED: ${options.clientNotified ? 'Yes' : 'No'}
+WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
 
 NOTES: ${options.notes || '[Additional notes]'}`;
 
@@ -199,7 +229,8 @@ LOCATION: ${options.location}`;
 
   const serviceTypes = ['Maintenance', 'Install', 'Pruning', 'Design', 'Repair', 'Consultation'];
   const priorities = ['High', 'Medium', 'Low'];
-  const zones = ['Southwest', 'Southeast', 'Northeast', 'Northwest', 'Downtown', 'Lake Oswego', 'Portland Metro'];
+  const flexibilityOptions = ['Fixed', 'Preferred', 'Flexible'];
+  const statusOptions = ['Tentative', 'Self-Confirmed', 'Client-Confirmed', 'Rescheduled'];
 
   return (
     <Card>
@@ -241,7 +272,7 @@ LOCATION: ${options.location}`;
               >
                 {helpers.map((helper) => (
                   <MenuItem key={helper.id} value={helper.id}>
-                    {helper.name} ({helper.id}) - ${helper.hourlyRate}/hr
+                    {helper.name} ({helper.id})
                   </MenuItem>
                 ))}
               </Select>
@@ -294,55 +325,67 @@ LOCATION: ${options.location}`;
             </FormControl>
           </Grid>
 
-          {/* Location */}
-          <Grid item xs={12} md={8}>
-            <TextField
-              fullWidth
-              label="Location"
-              value={options.location}
-              onChange={(e) => setOptions(prev => ({ ...prev, location: e.target.value }))}
-            />
-          </Grid>
-
-          {/* Zone */}
-          <Grid item xs={12} md={4}>
+          {/* Flexibility */}
+          <Grid item xs={12} md={6}>
             <FormControl fullWidth>
-              <InputLabel>Zone</InputLabel>
+              <InputLabel>Flexibility</InputLabel>
               <Select
-                value={options.zone}
-                label="Zone"
-                onChange={(e) => setOptions(prev => ({ ...prev, zone: e.target.value }))}
+                value={options.flexibility}
+                label="Flexibility"
+                onChange={(e) => setOptions(prev => ({ ...prev, flexibility: e.target.value }))}
               >
-                {zones.map((zone) => (
-                  <MenuItem key={zone} value={zone}>
-                    {zone}
+                {flexibilityOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Grid>
 
+          {/* Status */}
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={options.status}
+                label="Status"
+                onChange={(e) => setOptions(prev => ({ ...prev, status: e.target.value }))}
+              >
+                {statusOptions.map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Location - Read Only */}
+          <Grid item xs={12} md={8}>
+            <TextField
+              fullWidth
+              label="Location"
+              value={options.location}
+              InputProps={{ readOnly: true }}
+              variant="filled"
+              helperText="Auto-populated from selected client"
+            />
+          </Grid>
+
+          {/* Zone - Read Only */}
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="Zone"
+              value={options.zone}
+              InputProps={{ readOnly: true }}
+              variant="filled"
+              helperText="Auto-populated from selected client"
+            />
+          </Grid>
+
           {/* Optional Fields */}
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Gate Code (optional)"
-              value={options.gateCode}
-              onChange={(e) => setOptions(prev => ({ ...prev, gateCode: e.target.value }))}
-            />
-          </Grid>
-
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Materials (optional)"
-              value={options.materials}
-              onChange={(e) => setOptions(prev => ({ ...prev, materials: e.target.value }))}
-              placeholder="Plants, mulch, tools"
-            />
-          </Grid>
-
-          {/* Notes */}
           <Grid item xs={12}>
             <TextField
               fullWidth
@@ -358,6 +401,12 @@ LOCATION: ${options.location}`;
           {/* Checkboxes */}
           <Grid item xs={12}>
             <Box display="flex" gap={2} flexWrap="wrap">
+              <Chip
+                label="Andrea On-Site"
+                color={options.andreaOnSite ? 'secondary' : 'default'}
+                onClick={() => setOptions(prev => ({ ...prev, andreaOnSite: !prev.andreaOnSite }))}
+                variant={options.andreaOnSite ? 'filled' : 'outlined'}
+              />
               <Chip
                 label="Weather Sensitive"
                 color={options.weatherSensitive ? 'primary' : 'default'}

@@ -76,7 +76,7 @@ export interface CalendarEvent {
   end: string;
   location?: string;
   description?: string;
-  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance';
+  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance' | 'helper_schedule' | 'todo';
   linkedRecords?: {
     clientId?: string;
     projectId?: string;
@@ -92,6 +92,37 @@ export interface CalendarEvent {
     materialsNeeded?: string[];
     specialNotes?: string;
   };
+}
+
+export interface MaintenanceCalendarEvent {
+  // Core identification
+  clientName: string;
+  clientId: string;
+  service: string;
+  helperId: string;
+  helperName: string;
+  
+  // Andrea involvement
+  andreaOnSite: boolean;
+  
+  // Timing
+  hours: number;
+  
+  // Scheduling attributes
+  flexibility: 'Fixed' | 'Preferred' | 'Flexible';
+  priority: 'High' | 'Medium' | 'Low';
+  
+  // Location
+  location: string;
+  zone: string;
+  
+  // Status tracking
+  clientNotified: boolean;
+  status: 'Tentative' | 'Self-Confirmed' | 'Client-Confirmed' | 'Rescheduled';
+  
+  // Additional details
+  notes?: string;
+  weatherSensitive?: boolean;
 }
 
 export interface ServiceZone {

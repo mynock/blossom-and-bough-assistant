@@ -60,6 +60,12 @@ export class GoogleCalendarService {
 
     if (!start || !end) return null;
 
+    // Filter out all-day events (they represent todo items or helper schedules, not client visits)
+    const isAllDay = !googleEvent.start?.dateTime && googleEvent.start?.date;
+    if (isAllDay) {
+      return null; // Skip all-day events
+    }
+
     // Parse structured data from title and description
     const parsedData = this.parseEventData(googleEvent.summary, googleEvent.description || '');
 
@@ -178,7 +184,7 @@ export class GoogleCalendarService {
 
     if (combined.includes('maintenance')) return 'maintenance';
     if (combined.includes('client') || combined.includes('visit')) return 'client_visit';
-    if (combined.includes('office') || combined.includes('admin') || combined.includes('design')) return 'office_work';
+    if (combined.includes('office') || combined.includes('admin') || combined.includes('design') || combined.includes('invoice')) return 'office_work';
     
     return 'client_visit'; // Default assumption
   }
@@ -266,23 +272,27 @@ CLIENT NOTIFIED: No`,
 
   // Helper method to generate calendar event templates
   generateEventTemplate(clientId: string, helperId: string, serviceType: string, options: any = {}): string {
-    const title = `${options.clientName || '[Client Name]'} - ${serviceType} - ${options.helperName || '[Helper Name]'}`;
+    // New format: [Status] Client Name - Service Type [+ Andrea]
+    const andreaOnSite = options.andreaOnSite !== false; // Default to true unless explicitly false
+    const andreaIndicator = andreaOnSite ? ' + Andrea' : '';
+    const statusPrefix = options.status ? `[${options.status}] ` : '[Tentative] ';
+    const title = `${statusPrefix}${options.clientName || '[Client Name]'} - ${serviceType}${andreaIndicator}`;
     
     const description = `CLIENT: ${options.clientName || '[Client Name]'} (${clientId})
 HELPER: ${options.helperName || '[Helper Name]'} (${helperId})
 SERVICE: ${serviceType}
+ANDREA ON-SITE: ${andreaOnSite ? 'Yes' : 'No'}
 HOURS: ${options.hours || '[Hours]'}
-RATE: ${options.rate || '[Rate]'}
+FLEXIBILITY: ${options.flexibility || 'Standard'}
 PRIORITY: ${options.priority || 'Medium'}
 
 LOCATION: ${options.location || '[Full Address]'}
 ZONE: ${options.zone || '[Zone]'}
 ${options.projectId ? `PROJECT: ${options.projectName || '[Project Name]'} (${options.projectId})` : ''}
 
-${options.gateCode ? `GATE CODE: ${options.gateCode}` : ''}
-${options.materials ? `MATERIALS: ${options.materials}` : ''}
-WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
+STATUS: ${options.status || 'Tentative'}
 CLIENT NOTIFIED: ${options.clientNotified ? 'Yes' : 'No'}
+WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
 
 NOTES: ${options.notes || '[Additional notes]'}`;
 

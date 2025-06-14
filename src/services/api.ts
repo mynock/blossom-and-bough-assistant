@@ -60,7 +60,7 @@ export interface CalendarEvent {
   end: string;
   location?: string;
   description?: string;
-  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance';
+  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance' | 'helper_schedule' | 'todo';
 }
 
 export interface ChatResponse {

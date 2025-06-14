@@ -160,36 +160,36 @@ export class GoogleSheetsService {
     if (!row[0]) return null; // Skip empty rows
 
     // Based on your Clients sheet structure:
-    // Client_ID | Name | Address | Is_Maintenance_Client | Maintenance_Interval_Weeks | Maintenance_Hours_Per_Visit | 
+    // Client_ID | Name | Address | Geo Zone | Is_Recurring_Maintenance | Maintenance_Interval_Weeks | Maintenance_Hours_Per_Visit | 
     // Maintenance_Rate | Last_Maintenance | Next_Maintenance | Priority_Level | Schedule_Flexibility | Preferred_Days | 
     // Preferred_Time | Special_Notes | Active_Status
 
-    const preferredDays = (row[11] || '').split(' ').filter((day: string) => day.trim()); // Split "Mon Tue Wed" format
+    const preferredDays = (row[12] || '').split(' ').filter((day: string) => day.trim()); // Split "Mon Tue Wed" format
     
     return {
       id: row[0] || '',
       name: row[1] || '',
       address: row[2] || '',
-      zone: this.inferZoneFromAddress(row[2]), // Infer zone from address
+      zone: row[3] || this.inferZoneFromAddress(row[2]), // Use Geo Zone column, fallback to address inference
       email: undefined, // Not in your sheet structure
       phone: undefined, // Not in your sheet structure
       maintenanceSchedule: {
-        isMaintenance: row[3] === 'TRUE',
-        intervalWeeks: parseInt(row[4]) || undefined,
-        hoursPerVisit: parseFloat(row[5]) || undefined,
-        lastVisit: row[7] || undefined,
-        nextTarget: row[8] || undefined,
-        rate: parseFloat(row[6]) || undefined,
+        isMaintenance: row[4] === 'TRUE',
+        intervalWeeks: parseInt(row[5]) || undefined,
+        hoursPerVisit: parseFloat(row[6]) || undefined,
+        lastVisit: row[8] || undefined,
+        nextTarget: row[9] || undefined,
+        rate: parseFloat(row[7]) || undefined,
       },
       preferences: {
         preferredDays: preferredDays,
-        preferredTime: this.mapPreferredTime(row[12]) || 'flexible',
-        flexibility: this.mapFlexibility(row[10]) || 'Flexible',
-        specialRequirements: row[13] || undefined,
+        preferredTime: this.mapPreferredTime(row[13]) || 'flexible',
+        flexibility: this.mapFlexibility(row[11]) || 'Flexible',
+        specialRequirements: row[14] || undefined,
       },
-      priority: this.mapPriority(row[9]) || 'Medium',
-      status: (row[14] === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive' | 'seasonal',
-      notes: row[13] || undefined,
+      priority: this.mapPriority(row[10]) || 'Medium',
+      status: (row[15] === 'Active' ? 'active' : 'inactive') as 'active' | 'inactive' | 'seasonal',
+      notes: row[14] || undefined,
     };
   }
 

@@ -107,6 +107,9 @@ const Dashboard: React.FC = () => {
       case 'maintenance': return 'success';
       case 'client_visit': return 'primary';
       case 'office_work': return 'warning';
+      case 'helper_schedule': return 'info';
+      case 'todo': return 'secondary';
+      case 'personal': return 'default';
       default: return 'default';
     }
   };
@@ -233,12 +236,15 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Upcoming Schedule */}
+        {/* Upcoming Schedule - All-day events (helper schedules/todos) are filtered out */}
         <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
                 Upcoming Schedule (Next 7 Days)
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Client visits and scheduled work only (all-day events filtered out)
               </Typography>
               <List>
                 {events.slice(0, 5).map((event) => (
