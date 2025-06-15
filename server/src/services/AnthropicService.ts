@@ -130,45 +130,29 @@ export class AnthropicService {
         console.log(`✅ === ANTHROPIC API CALL COMPLETE === Total time: ${totalTime}ms\n`);
         
         // Check if the response looks incomplete (ends with a colon or seems to be asking for more data)
-        if (response.text.trim().endsWith(':') || response.text.includes('let me check') || response.text.includes('Now let me')) {
+        if (response.text.trim().endsWith(':') || 
+            response.text.includes('let me check') || 
+            response.text.includes('Now let me') ||
+            response.text.includes('Let me also') ||
+            response.text.includes('I should also') ||
+            response.text.includes('Next, I') ||
+            response.text.includes('maintenance scheduling issues') ||
+            response.text.includes('client details and maintenance') ||
+            (response.text.length < 200 && response.text.includes('maintenance'))) {
           console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
           console.log(`📝 Incomplete response: "${response.text}"`);
           
-          // If the response mentions specific tools or actions, try to force a tool call
-          if (response.text.includes('maintenance schedule') || 
-              response.text.includes('get the maintenance') ||
-              response.text.includes('Now let me get')) {
-            console.log(`🔄 Response suggests AI wants to call maintenance tools - creating a fake tool call to continue`);
-            
-            // Create a fake tool use message to trigger the tool handling flow
-            const fakeToolMessage = {
-              ...message,
-              content: [
-                ...message.content,
-                {
-                  type: 'tool_use' as const,
-                  id: 'fake_continuation_' + Date.now(),
-                  name: 'get_maintenance_schedule',
-                  input: { weeks_ahead: 8 }
-                }
-              ]
-            };
-            
-            const result = await this.handleToolCalls(fakeToolMessage, query, context);
-            const totalTime = Date.now() - startTime;
-            console.log(`✅ === ANTHROPIC API CALL COMPLETE (with forced tools) === Total time: ${totalTime}ms\n`);
-            return result;
-          }
-          
-          // Fallback response for other incomplete responses
+          // For regular text responses, we can't easily continue the conversation
+          // So provide a helpful fallback response
           return {
-            response: `I started analyzing your schedule but my response was cut short. Let me try a more direct approach - please ask me something more specific like:
+            response: `I started analyzing your schedule but my response was cut short. This often happens with complex queries that need multiple data sources.
 
-• "What maintenance clients are overdue?"
-• "Show me my schedule conflicts for next week"
-• "Which helpers are available this Thursday?"
+Please try asking a more focused question like:
+• "What maintenance clients are overdue this week?"
+• "Show me conflicts in my schedule for next Monday"  
+• "Which helpers are available on Friday?"
 
-This will help me give you a complete analysis without getting interrupted.`,
+Or try rephrasing your question to be more specific about what you'd like me to analyze.`,
             reasoning: 'Response was incomplete - suggesting more specific queries',
             suggestions: []
           };
@@ -412,21 +396,32 @@ This will help me provide a complete analysis without running into processing li
           console.log(`📝 Final response preview: "${textResponse.text.substring(0, 150)}${textResponse.text.length > 150 ? '...' : ''}"`);
           
           // Check if the response looks incomplete (ends with a colon or seems to be asking for more data)
-          if (textResponse.text.trim().endsWith(':') || textResponse.text.includes('let me check') || textResponse.text.includes('Now let me')) {
+          if (textResponse.text.trim().endsWith(':') || 
+              textResponse.text.includes('let me check') || 
+              textResponse.text.includes('Now let me') ||
+              textResponse.text.includes('Let me also') ||
+              textResponse.text.includes('I should also') ||
+              textResponse.text.includes('Next, I') ||
+              textResponse.text.includes('maintenance scheduling issues') ||
+              textResponse.text.includes('client details and maintenance') ||
+              (textResponse.text.length < 200 && textResponse.text.includes('maintenance'))) {
             console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
             console.log(`📝 Incomplete response: "${textResponse.text}"`);
             
             // Check if this looks like the AI is about to make another tool call
             // If so, we should force continuation rather than giving up
             if (textResponse.text.includes('maintenance schedule') || 
-                textResponse.text.includes('let me get') ||
-                textResponse.text.includes('Now let me get')) {
+                textResponse.text.includes('get the maintenance') ||
+                textResponse.text.includes('Now let me get') ||
+                textResponse.text.includes('maintenance scheduling issues') ||
+                textResponse.text.includes('client details and maintenance') ||
+                textResponse.text.includes('let me check')) {
               console.log(`🔄 Attempting to force tool continuation - looks like AI wants to call more tools`);
               
-              // Add a follow-up message to encourage the AI to continue
+              // Add a more directive follow-up message
               conversationHistory.push({
                 role: 'user' as const,
-                content: 'Please continue with your analysis. Use any additional tools you need to provide a complete answer.'
+                content: 'COMPLETE YOUR ANALYSIS NOW. Do not narrate what you plan to do - execute the tools you need (get_client_info, get_maintenance_schedule, etc.) and provide your final comprehensive response.'
               });
               
               // Make another API call to continue
@@ -441,7 +436,7 @@ This will help me provide a complete analysis without running into processing li
                 });
 
                 const continuationTime = Date.now() - continuationStart;
-                console.log(`⏱️ Continuation API call completed in ${continuationTime}ms`);
+                console.log(`⏱️ Forced continuation API call completed in ${continuationTime}ms`);
                 
                 // Update current message for next iteration
                 currentMessage = continuationMessage;
@@ -455,7 +450,7 @@ This will help me provide a complete analysis without running into processing li
                 // Continue the loop to process any tool calls in the continuation
                 continue;
               } catch (continuationError) {
-                console.error('❌ Error in continuation call:', continuationError);
+                console.error('❌ Error in forced continuation call:', continuationError);
                 // Fall through to the fallback response
               }
             }
@@ -496,12 +491,50 @@ This will help me give you a complete analysis without getting interrupted.`,
         const toolResult = await this.executeToolCall(content.name, content.input);
         const toolExecTime = Date.now() - toolExecStart;
         
-        console.log(`📤 Result (${toolExecTime}ms):`, JSON.stringify(toolResult, null, 2).substring(0, 300) + '...');
+        // Summarize large results to prevent token overflow
+        let processedResult = toolResult;
+        const resultString = JSON.stringify(toolResult);
+        
+        if (resultString.length > 15000) {
+          console.log(`📊 Large tool result (${resultString.length} chars) - creating summary`);
+          
+          if (content.name === 'get_calendar_events' && toolResult.events) {
+            // Summarize calendar events for broad analysis
+            const events = toolResult.events;
+            const summary = {
+              total_events: events.length,
+              date_range: events.length > 0 ? {
+                start: events[0].start,
+                end: events[events.length - 1].start
+              } : null,
+              by_type: {} as { [key: string]: number },
+              by_week: {} as { [key: string]: number },
+              key_events: events.slice(0, 10), // First 10 events for detail
+              maintenance_count: events.filter((e: any) => e.eventType === 'maintenance').length,
+              office_work_count: events.filter((e: any) => e.eventType === 'office_work').length,
+              client_visit_count: events.filter((e: any) => e.eventType === 'client_visit').length
+            };
+            
+            // Group by week
+            events.forEach((event: any) => {
+              const week = new Date(event.start).toISOString().slice(0, 10); // YYYY-MM-DD
+              if (!summary.by_week[week]) summary.by_week[week] = 0;
+              summary.by_week[week]++;
+            });
+            
+            processedResult = {
+              summary: summary,
+              note: `Showing summary of ${events.length} events to prevent token overflow. Key patterns and first 10 events included.`
+            };
+          }
+        }
+        
+        console.log(`📤 Result (${toolExecTime}ms):`, JSON.stringify(processedResult, null, 2).substring(0, 300) + '...');
         
         toolResults.push({
           type: 'tool_result' as const,
           tool_use_id: content.id,
-          content: JSON.stringify(toolResult)
+          content: JSON.stringify(processedResult)
         });
       }
       
@@ -513,8 +546,10 @@ This will help me give you a complete analysis without getting interrupted.`,
       
       console.log(`🔄 Making follow-up API call (round ${toolCallRound})...`);
       
-      // Limit conversation history to prevent token overflow
-      const maxHistoryLength = 10; // Keep last 10 messages
+      // Limit conversation history to prevent token overflow - be more aggressive with large tool results
+      const toolResultSize = JSON.stringify(toolResults).length;
+      const maxHistoryLength = toolResultSize > 10000 ? 4 : 8; // Fewer messages if large tool results
+      
       const trimmedHistory = conversationHistory.length > maxHistoryLength 
         ? [
             conversationHistory[0], // Keep original user query
@@ -522,7 +557,7 @@ This will help me give you a complete analysis without getting interrupted.`,
           ]
         : conversationHistory;
       
-      console.log(`📊 Conversation history: ${conversationHistory.length} messages, using ${trimmedHistory.length} for API call`);
+      console.log(`📊 Tool results size: ${toolResultSize} chars, conversation history: ${conversationHistory.length} messages, using ${trimmedHistory.length} for API call`);
       
       // Continue conversation with tool results
       const followUpStart = Date.now();
@@ -858,7 +893,7 @@ This will help me give you a complete analysis without getting interrupted.`,
 
       const prompt = `# Andrea's AI Landscaping Scheduling Assistant
 
-You optimize schedules considering geographic efficiency, helper capabilities, and client preferences for the next 1-2 months.
+You are Andrea's intelligent scheduling assistant. Handle queries naturally - whether specific or broad. For complex analysis, use multiple tools as needed to provide comprehensive insights.
 
 ## Business Rules
 - Each helper needs 7-8 hours on workdays | **Andrea targets 3 field days/week**
@@ -914,11 +949,13 @@ Use when you need details beyond this summary:
 - \`get_maintenance_schedule\` - Calculate overdue clients, next service dates (use sparingly - prefer get_client_info for client details)
 
 ## Tool Usage Guidelines
-- **For client questions** (rates, hours, contact info): Use \`get_client_info\`
-- **For historical usage** (past visits, time spent): Use \`get_calendar_events\`
-- **For scheduling questions** (availability, conflicts): Use calendar and availability tools
-- **Choose the most direct tool** for your query - don't always use multiple tools unless necessary
-- Complete your analysis with all available data before responding
+- **Use tools naturally** based on what the user is asking
+- **For broad queries** like "look at my schedule" or "any concerns" - use multiple tools to get a complete picture
+- **For specific questions** - use the most direct tool
+- **Think step by step** - if you need calendar data AND client details, get both
+- **Provide comprehensive analysis** for open-ended questions
+
+**For broad schedule reviews:** Start with get_calendar_events for the requested timeframe, then analyze what you see. Look for patterns, conflicts, workload balance, geographic efficiency, and maintenance timing. Provide actionable insights.
 
 ## Response Format
 1. **Acknowledge** the request and relevant constraints
@@ -962,6 +999,8 @@ ${JSON.stringify(context.businessMetrics, null, 2)}`
       : '';
 
     return `You are Andrea's AI scheduling assistant for her landscaping business. You help optimize schedules considering geographic efficiency, helper capabilities, and client preferences.
+
+**CRITICAL INSTRUCTION: Always complete your full analysis in one response. Never say "Now let me check..." or "Let me also..." - if you need multiple tools, use them all immediately. Provide complete recommendations, not partial analysis.**
 
 CURRENT CONTEXT (Optimized for 1-2 Month Planning):
 
