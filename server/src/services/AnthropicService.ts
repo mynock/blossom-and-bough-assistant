@@ -1,19 +1,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
-import { debugLog } from '../utils/logger';
 
 export class AnthropicService {
   private client: Anthropic | null = null;
   private schedulingService: any = null; // Will be injected to avoid circular dependency
-  private useCondensedPrompt: boolean = true; // Flag to control prompt type
-  private useNaturalMode: boolean = true; // Flag to enable natural Claude behavior
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
       this.client = new Anthropic({ apiKey });
       console.log('🤖 AnthropicService initialized with API key');
-      console.log(`🔧 Using ${this.useCondensedPrompt ? 'CONDENSED' : 'FULL'} system prompts to avoid rate limits`);
     } else {
       console.error('❌ AnthropicService: No API key found in environment variables');
       console.error('💡 Please set ANTHROPIC_API_KEY in your .env file');
@@ -26,33 +22,6 @@ export class AnthropicService {
     console.log('🔗 AnthropicService: SchedulingService dependency injected');
   }
 
-  // Method to toggle prompt type
-  setPromptType(useCondensed: boolean) {
-    this.useCondensedPrompt = useCondensed;
-    console.log(`🔧 Switched to ${useCondensed ? 'CONDENSED' : 'FULL'} system prompts`);
-  }
-
-  // Method to toggle natural mode
-  setNaturalMode(useNatural: boolean) {
-    this.useNaturalMode = useNatural;
-    console.log(`🧠 Switched to ${useNatural ? 'NATURAL' : 'MANAGED'} Claude behavior`);
-  }
-
-  // Temporary method to test with full prompt
-  async getSchedulingRecommendationWithFullPrompt(query: string, context: SchedulingContext): Promise<SchedulingResponse> {
-    const originalSetting = this.useCondensedPrompt;
-    this.useCondensedPrompt = false;
-    console.log('🔄 Temporarily using FULL prompt for this request');
-    
-    try {
-      const result = await this.getSchedulingRecommendation(query, context);
-      return result;
-    } finally {
-      this.useCondensedPrompt = originalSetting;
-      console.log(`🔄 Restored to ${originalSetting ? 'CONDENSED' : 'FULL'} prompt setting`);
-    }
-  }
-
   async getSchedulingRecommendation(
     query: string, 
     context: SchedulingContext
@@ -60,8 +29,28 @@ export class AnthropicService {
     const startTime = Date.now();
     console.log('\n🚀 === ANTHROPIC API CALL START ===');
     console.log(`📝 Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
-    console.log(`📊 Context size: ${JSON.stringify(context).length} characters`);
-    console.log(`🧠 Mode: ${this.useNaturalMode ? 'NATURAL' : 'MANAGED'}`);
+    
+    // Log context size breakdown
+    const contextSizes = {
+      helpers: JSON.stringify(context.helpers || []).length,
+      clients: JSON.stringify(context.clients || []).length,
+      calendarEvents: JSON.stringify(context.calendarEvents || []).length,
+      maintenanceSchedule: JSON.stringify(context.maintenanceSchedule || []).length,
+      projects: JSON.stringify(context.projects || []).length,
+      helperAvailability: JSON.stringify(context.helperAvailability || []).length,
+      businessMetrics: JSON.stringify(context.businessMetrics || {}).length,
+      total: JSON.stringify(context).length
+    };
+    
+    console.log(`📊 Context breakdown:`);
+    console.log(`  - Helpers: ${contextSizes.helpers.toLocaleString()} chars`);
+    console.log(`  - Clients: ${contextSizes.clients.toLocaleString()} chars`);
+    console.log(`  - Calendar events: ${contextSizes.calendarEvents.toLocaleString()} chars`);
+    console.log(`  - Maintenance: ${contextSizes.maintenanceSchedule.toLocaleString()} chars`);
+    console.log(`  - Projects: ${contextSizes.projects.toLocaleString()} chars`);
+    console.log(`  - Helper availability: ${contextSizes.helperAvailability.toLocaleString()} chars`);
+    console.log(`  - Business metrics: ${contextSizes.businessMetrics.toLocaleString()} chars`);
+    console.log(`  - Total context: ${contextSizes.total.toLocaleString()} chars`);
 
     if (!this.client) {
       const error = new Error('Anthropic API client not initialized. Please check your ANTHROPIC_API_KEY environment variable.');
@@ -69,28 +58,12 @@ export class AnthropicService {
       throw error;
     }
 
-    // Use natural mode if enabled
-    if (this.useNaturalMode) {
-      return this.handleNaturalMode(query, context, startTime);
-    }
-
-    // Original managed mode (existing implementation)
-    return this.handleManagedMode(query, context, startTime);
-  }
-
-  private async handleNaturalMode(
-    query: string, 
-    context: SchedulingContext, 
-    startTime: number
-  ): Promise<SchedulingResponse> {
-    console.log('🧠 Using NATURAL mode - letting Claude work without interference');
-    
     try {
-      // Use full system prompt for natural mode - no condensing
-      const systemPrompt = this.buildFullSystemPrompt(context);
+      // Use full system prompt - no condensing
+      const systemPrompt = this.buildSystemPrompt(context);
       const tools = this.getSchedulingTools();
       
-      console.log(`📋 System prompt: ${systemPrompt.length} characters (FULL)`);
+      console.log(`📋 System prompt: ${systemPrompt.length} characters`);
       console.log(`🛠️ Available tools: ${tools.map(t => t.name).join(', ')}`);
       
       // Simple, clean conversation with Claude
@@ -98,9 +71,9 @@ export class AnthropicService {
         { role: 'user' as const, content: query }
       ];
       
-      let currentMessage = await this.client!.messages.create({
+      let currentMessage = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000, // Increased for comprehensive responses
+        max_tokens: 4000,
         temperature: 0.3,
         system: systemPrompt,
         tools: tools,
@@ -112,7 +85,7 @@ export class AnthropicService {
       
       // Handle tool calls naturally - no interference
       let toolRound = 1;
-      const maxRounds = 10; // Allow more rounds for complex analysis
+      const maxRounds = 10;
       
       while (toolRound <= maxRounds) {
         const toolUseContent = currentMessage.content.filter((content: any) => content.type === 'tool_use');
@@ -122,12 +95,12 @@ export class AnthropicService {
           const textResponse = currentMessage.content.find((content: any) => content.type === 'text');
           if (textResponse && textResponse.type === 'text') {
             const totalTime = Date.now() - startTime;
-            console.log(`✅ Natural mode complete: ${totalTime}ms, ${toolRound - 1} tool rounds`);
+            console.log(`✅ Analysis complete: ${totalTime}ms, ${toolRound - 1} tool rounds`);
             console.log(`📝 Response: ${(textResponse as any).text.length} characters`);
             
             return {
               response: (textResponse as any).text,
-              reasoning: `Natural Claude analysis with ${toolRound - 1} rounds of tool usage`,
+              reasoning: `Claude analysis with ${toolRound - 1} rounds of tool usage`,
               suggestions: []
             };
           }
@@ -144,7 +117,7 @@ export class AnthropicService {
           console.log(`🛠️ Executing: ${(toolUse as any).name}`);
           const result = await this.executeToolCall((toolUse as any).name, (toolUse as any).input);
           
-          // NO SUMMARIZATION - give Claude the full data
+          // Give Claude the full data - no summarization
           toolResults.push({
             type: 'tool_result' as const,
             tool_use_id: (toolUse as any).id,
@@ -154,12 +127,12 @@ export class AnthropicService {
         
         messages.push({ role: 'user' as const, content: toolResults });
         
-        // Continue conversation - NO conversation trimming
-        currentMessage = await this.client!.messages.create({
+        // Continue conversation - no conversation trimming
+        currentMessage = await this.client.messages.create({
           model: 'claude-sonnet-4-20250514',
           max_tokens: 4000,
           temperature: 0.3,
-          system: systemPrompt, // Always use full prompt
+          system: systemPrompt,
           tools: tools,
           messages: messages
         });
@@ -176,7 +149,7 @@ export class AnthropicService {
         console.log(`⚠️ Hit max rounds (${maxRounds}) but got response`);
         return {
           response: (textResponse as any).text,
-          reasoning: `Natural Claude analysis (hit ${maxRounds} round limit)`,
+          reasoning: `Claude analysis (hit ${maxRounds} round limit)`,
           suggestions: []
         };
       }
@@ -185,208 +158,17 @@ export class AnthropicService {
       
     } catch (error) {
       const totalTime = Date.now() - startTime;
-      console.error(`❌ Natural mode failed: ${totalTime}ms`);
+      console.error(`❌ API call failed: ${totalTime}ms`);
       console.error('Error:', error);
-      throw error;
-    }
-  }
-
-  private async handleManagedMode(
-    query: string, 
-    context: SchedulingContext, 
-    startTime: number
-  ): Promise<SchedulingResponse> {
-    console.log('🔧 Using MANAGED mode - original implementation with optimizations');
-    
-    // Preprocess broad queries to make them more specific
-    const processedQuery = this.preprocessBroadQuery(query);
-    if (processedQuery !== query) {
-      console.log(`🔄 Preprocessed broad query: "${processedQuery}"`);
-    }
-
-    try {
-      const systemPrompt = this.buildSystemPrompt(context);
-      const fullSystemPrompt = this.buildFullSystemPrompt(context);
-      const tools = this.getSchedulingTools();
-      
-      console.log(`📋 System prompt length: ${systemPrompt.length} characters (${this.useCondensedPrompt ? 'condensed' : 'full'})`);
-      if (this.useCondensedPrompt) {
-        console.log(`📋 Full prompt would be: ${fullSystemPrompt.length} characters`);
-        console.log(`💾 Token savings: ~${Math.round((fullSystemPrompt.length - systemPrompt.length) / 4)} tokens (~${Math.round(((fullSystemPrompt.length - systemPrompt.length) / fullSystemPrompt.length) * 100)}% reduction)`);
-      }
-      console.log(`🛠️ Available tools: ${tools.map(t => t.name).join(', ')}`);
-      
-      const requestPayload = {
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        temperature: 0.3,
-        system: systemPrompt,
-        tools: tools,
-        messages: [
-          {
-            role: 'user' as const,
-            content: processedQuery
-          }
-        ]
-      };
-
-      console.log(`🎯 Request details:`, {
-        model: requestPayload.model,
-        max_tokens: requestPayload.max_tokens,
-        temperature: requestPayload.temperature,
-        system_prompt_length: systemPrompt.length,
-        tools_count: tools.length,
-        message_length: processedQuery.length,
-        estimated_input_tokens: Math.round(systemPrompt.length / 4) + Math.round(processedQuery.length / 4)
-      });
-
-      const message = await this.client!.messages.create(requestPayload);
-
-      const apiCallTime = Date.now() - startTime;
-      console.log(`⏱️ Initial API call completed in ${apiCallTime}ms`);
-      console.log(`📈 Usage:`, {
-        input_tokens: message.usage?.input_tokens || 'unknown',
-        output_tokens: message.usage?.output_tokens || 'unknown',
-        total_tokens: (message.usage?.input_tokens || 0) + (message.usage?.output_tokens || 0)
-      });
-
-      // Add detailed analysis of the initial response
-      console.log(`🔍 INITIAL RESPONSE ANALYSIS:`);
-      console.log(`   - Model: ${message.model}`);
-      console.log(`   - Stop reason: ${message.stop_reason}`);
-      console.log(`   - Content array length: ${message.content?.length || 0}`);
-      
-      // Log detailed analysis to file for review
-      debugLog.log('🔍 INITIAL RESPONSE ANALYSIS', {
-        model: message.model,
-        stopReason: message.stop_reason,
-        contentLength: message.content?.length || 0,
-        usage: message.usage,
-        query: processedQuery.substring(0, 200),
-        timestamp: new Date().toISOString()
-      });
-      
-      if (message.content && message.content.length > 0) {
-        message.content.forEach((content: any, index: number) => {
-          console.log(`   - Content[${index}] type: ${content.type}`);
-          if (content.type === 'text') {
-            console.log(`   - Content[${index}] text length: ${content.text?.length || 0}`);
-            console.log(`   - Content[${index}] text preview: "${content.text?.substring(0, 100)}${content.text?.length > 100 ? '...' : ''}"`);
-            
-            // Log full text to file
-            debugLog.log(`INITIAL RESPONSE Content[${index}] full text`, {
-              type: content.type,
-              textLength: content.text?.length || 0,
-              fullText: content.text,
-              timestamp: new Date().toISOString()
-            });
-          } else if (content.type === 'tool_use') {
-            console.log(`   - Content[${index}] tool: ${content.name}`);
-            console.log(`   - Content[${index}] input: ${JSON.stringify(content.input)}`);
-            
-            // Log tool details to file
-            debugLog.log(`INITIAL RESPONSE Content[${index}] tool use`, {
-              type: content.type,
-              toolName: content.name,
-              toolInput: content.input,
-              toolId: content.id,
-              timestamp: new Date().toISOString()
-            });
-          }
-        });
-      } else {
-        console.log(`   - EMPTY CONTENT ARRAY!`);
-        debugLog.error('INITIAL RESPONSE - EMPTY CONTENT ARRAY', {
-          model: message.model,
-          stopReason: message.stop_reason,
-          usage: message.usage,
-          fullResponse: message,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Handle tool calls if present
-      const toolUseContent = message.content.filter(content => content.type === 'tool_use');
-      if (toolUseContent.length > 0) {
-        console.log(`🔧 Tool calls detected: ${toolUseContent.length} tools to execute`);
-        toolUseContent.forEach((tool: any, index) => {
-          console.log(`  ${index + 1}. ${tool.name}(${JSON.stringify(tool.input).substring(0, 100)}${JSON.stringify(tool.input).length > 100 ? '...' : ''})`);
-        });
-        
-        const result = await this.handleToolCalls(message, processedQuery, context);
-        const totalTime = Date.now() - startTime;
-        console.log(`✅ === ANTHROPIC API CALL COMPLETE (with tools) === Total time: ${totalTime}ms\n`);
-        return result;
-      }
-
-      // Regular text response
-      const response = message.content[0];
-      if (response.type === 'text') {
-        console.log(`💬 Text response length: ${response.text.length} characters`);
-        console.log(`📝 Response preview: "${response.text.substring(0, 150)}${response.text.length > 150 ? '...' : ''}"`);
-        
-        const totalTime = Date.now() - startTime;
-        console.log(`✅ === ANTHROPIC API CALL COMPLETE === Total time: ${totalTime}ms\n`);
-        
-        // Check if the response looks incomplete (ends with a colon or seems to be asking for more data)
-        if (response.text.trim().endsWith(':') || 
-            response.text.includes('let me check') || 
-            response.text.includes('Now let me') ||
-            response.text.includes('Let me also') ||
-            response.text.includes('I should also') ||
-            response.text.includes('Next, I') ||
-            response.text.includes('maintenance scheduling issues') ||
-            response.text.includes('client details and maintenance') ||
-            (response.text.length < 200 && response.text.includes('maintenance'))) {
-          console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
-          console.log(`📝 Incomplete response: "${response.text}"`);
-          
-          return {
-            response: `I started analyzing your schedule but my response was cut short. This often happens with complex queries that need multiple data sources.
-
-Please try asking a more focused question like:
-• "What maintenance clients are overdue this week?"
-• "Show me conflicts in my schedule for next Monday"  
-• "Which helpers are available on Friday?"
-
-Or try rephrasing your question to be more specific about what you'd like me to analyze.`,
-            reasoning: 'Response was incomplete - suggesting more specific queries',
-            suggestions: []
-          };
-        }
-        
-        return {
-          response: response.text,
-          reasoning: 'AI analysis using Claude 3.5 Sonnet v2 with enhanced scheduling intelligence',
-          suggestions: []
-        };
-      }
-
-      // If we get here, the response format was unexpected
-      const error = new Error('Unexpected response format from Anthropic API');
-      console.error('❌ Unexpected response format:', message.content);
-      throw error;
-      
-    } catch (error) {
-      const totalTime = Date.now() - startTime;
-      console.error(`❌ === ANTHROPIC API CALL FAILED === Time: ${totalTime}ms`);
-      console.error('🔥 Error details:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        type: error instanceof Error ? error.constructor.name : typeof error,
-        stack: error instanceof Error ? error.stack?.split('\n').slice(0, 3).join('\n') : undefined
-      });
       
       if (error instanceof Error && 'status' in error) {
-        console.error('🌐 HTTP Status:', (error as any).status);
         if ((error as any).status === 429) {
-          console.error('⚠️ RATE LIMIT HIT - Consider further reducing prompt size or implementing request queuing');
-          const rateLimitError = new Error('Rate limit exceeded. Please try again later or contact support if this persists.');
+          const rateLimitError = new Error('Rate limit exceeded. Please try again later.');
           rateLimitError.name = 'RateLimitError';
           throw rateLimitError;
         }
       }
       
-      // Re-throw the original error instead of falling back to mock
       throw error;
     }
   }
@@ -534,366 +316,6 @@ Or try rephrasing your question to be more specific about what you'd like me to 
     ];
   }
 
-  private async handleToolCalls(message: any, originalQuery: string, context: SchedulingContext): Promise<SchedulingResponse> {
-    const toolStartTime = Date.now();
-    console.log('🔧 === TOOL EXECUTION PHASE START ===');
-    
-    let currentMessage = message;
-    let conversationHistory: Array<{
-      role: 'user' | 'assistant';
-      content: any;
-    }> = [
-      {
-        role: 'user' as const,
-        content: originalQuery
-      },
-      {
-        role: 'assistant' as const,
-        content: message.content
-      }
-    ];
-    
-    let toolCallRound = 1;
-    const maxToolRounds = 5; // Prevent infinite loops
-    
-    while (toolCallRound <= maxToolRounds) {
-      // Check if current message has tool calls
-      const toolUseContent = currentMessage.content.filter((content: any) => content.type === 'tool_use');
-      
-      console.log(`🔍 Round ${toolCallRound} - Message content types:`, currentMessage.content.map((c: any) => c.type));
-      console.log(`🔍 Round ${toolCallRound} - Found ${toolUseContent.length} tool_use items`);
-      
-      // Handle empty content array from API
-      if (!currentMessage.content || currentMessage.content.length === 0) {
-        console.log(`⚠️ Round ${toolCallRound} - Received empty content from API`);
-        console.log(`📊 Token usage in previous call may have caused truncation`);
-        
-        // Return a helpful response explaining the issue
-        return {
-          response: `I started analyzing your schedule but encountered an issue with the AI response. This sometimes happens with complex queries that require multiple data lookups. 
-
-Please try asking a more focused question like:
-• "What maintenance clients are overdue this week?"
-• "Show me conflicts in my schedule for next Monday"
-• "Which helpers are available on Friday?"
-
-This will help me provide a complete analysis without running into processing limits.`,
-          reasoning: 'Empty response received from AI - likely due to token limits or context size',
-          suggestions: []
-        };
-      }
-      
-      if (toolUseContent.length === 0) {
-        // No more tool calls, we have the final response
-        const response = currentMessage.content.find((content: any) => content.type === 'text');
-        if (response && response.type === 'text') {
-          const textResponse = response as any; // Cast to access text property
-          const totalTime = Date.now() - toolStartTime;
-          console.log(`💬 Final response after ${toolCallRound - 1} tool rounds (${totalTime}ms): ${textResponse.text.length} characters`);
-          console.log(`📝 Final response preview: "${textResponse.text.substring(0, 150)}${textResponse.text.length > 150 ? '...' : ''}"`);
-          
-          // Add detailed analysis of why the response ended
-          console.log(`🔍 FINAL RESPONSE ANALYSIS:`);
-          console.log(`   - Stop reason: ${currentMessage.stop_reason}`);
-          console.log(`   - Content array length: ${currentMessage.content?.length || 0}`);
-          console.log(`   - Text content length: ${textResponse.text.length}`);
-          console.log(`   - Full text: "${textResponse.text}"`);
-          
-          // Check for various incomplete response patterns
-          const incompletePatterns = [
-            { pattern: /:\s*$/, name: 'ends with colon' },
-            { pattern: /let me check/i, name: 'contains "let me check"' },
-            { pattern: /Now let me/i, name: 'contains "Now let me"' },
-            { pattern: /Let me also/i, name: 'contains "Let me also"' },
-            { pattern: /I should also/i, name: 'contains "I should also"' },
-            { pattern: /Next, I/i, name: 'contains "Next, I"' },
-            { pattern: /maintenance scheduling issues/i, name: 'contains "maintenance scheduling issues"' },
-            { pattern: /client details and maintenance/i, name: 'contains "client details and maintenance"' }
-          ];
-          
-          const matchedPatterns = incompletePatterns.filter(p => p.pattern.test(textResponse.text));
-          if (matchedPatterns.length > 0) {
-            console.log(`⚠️ INCOMPLETE RESPONSE PATTERNS DETECTED:`);
-            matchedPatterns.forEach(p => console.log(`   - ${p.name}`));
-          }
-          
-          // Check if response looks incomplete (ends with a colon or seems to be asking for more data)
-          if (textResponse.text.trim().endsWith(':') || 
-              textResponse.text.includes('let me check') || 
-              textResponse.text.includes('Now let me') ||
-              textResponse.text.includes('Let me also') ||
-              textResponse.text.includes('I should also') ||
-              textResponse.text.includes('Next, I') ||
-              textResponse.text.includes('maintenance scheduling issues') ||
-              textResponse.text.includes('client details and maintenance') ||
-              (textResponse.text.length < 200 && textResponse.text.includes('maintenance'))) {
-            console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
-            console.log(`📝 Incomplete response: "${textResponse.text}"`);
-            
-            return {
-              response: `I started analyzing your schedule but my response was cut short. This often happens with complex queries that need multiple data sources.
-
-Please try asking a more focused question like:
-• "What maintenance clients are overdue this week?"
-• "Show me conflicts in my schedule for next Monday"  
-• "Which helpers are available on Friday?"
-
-Or try rephrasing your question to be more specific about what you'd like me to analyze.`,
-              reasoning: 'Response was incomplete - suggesting more specific queries',
-              suggestions: []
-            };
-          }
-          
-          return {
-            response: textResponse.text,
-            reasoning: `AI analysis with dynamic data access using ${toolCallRound - 1} rounds of function calling`,
-            suggestions: []
-          };
-        }
-        break;
-      }
-      
-      console.log(`🔄 Tool call round ${toolCallRound}: ${toolUseContent.length} tools to execute`);
-      
-      // Execute all tool calls in this round
-      const toolResults = [];
-      
-      for (const content of toolUseContent) {
-        const toolExecStart = Date.now();
-        console.log(`🛠️ Executing tool: ${content.name}`);
-        console.log(`📥 Input: ${JSON.stringify(content.input, null, 2)}`);
-        
-        const toolResult = await this.executeToolCall(content.name, content.input);
-        const toolExecTime = Date.now() - toolExecStart;
-        
-        // Summarize large results to prevent token overflow
-        let processedResult = toolResult;
-        const resultString = JSON.stringify(toolResult);
-        
-        if (resultString.length > 15000) {
-          console.log(`📊 Large tool result (${resultString.length} chars) - creating summary`);
-          
-          if (content.name === 'get_calendar_events' && toolResult.events) {
-            // Summarize calendar events for broad analysis
-            const events = toolResult.events;
-            const summary = {
-              total_events: events.length,
-              date_range: events.length > 0 ? {
-                start: events[0].start,
-                end: events[events.length - 1].start
-              } : null,
-              by_type: {} as { [key: string]: number },
-              by_week: {} as { [key: string]: number },
-              key_events: events.slice(0, 10), // First 10 events for detail
-              maintenance_count: events.filter((e: any) => e.eventType === 'maintenance').length,
-              office_work_count: events.filter((e: any) => e.eventType === 'office_work').length,
-              client_visit_count: events.filter((e: any) => e.eventType === 'client_visit').length
-            };
-            
-            // Group by week
-            events.forEach((event: any) => {
-              const week = new Date(event.start).toISOString().slice(0, 10); // YYYY-MM-DD
-              if (!summary.by_week[week]) summary.by_week[week] = 0;
-              summary.by_week[week]++;
-            });
-            
-            processedResult = {
-              summary: summary,
-              note: `Showing summary of ${events.length} events to prevent token overflow. Key patterns and first 10 events included.`
-            };
-          }
-        }
-        
-        console.log(`📤 Result (${toolExecTime}ms):`, JSON.stringify(processedResult, null, 2).substring(0, 300) + '...');
-        
-        toolResults.push({
-          type: 'tool_result' as const,
-          tool_use_id: content.id,
-          content: JSON.stringify(processedResult)
-        });
-      }
-      
-      // Add tool results to conversation
-      conversationHistory.push({
-        role: 'user' as const,
-        content: toolResults
-      });
-      
-      console.log(`🔄 Making follow-up API call (round ${toolCallRound})...`);
-      
-      // Limit conversation history to prevent token overflow - be more aggressive with large tool results
-      const toolResultSize = JSON.stringify(toolResults).length;
-      const maxHistoryLength = toolResultSize > 10000 ? 4 : 8; // Fewer messages if large tool results
-      
-      const trimmedHistory = conversationHistory.length > maxHistoryLength 
-        ? [
-            conversationHistory[0], // Keep original user query
-            ...conversationHistory.slice(-maxHistoryLength + 1) // Keep recent messages
-          ]
-        : conversationHistory;
-      
-      console.log(`📊 Tool results size: ${toolResultSize} chars, conversation history: ${conversationHistory.length} messages, using ${trimmedHistory.length} for API call`);
-      
-      // Use minimal system prompt for large tool results to save tokens
-      const systemPromptForFollowUp = toolResultSize > 10000 
-        ? this.buildMinimalSystemPrompt(context)
-        : this.buildSystemPrompt(context);
-      
-      console.log(`🔧 Using ${toolResultSize > 10000 ? 'MINIMAL' : 'FULL'} system prompt for follow-up (${systemPromptForFollowUp.length} chars)`);
-      
-      // Continue conversation with tool results
-      const followUpStart = Date.now();
-      const followUpMessage = await this.client!.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
-        temperature: 0.3,
-        system: systemPromptForFollowUp,
-        messages: trimmedHistory
-      });
-
-      const followUpTime = Date.now() - followUpStart;
-      console.log(`⏱️ Follow-up API call ${toolCallRound} completed in ${followUpTime}ms`);
-      console.log(`📈 Follow-up usage:`, {
-        input_tokens: followUpMessage.usage?.input_tokens || 'unknown',
-        output_tokens: followUpMessage.usage?.output_tokens || 'unknown',
-        total_tokens: (followUpMessage.usage?.input_tokens || 0) + (followUpMessage.usage?.output_tokens || 0)
-      });
-      console.log(`📋 Follow-up response content length:`, followUpMessage.content?.length || 0);
-      console.log(`📋 Follow-up response content preview:`, JSON.stringify(followUpMessage.content).substring(0, 200) + '...');
-      
-      // Add detailed analysis of the response
-      console.log(`🔍 DETAILED FOLLOW-UP RESPONSE ANALYSIS:`);
-      console.log(`   - Model: ${followUpMessage.model}`);
-      console.log(`   - Stop reason: ${followUpMessage.stop_reason}`);
-      console.log(`   - Content array length: ${followUpMessage.content?.length || 0}`);
-      
-      // Log detailed follow-up analysis to file
-      debugLog.log('🔍 DETAILED FOLLOW-UP RESPONSE ANALYSIS', {
-        round: toolCallRound,
-        model: followUpMessage.model,
-        stopReason: followUpMessage.stop_reason,
-        contentLength: followUpMessage.content?.length || 0,
-        usage: followUpMessage.usage,
-        systemPromptLength: systemPromptForFollowUp.length,
-        conversationHistoryLength: trimmedHistory.length,
-        timestamp: new Date().toISOString()
-      });
-      
-      if (followUpMessage.content && followUpMessage.content.length > 0) {
-        followUpMessage.content.forEach((content: any, index: number) => {
-          console.log(`   - Content[${index}] type: ${content.type}`);
-          if (content.type === 'text') {
-            console.log(`   - Content[${index}] text length: ${content.text?.length || 0}`);
-            console.log(`   - Content[${index}] text: "${content.text}"`);
-            
-            // Log full follow-up text to file
-            debugLog.log(`FOLLOW-UP RESPONSE Round ${toolCallRound} Content[${index}] full text`, {
-              round: toolCallRound,
-              type: content.type,
-              textLength: content.text?.length || 0,
-              fullText: content.text,
-              timestamp: new Date().toISOString()
-            });
-          } else if (content.type === 'tool_use') {
-            console.log(`   - Content[${index}] tool: ${content.name}`);
-            console.log(`   - Content[${index}] input: ${JSON.stringify(content.input)}`);
-            
-            // Log follow-up tool details to file
-            debugLog.log(`FOLLOW-UP RESPONSE Round ${toolCallRound} Content[${index}] tool use`, {
-              round: toolCallRound,
-              type: content.type,
-              toolName: content.name,
-              toolInput: content.input,
-              toolId: content.id,
-              timestamp: new Date().toISOString()
-            });
-          }
-        });
-      } else {
-        console.log(`   - EMPTY CONTENT ARRAY!`);
-        debugLog.error(`FOLLOW-UP RESPONSE Round ${toolCallRound} - EMPTY CONTENT ARRAY`, {
-          round: toolCallRound,
-          model: followUpMessage.model,
-          stopReason: followUpMessage.stop_reason,
-          usage: followUpMessage.usage,
-          fullResponse: followUpMessage,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Log the full request that was sent for debugging
-      console.log(`🔍 FOLLOW-UP REQUEST DETAILS:`);
-      console.log(`   - System prompt length: ${systemPromptForFollowUp.length}`);
-      console.log(`   - Messages count: ${trimmedHistory.length}`);
-      console.log(`   - Last message type: ${trimmedHistory[trimmedHistory.length - 1]?.role}`);
-      console.log(`   - Last message content type: ${Array.isArray(trimmedHistory[trimmedHistory.length - 1]?.content) ? 'array' : typeof trimmedHistory[trimmedHistory.length - 1]?.content}`);
-      
-      // Log request details to file
-      debugLog.log(`FOLLOW-UP REQUEST DETAILS Round ${toolCallRound}`, {
-        round: toolCallRound,
-        systemPromptLength: systemPromptForFollowUp.length,
-        messagesCount: trimmedHistory.length,
-        lastMessageType: trimmedHistory[trimmedHistory.length - 1]?.role,
-        lastMessageContentType: Array.isArray(trimmedHistory[trimmedHistory.length - 1]?.content) ? 'array' : typeof trimmedHistory[trimmedHistory.length - 1]?.content,
-        fullConversationHistory: trimmedHistory,
-        systemPromptPreview: systemPromptForFollowUp.substring(0, 500),
-        timestamp: new Date().toISOString()
-      });
-      
-      if (!followUpMessage.content || followUpMessage.content.length === 0) {
-        console.log(`🚨 EMPTY RESPONSE ANALYSIS:`);
-        console.log(`   - Input tokens: ${followUpMessage.usage?.input_tokens}`);
-        console.log(`   - Output tokens: ${followUpMessage.usage?.output_tokens}`);
-        console.log(`   - Model: ${followUpMessage.model}`);
-        console.log(`   - Stop reason: ${followUpMessage.stop_reason}`);
-        console.log(`   - Full response object:`, JSON.stringify(followUpMessage, null, 2));
-        
-        // Also log the request that caused this
-        console.log(`🚨 REQUEST THAT CAUSED EMPTY RESPONSE:`);
-        console.log(`   - System prompt (first 500 chars): ${systemPromptForFollowUp.substring(0, 500)}...`);
-        console.log(`   - Messages:`, JSON.stringify(trimmedHistory, null, 2));
-        
-        // Log comprehensive empty response analysis to file
-        debugLog.error(`EMPTY RESPONSE ANALYSIS Round ${toolCallRound}`, {
-          round: toolCallRound,
-          inputTokens: followUpMessage.usage?.input_tokens,
-          outputTokens: followUpMessage.usage?.output_tokens,
-          model: followUpMessage.model,
-          stopReason: followUpMessage.stop_reason,
-          fullResponse: followUpMessage,
-          systemPrompt: systemPromptForFollowUp,
-          conversationHistory: trimmedHistory,
-          timestamp: new Date().toISOString()
-        });
-      }
-
-      // Add AI response to conversation history
-      conversationHistory.push({
-        role: 'assistant' as const,
-        content: followUpMessage.content
-      });
-      
-      // Update current message for next iteration
-      currentMessage = followUpMessage;
-      toolCallRound++;
-    }
-    
-    // If we get here, we hit the max rounds or something went wrong
-    if (toolCallRound > maxToolRounds) {
-      console.error(`❌ Hit maximum tool call rounds (${maxToolRounds})`);
-      return {
-        response: "I apologize, but I'm having trouble completing your request due to too many data lookups. Please try asking a more specific question.",
-        reasoning: 'Tool call limit exceeded',
-        suggestions: []
-      };
-    }
-
-    // Fallback error
-    const error = new Error('Unexpected response format from Anthropic API after tool execution');
-    console.error('❌ Unexpected follow-up response format:', currentMessage.content);
-    throw error;
-  }
-
   private async executeToolCall(toolName: string, input: any): Promise<any> {
     if (!this.schedulingService) {
       console.error('❌ Scheduling service not available for tool execution');
@@ -977,19 +399,9 @@ Or try rephrasing your question to be more specific about what you'd like me to 
     }
   }
 
-  private buildSystemPrompt(context: SchedulingContext): string {
-    // Use condensed prompt by default to avoid rate limits
-    if (this.useCondensedPrompt) {
-      return this.buildCondensedSystemPrompt(context);
-    } else {
-      return this.buildFullSystemPrompt(context);
-    }
-  }
-
-  private buildCondensedSystemPrompt(context: SchedulingContext): string {
+  public buildSystemPrompt(context: SchedulingContext): string {
     try {
-      // Add extensive null checks and logging
-      console.log('🔍 Building condensed system prompt...');
+      console.log('🔍 Building system prompt...');
       console.log('📊 Context keys:', Object.keys(context || {}));
       
       const helpers = context?.helpers || [];
@@ -1254,189 +666,12 @@ Use when you need details beyond this summary:
 
 Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and bullet points for options.`;
 
-      console.log('✅ Condensed system prompt built successfully');
+      console.log('✅ System prompt built successfully');
       return prompt;
       
     } catch (error) {
-      console.error('❌ Error in buildCondensedSystemPrompt:', error);
+      console.error('❌ Error in buildSystemPrompt:', error);
       return 'Error building system prompt. Using fallback.';
     }
-  }
-
-  private buildFullSystemPrompt(context: SchedulingContext): string {
-    // Keep the original full prompt as backup
-    const projectsSection = context.projects && context.projects.length > 0 
-      ? `PROJECTS:
-${JSON.stringify(context.projects, null, 2)}`
-      : `PROJECTS:
-No active projects currently in the system.`;
-
-    const maintenanceSection = context.maintenanceSchedule 
-      ? `MAINTENANCE SCHEDULE (Next 3 months):
-${JSON.stringify(context.maintenanceSchedule, null, 2)}`
-      : '';
-
-    const availabilitySection = context.helperAvailability 
-      ? `HELPER AVAILABILITY SUMMARY (Next 8 weeks):
-${JSON.stringify(context.helperAvailability, null, 2)}`
-      : '';
-
-    const metricsSection = context.businessMetrics 
-      ? `BUSINESS METRICS & WORKLOAD ANALYSIS:
-${JSON.stringify(context.businessMetrics, null, 2)}`
-      : '';
-
-    return `You are Andrea's AI scheduling assistant for her landscaping business. You help optimize schedules considering geographic efficiency, helper capabilities, and client preferences.
-
-**CRITICAL INSTRUCTION: Always complete your full analysis in one response. Never say "Now let me check..." or "Let me also..." - if you need multiple tools, use them all immediately. Provide complete recommendations, not partial analysis.**
-
-CURRENT CONTEXT (Optimized for 1-2 Month Planning):
-
-HELPERS (with notes):
-${JSON.stringify(context.helpers, null, 2)}
-
-CLIENTS:
-${JSON.stringify(context.clients, null, 2)}
-
-${projectsSection}
-
-CALENDAR EVENTS (Next 60 days):
-${JSON.stringify(context.calendarEvents, null, 2)}
-
-${maintenanceSection}
-
-${availabilitySection}
-
-${metricsSection}
-
-AVAILABLE TOOLS (for edge cases beyond the provided context):
-You have access to several tools for specific deep-dive analysis:
-- get_calendar_events: Get events for specific date ranges beyond 60 days
-- check_helper_availability: Detailed day-by-day availability analysis
-- get_maintenance_schedule: Extended maintenance planning beyond 3 months
-- calculate_travel_time: Real-time travel calculations between locations
-- find_scheduling_conflicts: Conflict detection for proposed schedules
-
-Use these tools ONLY when you need information beyond what's provided in the rich context above.
-
-BUSINESS RULES:
-- Each helper needs 7-8 hours on their designated workdays
-- Minimize travel time between client locations - group nearby clients together
-- Consider helper capability requirements for different projects
-- Emergency/urgent work takes priority over routine maintenance
-- Maintenance work should be scheduled regularly according to client intervals
-- Weather-sensitive work should consider forecasts
-- Respect client preferences for days/times when possible
-
-RESPONSE FORMAT:
-1. Acknowledge the specific request
-2. Analyze the rich context provided (60-day calendar, maintenance schedule, availability summaries)
-3. Use tools only if you need information beyond the provided context
-4. Provide specific, actionable scheduling recommendations with times and assignments
-5. Explain the reasoning behind suggestions (travel efficiency, helper skills, client preferences)
-6. Mention any trade-offs or alternative approaches
-7. Ask clarifying questions if the request is ambiguous
-
-**FORMATTING GUIDELINES:**
-- Use markdown formatting for better readability
-- Use headers (##, ###) to organize sections
-- Use **bold** for important information like names, times, and key points
-- Use bullet points and numbered lists for recommendations
-- Use > blockquotes for important tips or warnings
-- Use emojis sparingly but effectively (📅 🕐 ✅ ⚠️ 💡) to highlight key information
-- Format times clearly (e.g., "8:00 AM - 12:00 PM")
-- Use tables when comparing multiple options
-
-Be practical, specific, and collaborative. Focus on solutions that Andrea can realistically implement.`;
-  }
-
-  // Public methods for debugging
-  public getCondensedSystemPrompt(context: SchedulingContext): string {
-    return this.buildCondensedSystemPrompt(context);
-  }
-
-  public getFullSystemPrompt(context: SchedulingContext): string {
-    return this.buildFullSystemPrompt(context);
-  }
-
-  public getCurrentSystemPrompt(context: SchedulingContext): string {
-    return this.buildSystemPrompt(context);
-  }
-
-  private preprocessBroadQuery(query: string): string {
-    const lowerQuery = query.toLowerCase();
-    
-    // Detect broad analysis queries and make them more specific
-    if (lowerQuery.includes('review') && (lowerQuery.includes('next') || lowerQuery.includes('upcoming')) && 
-        (lowerQuery.includes('weeks') || lowerQuery.includes('month') || lowerQuery.includes('days'))) {
-      
-      // Extract time period
-      let timePeriod = '4 weeks';
-      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
-        timePeriod = '30 days';
-      } else if (lowerQuery.includes('2 weeks')) {
-        timePeriod = '2 weeks';
-      } else if (lowerQuery.includes('3 weeks')) {
-        timePeriod = '3 weeks';
-      }
-      
-      return `Show me my calendar for the next ${timePeriod} and analyze it for: workload balance, scheduling conflicts, geographic efficiency, maintenance timing, and any concerns or recommendations you have.`;
-    }
-    
-    // Handle "look at" or "take a look" queries
-    if ((lowerQuery.includes('look at') || lowerQuery.includes('take a look')) && 
-        (lowerQuery.includes('schedule') || lowerQuery.includes('calendar'))) {
-      
-      let timePeriod = '4 weeks';
-      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
-        timePeriod = '30 days';
-      } else if (lowerQuery.includes('2 weeks')) {
-        timePeriod = '2 weeks';
-      }
-      
-      return `Show me my calendar for the next ${timePeriod} and provide analysis on workload distribution, potential conflicts, and any scheduling recommendations.`;
-    }
-    
-    // Handle "questions, concerns, suggestions" type queries
-    if (lowerQuery.includes('questions') && lowerQuery.includes('concerns') && lowerQuery.includes('suggestions')) {
-      let timePeriod = '4 weeks';
-      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
-        timePeriod = '30 days';
-      }
-      
-      return `Analyze my schedule for the next ${timePeriod}. Look for: scheduling conflicts, workload balance issues, geographic inefficiencies, maintenance timing problems, and provide specific recommendations for improvements.`;
-    }
-    
-    // Return original query if no preprocessing needed
-    return query;
-  }
-
-  private buildMinimalSystemPrompt(context: SchedulingContext): string {
-    const currentDate = new Date().toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-
-    return `# Andrea's AI Scheduling Assistant
-
-You are analyzing scheduling data for Andrea's landscaping business. Current date: ${currentDate}
-
-## Key Business Rules
-- Andrea targets 3 field days/week
-- Most work requires 2+ people (team jobs)
-- 4-week maintenance cycles for most clients
-- Group nearby clients to minimize travel
-
-## Your Task
-Analyze the provided calendar and tool data to give comprehensive insights on:
-- Workload balance and field day distribution
-- Scheduling conflicts or timing issues  
-- Geographic efficiency and travel optimization
-- Maintenance timing and overdue clients
-- Specific recommendations for improvements
-
-Provide detailed, actionable analysis based on the data you've received.`;
   }
 } 

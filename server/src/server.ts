@@ -151,67 +151,48 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Debug endpoints
+app.get('/api/debug/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    anthropic_configured: !!process.env.ANTHROPIC_API_KEY
+  });
+});
+
 // Debug endpoint for system prompt analysis
 app.get('/api/debug/system-prompt', async (req, res) => {
   try {
-    const { type, fullContent } = req.query;
+    const { fullContent } = req.query;
     const context = await schedulingService.getSchedulingContext();
     
-    const anthropicService = new AnthropicService();
-    
-    let result: any = {
-      meta: {
-        showType: type || 'both',
-        showFullContent: fullContent === 'true',
-        timestamp: new Date().toISOString()
-      }
-    };
-    
-    // Get current prompt (condensed by default)
-    const currentPrompt = anthropicService.getCurrentSystemPrompt(context);
-    const condensedPrompt = anthropicService.getCondensedSystemPrompt(context);
-    const fullPrompt = anthropicService.getFullSystemPrompt(context);
+    const tempAnthropicService = new AnthropicService();
+    const systemPrompt = tempAnthropicService.buildSystemPrompt(context);
     
     // Estimate tokens (rough approximation: 1 token ≈ 4 characters)
     const estimateTokens = (text: string) => Math.round(text.length / 4);
     
-    result.current = {
-      type: 'condensed', // Currently always condensed
-      length: currentPrompt.length,
-      estimatedTokens: estimateTokens(currentPrompt),
-      content: fullContent === 'true' ? currentPrompt : 
-               currentPrompt.length > 1000 ? 
-               currentPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
-               currentPrompt
-    };
-    
-    if (type !== 'full') {
-      result.condensed = {
-        length: condensedPrompt.length,
-        estimatedTokens: estimateTokens(condensedPrompt),
-        content: fullContent === 'true' ? condensedPrompt : 
-                 condensedPrompt.length > 1000 ? 
-                 condensedPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
-                 condensedPrompt
-      };
-    }
-    
-    if (type !== 'condensed') {
-      result.full = {
-        length: fullPrompt.length,
-        estimatedTokens: estimateTokens(fullPrompt),
-        content: fullContent === 'true' ? fullPrompt : 
-                 fullPrompt.length > 1000 ? 
-                 fullPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
-                 fullPrompt
-      };
-    }
-    
-    // Calculate savings
-    result.tokenSavings = {
-      characters: fullPrompt.length - condensedPrompt.length,
-      estimatedTokens: estimateTokens(fullPrompt) - estimateTokens(condensedPrompt),
-      percentReduction: Math.round(((fullPrompt.length - condensedPrompt.length) / fullPrompt.length) * 100)
+    const result = {
+      meta: {
+        showType: 'current',
+        showFullContent: fullContent === 'true',
+        timestamp: new Date().toISOString()
+      },
+      current: {
+        type: 'full',
+        length: systemPrompt.length,
+        estimatedTokens: estimateTokens(systemPrompt),
+        content: fullContent === 'true' ? systemPrompt : 
+                 systemPrompt.length > 1000 ? 
+                 systemPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
+                 systemPrompt
+      },
+      tokenSavings: {
+        characters: 0,
+        estimatedTokens: 0,
+        percentReduction: 0
+      }
     };
     
     res.json(result);
@@ -237,12 +218,12 @@ app.post('/api/debug/api-response', async (req, res) => {
     console.log(`📝 Debug query: "${query}"`);
     
     const context = await schedulingService.getSchedulingContext();
-    const anthropicService = new AnthropicService();
-    anthropicService.setSchedulingService(schedulingService);
+    const tempAnthropicService = new AnthropicService();
+    tempAnthropicService.setSchedulingService(schedulingService);
     
     // Make the API call and capture detailed response info
     try {
-      const result = await anthropicService.getSchedulingRecommendation(query, context);
+      const result = await tempAnthropicService.getSchedulingRecommendation(query, context);
       
       res.json({
         success: true,

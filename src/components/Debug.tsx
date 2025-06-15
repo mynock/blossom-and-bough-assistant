@@ -14,19 +14,13 @@ import {
   Grid,
   Card,
   CardContent,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
   FormControlLabel,
   Switch,
-  Divider,
 } from '@mui/material';
 import {
   ExpandMore,
   Refresh,
   BugReport,
-  Speed,
   Memory,
   TextFields,
   Settings,
@@ -44,16 +38,6 @@ interface SystemPromptData {
     estimatedTokens: number;
     content: string;
   };
-  condensed?: {
-    length: number;
-    estimatedTokens: number;
-    content: string;
-  };
-  full?: {
-    length: number;
-    estimatedTokens: number;
-    content: string;
-  };
   tokenSavings: {
     characters: number;
     estimatedTokens: number;
@@ -65,9 +49,6 @@ const Debug: React.FC = () => {
   const [data, setData] = useState<SystemPromptData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
-  // Controls
-  const [promptType, setPromptType] = useState<string>('both');
   const [showFullContent, setShowFullContent] = useState(false);
 
   const fetchDebugData = async () => {
@@ -75,9 +56,6 @@ const Debug: React.FC = () => {
     setError(null);
     try {
       const params = new URLSearchParams();
-      if (promptType !== 'both') {
-        params.append('type', promptType);
-      }
       if (showFullContent) {
         params.append('fullContent', 'true');
       }
@@ -99,12 +77,7 @@ const Debug: React.FC = () => {
 
   useEffect(() => {
     fetchDebugData();
-  }, [promptType, showFullContent]);
-
-  const formatContent = (content: string, maxLength: number = 500) => {
-    if (content.length <= maxLength) return content;
-    return content.substring(0, maxLength) + '...[truncated]';
-  };
+  }, [showFullContent]);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
@@ -132,22 +105,7 @@ const Debug: React.FC = () => {
         </Box>
         
         <Grid container spacing={3} alignItems="center">
-          <Grid item xs={12} md={4}>
-            <FormControl fullWidth>
-              <InputLabel>Prompt Type</InputLabel>
-              <Select
-                value={promptType}
-                label="Prompt Type"
-                onChange={(e) => setPromptType(e.target.value)}
-              >
-                <MenuItem value="both">Both Prompts</MenuItem>
-                <MenuItem value="condensed">Condensed Only</MenuItem>
-                <MenuItem value="full">Full Only</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             <FormControlLabel
               control={
                 <Switch
@@ -160,7 +118,7 @@ const Debug: React.FC = () => {
             />
           </Grid>
           
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={6}>
             {data?.meta && (
               <Typography variant="body2" color="text.secondary">
                 Last updated: {new Date(data.meta.timestamp).toLocaleTimeString()}
@@ -186,23 +144,7 @@ const Debug: React.FC = () => {
         <>
           {/* Overview Cards */}
           <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={3}>
-              <Card>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Speed sx={{ mr: 1, color: 'primary.main' }} />
-                    <Typography variant="h6">Current Mode</Typography>
-                  </Box>
-                  <Chip 
-                    label={data.current.type.toUpperCase()} 
-                    color={data.current.type === 'condensed' ? 'success' : 'warning'}
-                    variant="filled"
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -219,7 +161,7 @@ const Debug: React.FC = () => {
               </Card>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
@@ -236,52 +178,43 @@ const Debug: React.FC = () => {
               </Card>
             </Grid>
             
-            <Grid item xs={12} md={3}>
+            <Grid item xs={12} md={4}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Speed sx={{ mr: 1, color: 'success.main' }} />
-                    <Typography variant="h6">Savings</Typography>
+                    <BugReport sx={{ mr: 1, color: 'success.main' }} />
+                    <Typography variant="h6">Mode</Typography>
                   </Box>
                   <Typography variant="h4" color="success.main">
-                    {data.tokenSavings.percentReduction}%
+                    Clean
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    reduction
+                    natural mode
                   </Typography>
                 </CardContent>
               </Card>
             </Grid>
           </Grid>
 
-          {/* Token Savings Alert */}
-          {data.tokenSavings.percentReduction > 0 && (
-            <Alert severity="success" sx={{ mb: 3 }}>
-              <strong>Token Optimization Active:</strong> Saving ~{data.tokenSavings.estimatedTokens.toLocaleString()} tokens 
-              ({data.tokenSavings.percentReduction}% reduction) compared to full prompt. 
-              This helps avoid rate limits and reduces API costs.
-            </Alert>
-          )}
-
           {/* Full Content Warning */}
-          {showFullContent && data.full && (
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              <strong>Full Content Mode:</strong> Displaying complete prompts without truncation. 
+          {showFullContent && (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <strong>Full Content Mode:</strong> Displaying complete prompt without truncation. 
               Large prompts may impact browser performance.
             </Alert>
           )}
 
-          {/* System Prompts */}
+          {/* System Prompt */}
           <Paper sx={{ p: 3 }}>
             <Typography variant="h5" gutterBottom>
-              System Prompts
+              System Prompt
             </Typography>
             
             <Accordion defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMore />}>
                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                   <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                    Current Prompt ({data.current.type})
+                    Current Prompt (Natural Mode)
                   </Typography>
                   <Chip 
                     label={`${data.current.estimatedTokens.toLocaleString()} tokens`}
@@ -292,6 +225,11 @@ const Debug: React.FC = () => {
                 </Box>
               </AccordionSummary>
               <AccordionDetails>
+                {!showFullContent && data.current.content.includes('[truncated for display]') && (
+                  <Alert severity="info" sx={{ mb: 2 }}>
+                    Showing preview only. Enable "Show Full Content" above to see the complete prompt.
+                  </Alert>
+                )}
                 <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
                   <Typography 
                     variant="body2" 
@@ -308,79 +246,6 @@ const Debug: React.FC = () => {
                 </Box>
               </AccordionDetails>
             </Accordion>
-
-            {data.condensed && (
-              <Accordion>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                    <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                      Condensed Prompt
-                    </Typography>
-                    <Chip 
-                      label={`${data.condensed!.estimatedTokens.toLocaleString()} tokens`}
-                      size="small"
-                      color="success"
-                      sx={{ mr: 2 }}
-                    />
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
-                    <Typography 
-                      variant="body2" 
-                      component="pre" 
-                      sx={{ 
-                        fontFamily: 'monospace', 
-                        whiteSpace: 'pre-wrap',
-                        fontSize: '0.875rem',
-                        lineHeight: 1.4
-                      }}
-                    >
-                      {data.condensed!.content}
-                    </Typography>
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
-            )}
-
-            {data.full && (
-              <Accordion>
-                <AccordionSummary expandIcon={<ExpandMore />}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                    <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                      Full Prompt {!showFullContent && '(Preview)'}
-                    </Typography>
-                    <Chip 
-                      label={`${data.full!.estimatedTokens.toLocaleString()} tokens`}
-                      size="small"
-                      color="warning"
-                      sx={{ mr: 2 }}
-                    />
-                  </Box>
-                </AccordionSummary>
-                <AccordionDetails>
-                  {!showFullContent && data.full!.content.includes('[truncated for display]') && (
-                    <Alert severity="info" sx={{ mb: 2 }}>
-                      Showing preview only. Enable "Show Full Content" above to see the complete prompt.
-                    </Alert>
-                  )}
-                  <Box sx={{ bgcolor: 'grey.50', p: 2, borderRadius: 1 }}>
-                    <Typography 
-                      variant="body2" 
-                      component="pre" 
-                      sx={{ 
-                        fontFamily: 'monospace', 
-                        whiteSpace: 'pre-wrap',
-                        fontSize: '0.875rem',
-                        lineHeight: 1.4
-                      }}
-                    >
-                      {data.full!.content}
-                    </Typography>
-                  </Box>
-                </AccordionDetails>
-              </Accordion>
-            )}
           </Paper>
         </>
       )}
