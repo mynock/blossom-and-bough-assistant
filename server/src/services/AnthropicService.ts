@@ -630,6 +630,19 @@ ${nonMaintenanceClientsSection}
 
 ${recentEventsSection}
 
+## Event Format Reference
+Calendar events follow this standardized format:
+**Title:** \`[Status] Client - WorkType (Helper) | Notes\`
+- **Status:** [C] Confirmed, [T] Tentative, [P] Planning
+- **WorkType:** Maintenance (Green), Ad-hoc (Red), Design (Purple), Office Work (Gray), Errands (Orange)
+- **Helper:** Team member assigned (Rebecca, Anne, Megan, Virginia, Andrea)
+- **Notes:** Additional details about the work
+
+**Examples:**
+- \`[C] Smith - Maintenance (Rebecca) | Pruning and mulching\`
+- \`[P] Johnson - Design (Andrea) | Initial consultation\`
+- \`[T] Office Work (Anne) | Invoicing and follow-ups\`
+
 ## Maintenance Status Summary
 ${maintenanceSection}
 
