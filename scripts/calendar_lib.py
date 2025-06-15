@@ -89,6 +89,10 @@ def get_calendar_id():
     """Get the calendar ID from environment variables."""
     return os.getenv('GOOGLE_CALENDAR_ID', 'primary')
 
+def get_source_calendar_id():
+    """Get the source calendar ID from environment variables."""
+    return os.getenv('GOOGLE_SOURCE_CALENDAR_ID')
+
 def parse_event_date(event):
     """Parse event start date from Google Calendar event object."""
     try:

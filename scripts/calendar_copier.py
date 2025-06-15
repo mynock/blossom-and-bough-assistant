@@ -16,7 +16,7 @@ try:
     from calendar_lib import (
         setup_google_calendar_api, get_service_account_file, get_calendar_id,
         get_calendar_events, create_event, delete_all_events, list_calendars,
-        parse_event_date, show_help
+        parse_event_date, show_help, get_source_calendar_id
     )
 except ImportError:
     print("Error: calendar_lib.py not found in the same directory!")
@@ -189,7 +189,7 @@ def main():
     # Default parameters
     service_account_file = get_service_account_file()
     dest_calendar_id = get_calendar_id()
-    source_calendar_id = None  # Must be specified
+    source_calendar_id = get_source_calendar_id()  # Now defaults from env var
     dry_run = False
     clear_destination = False
     start_date = None
@@ -201,16 +201,14 @@ def main():
     
     # Show usage if help requested or no args
     if '-h' in args or '--help' in args or len(args) == 0:
-        print("Usage: python calendar_copier.py [options] --source SOURCE_CALENDAR_ID")
+        print("Usage: python calendar_copier.py [options] [--source SOURCE_CALENDAR_ID]")
         print("")
         print("Copies calendar events from a source calendar to a destination calendar.")
         print("Useful for resetting development state.")
         print("")
-        print("Required:")
-        print("  --source CALENDAR_ID       Source calendar ID to copy events from")
-        print("")
         print("Options:")
-        print("  --dest CALENDAR_ID         Destination calendar ID (default: from env var)")
+        print("  --source CALENDAR_ID       Source calendar ID (default: from GOOGLE_SOURCE_CALENDAR_ID env var)")
+        print("  --dest CALENDAR_ID         Destination calendar ID (default: from GOOGLE_CALENDAR_ID env var)")
         print("  --dry-run                  Show what would be copied without making changes")
         print("  --clear-destination        Delete all events from destination first")
         print("  --start-date YYYY-MM-DD    Start date for copying (default: 2025-05-01)")
@@ -222,19 +220,23 @@ def main():
         print("Environment Variables:")
         print("  GOOGLE_SERVICE_ACCOUNT_KEY_FILE  Path to service account JSON file")
         print("  GOOGLE_CALENDAR_ID              Default destination calendar ID")
+        print("  GOOGLE_SOURCE_CALENDAR_ID       Default source calendar ID")
         print("")
         print("Examples:")
         print("  # List available calendars")
         print("  python calendar_copier.py --list-calendars")
         print("")
-        print("  # Dry run copy from template calendar")
+        print("  # Copy using env vars (no --source needed if GOOGLE_SOURCE_CALENDAR_ID is set)")
+        print("  python calendar_copier.py --dry-run")
+        print("")
+        print("  # Override source calendar")
         print("  python calendar_copier.py --source template-calendar@gmail.com --dry-run")
         print("")
         print("  # Copy events and clear destination first")
-        print("  python calendar_copier.py --source template-cal@gmail.com --clear-destination")
+        print("  python calendar_copier.py --clear-destination")
         print("")
         print("  # Copy specific date range")
-        print("  python calendar_copier.py --source cal@gmail.com --start-date 2025-06-01 --end-date 2025-06-30")
+        print("  python calendar_copier.py --start-date 2025-06-01 --end-date 2025-06-30")
         print("")
         return
     
@@ -301,7 +303,11 @@ def main():
     
     # Validate required parameters
     if not source_calendar_id:
-        print("Error: --source CALENDAR_ID is required!")
+        print("Error: Source calendar ID is required!")
+        print("Either:")
+        print("  1. Set GOOGLE_SOURCE_CALENDAR_ID in your .env file, or")
+        print("  2. Use --source CALENDAR_ID parameter")
+        print("")
         print("Use --list-calendars to see available calendars")
         print("Use --help for usage information")
         return
