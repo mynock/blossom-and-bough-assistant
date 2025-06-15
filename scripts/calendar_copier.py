@@ -23,10 +23,15 @@ except ImportError:
     print("Make sure both calendar_copier.py and calendar_lib.py are in the scripts/ directory.")
     sys.exit(1)
 
-def copy_calendar_events(service, source_calendar_id, dest_calendar_id, start_date=None, end_date=None, dry_run=False, clear_destination=False):
+def copy_calendar_events(service, source_calendar_id, dest_calendar_id, start_date=None, end_date=None, dry_run=False, clear_destination=False, reset_mode=False):
     """Copy events from source calendar to destination calendar."""
     
-    print(f"📅 Calendar Event Copier")
+    if reset_mode:
+        print(f"🔄 Calendar Reset Mode")
+        print(f"This will clear the destination calendar and copy fresh events from source")
+    else:
+        print(f"📅 Calendar Event Copier")
+    
     print(f"Source Calendar: {source_calendar_id}")
     print(f"Destination Calendar: {dest_calendar_id}")
     print(f"Mode: {'DRY RUN' if dry_run else 'LIVE COPY'}")
@@ -40,7 +45,10 @@ def copy_calendar_events(service, source_calendar_id, dest_calendar_id, start_da
     
     # Clear destination calendar first if requested
     if clear_destination:
-        print("\n🗑️  Clearing destination calendar first...")
+        if reset_mode:
+            print(f"\n🗑️  Step 1: Clearing destination calendar for reset...")
+        else:
+            print(f"\n🗑️  Clearing destination calendar first...")
         if not dry_run:
             success = delete_all_events(service, dest_calendar_id, dry_run=False)
             if not success:
@@ -50,7 +58,10 @@ def copy_calendar_events(service, source_calendar_id, dest_calendar_id, start_da
             print("[DRY RUN] Would clear destination calendar first")
     
     # Get events from source calendar
-    print(f"\n📖 Fetching events from source calendar...")
+    if reset_mode:
+        print(f"\n📖 Step 2: Fetching events from source calendar for reset...")
+    else:
+        print(f"\n📖 Fetching events from source calendar...")
     source_events = get_calendar_events(service, source_calendar_id, start_date, end_date)
     
     if not source_events:
@@ -129,11 +140,21 @@ def copy_calendar_events(service, source_calendar_id, dest_calendar_id, start_da
     if success:
         if dry_run:
             print("\n✅ Dry run completed successfully!")
-            print("Use without --dry-run to actually copy the events.")
+            if reset_mode:
+                print("Use without --dry-run to actually reset the calendar.")
+            else:
+                print("Use without --dry-run to actually copy the events.")
         else:
-            print("\n🎉 Calendar copy completed successfully!")
+            if reset_mode:
+                print("\n🔄 Calendar reset completed successfully!")
+                print("Your destination calendar has been cleared and repopulated with fresh events from the source.")
+            else:
+                print("\n🎉 Calendar copy completed successfully!")
     else:
-        print(f"\n⚠️  Copy completed with {failed_count} errors.")
+        if reset_mode:
+            print(f"\n⚠️  Calendar reset completed with {failed_count} errors.")
+        else:
+            print(f"\n⚠️  Copy completed with {failed_count} errors.")
     
     return success
 
@@ -192,6 +213,7 @@ def main():
     source_calendar_id = get_source_calendar_id()  # Now defaults from env var
     dry_run = False
     clear_destination = False
+    reset_mode = False  # New reset option
     start_date = None
     end_date = None
     list_calendars_only = False
@@ -210,6 +232,7 @@ def main():
         print("  --source CALENDAR_ID       Source calendar ID (default: from GOOGLE_SOURCE_CALENDAR_ID env var)")
         print("  --dest CALENDAR_ID         Destination calendar ID (default: from GOOGLE_CALENDAR_ID env var)")
         print("  --dry-run                  Show what would be copied without making changes")
+        print("  --reset                    Clear destination and copy source events (combines --clear-destination)")
         print("  --clear-destination        Delete all events from destination first")
         print("  --start-date YYYY-MM-DD    Start date for copying (default: 2025-05-01)")
         print("  --end-date YYYY-MM-DD      End date for copying (default: 2025-08-31)")
@@ -225,6 +248,12 @@ def main():
         print("Examples:")
         print("  # List available calendars")
         print("  python calendar_copier.py --list-calendars")
+        print("")
+        print("  # Quick reset using env vars (clears destination + copies source)")
+        print("  python calendar_copier.py --reset")
+        print("")
+        print("  # Reset with dry run to see what would happen")
+        print("  python calendar_copier.py --reset --dry-run")
         print("")
         print("  # Copy using env vars (no --source needed if GOOGLE_SOURCE_CALENDAR_ID is set)")
         print("  python calendar_copier.py --dry-run")
@@ -249,6 +278,9 @@ def main():
             dry_run = True
         elif arg == '--clear-destination':
             clear_destination = True
+        elif arg == '--reset':
+            reset_mode = True
+            clear_destination = True  # Reset implies clearing destination
         elif arg == '--list-calendars':
             list_calendars_only = True
         elif arg == '--source' and i + 1 < len(args):
@@ -325,7 +357,8 @@ def main():
         start_date=start_date,
         end_date=end_date,
         dry_run=dry_run,
-        clear_destination=clear_destination
+        clear_destination=clear_destination,
+        reset_mode=reset_mode
     )
     
     if not success:
