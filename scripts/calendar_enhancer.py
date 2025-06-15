@@ -290,7 +290,7 @@ def determine_status(summary, event_date, reference_date):
             return "tentative", "T"
     elif star_count >= 2:
         # 2+ stars = things that must happen but haven't determined hours/when
-        return "tentative", "P"
+        return "planning", "P"
     
     return "tentative", "T"  # default
 
