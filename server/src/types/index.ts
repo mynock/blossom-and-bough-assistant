@@ -77,7 +77,7 @@ export interface CalendarEvent {
   end: string;
   location?: string;
   description?: string;
-  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance' | 'helper_schedule' | 'todo';
+  eventType: 'maintenance' | 'ad_hoc' | 'design' | 'office_work' | 'errands' | 'helper_schedule' | 'personal' | 'todo';
   linkedRecords?: {
     clientId?: string;
     projectId?: string;
@@ -87,6 +87,7 @@ export interface CalendarEvent {
     confirmed: boolean;
     clientNotified: boolean;
     flexibility: 'Fixed' | 'Preferred' | 'Flexible';
+    level: 'C' | 'T' | 'P'; // Confirmed | Tentative | Planning
   };
   logistics?: {
     travelTimeBuffer: number;
@@ -182,4 +183,19 @@ export interface TravelTimeResponse {
   duration: number; // minutes
   distance: string;
   route?: string;
-} 
+}
+
+// Update status type to match calendar enhancer
+export type EventStatus = 'C' | 'T' | 'P'; // Confirmed | Tentative | Planning
+
+// Work type mapping for calendar enhancer compatibility
+export type WorkType = 'Maintenance' | 'Ad-hoc' | 'Design' | 'Office Work' | 'Errands';
+
+// Color mapping to match calendar enhancer Google Calendar colors
+export const WORK_TYPE_COLORS = {
+  'Maintenance': { id: '10', name: 'Green/Basil', description: 'recurring scheduled work' },
+  'Ad-hoc': { id: '4', name: 'Flamingo/Pale Red', description: 'one-off client visits' },
+  'Design': { id: '3', name: 'Grape/Mauve', description: 'consultation/planning work' },
+  'Office Work': { id: '8', name: 'Graphite/Gray', description: 'internal business tasks' },
+  'Errands': { id: '6', name: 'Tangerine/Orange', description: 'supply runs, equipment service, truck/tool maintenance' },
+}; 

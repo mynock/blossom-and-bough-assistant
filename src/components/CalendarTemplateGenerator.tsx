@@ -23,27 +23,25 @@ import { helpersApi, clientsApi, Helper, Client } from '../services/api';
 /**
  * Calendar Template Generator for Maintenance Events
  * 
- * TITLE STRUCTURE RECOMMENDATION:
- * Format: "[Status] Client Name - Service Type [+ Andrea]"
- * Example: "[Tentative] Smith Property - Maintenance + Andrea"
+ * TITLE STRUCTURE (Updated to match calendar enhancer format):
+ * Format: "[Status] Client - WorkType (Helper) | Notes"
+ * Example: "[C] Smith Property - Maintenance (Anne) | Pruning and mulching"
  * 
- * Why this format:
- * - Status in brackets for quick identification of confirmation level
- * - Client name first for easy scanning in calendar view
- * - Service type for quick identification of work type
- * - Andrea indicator when she's on-site for supervision/consultation
+ * Status Options:
+ * - [C] Confirmed: No stars or 1 star ≤2 weeks (confident, confirmed with client)
+ * - [T] Tentative: 1 star >2 weeks (tentative, need to confirm with self and client)
+ * - [P] Planning: 2+ stars (planning phase, must happen but hours/timing TBD)
+ * 
+ * Work Types & Colors:
+ * - Maintenance: Green (recurring scheduled work)
+ * - Ad-hoc: Red (one-off client visits)
+ * - Design: Purple (consultation/planning work)  
+ * - Office Work: Gray (internal business tasks)
+ * - Errands: Orange (supply runs, equipment service, truck/tool maintenance)
  * 
  * DESCRIPTION STRUCTURE:
- * Contains all detailed operational information:
- * - Client & Helper details (IDs for reference)
- * - Service specifics (type, hours, timing)
- * - Logistics (location, zone, flexibility)
- * - Status tracking (confirmation, notifications)
- * - Special requirements (gate codes, materials, weather sensitivity)
- * - Notes for additional context
- * 
- * This separation keeps the calendar view clean while ensuring all
- * necessary information is available when viewing event details.
+ * Contains all detailed operational information with structured metadata
+ * matching the calendar enhancer's enhanced description format.
  */
 
 interface TemplateOptions {
@@ -182,30 +180,28 @@ const CalendarTemplateGenerator: React.FC = () => {
   };
 
   const generateClientSideTemplate = () => {
-    // TITLE RECOMMENDATION: Keep it concise with most critical info
-    // Format: "[Status] Client - Service [+ Andrea]"
-    const andreaIndicator = options.andreaOnSite ? ' + Andrea' : '';
-    const statusPrefix = options.status ? `[${options.status}] ` : '[Tentative] ';
-    const title = `${statusPrefix}${options.clientName} - ${options.serviceType}${andreaIndicator}`;
+    // Updated to match calendar enhancer format: [Status] Client - WorkType (Helper) | Notes
+    const helperInfo = options.helperName ? `(${options.helperName})` : '';
+    const statusLabel = options.status || 'C'; // Default to Confirmed
+    const notesSection = options.notes ? ` | ${options.notes}` : '';
+    const title = `[${statusLabel}] ${options.clientName} - ${options.serviceType}${helperInfo}${notesSection}`;
     
-    // DESCRIPTION: Include all detailed information
+    // Enhanced description matching calendar enhancer format
     const description = `CLIENT: ${options.clientName} (${options.clientId})
-HELPER: ${options.helperName} (${options.helperId})
 SERVICE: ${options.serviceType}
-ANDREA ON-SITE: ${options.andreaOnSite ? 'Yes' : 'No'}
-HOURS: ${options.hours}
-FLEXIBILITY: ${options.flexibility || 'Standard'}
-PRIORITY: ${options.priority}
 
-LOCATION: ${options.location}
-ZONE: ${options.zone}
-${options.projectId ? `PROJECT: ${options.projectName || '[Project Name]'} (${options.projectId})` : ''}
+${options.helperName ? `HELPER: ${options.helperName}` : ''}
+${options.hours ? `ESTIMATED HOURS: ${options.hours}` : ''}
+${options.priority ? `PRIORITY: ${options.priority}` : ''}
+${options.flexibility ? `FLEXIBILITY: ${options.flexibility}` : ''}
 
-STATUS: ${options.status || 'Tentative'}
-CLIENT NOTIFIED: ${options.clientNotified ? 'Yes' : 'No'}
-WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
+${options.zone ? `ZONE: ${options.zone}` : ''}
 
-NOTES: ${options.notes || '[Additional notes]'}`;
+${options.notes ? `NOTES: ${options.notes}` : ''}
+
+PREFERENCES:
+${options.clientNotified ? 'CLIENT NOTIFIED: Yes' : 'CLIENT NOTIFIED: No'}
+${options.weatherSensitive ? 'WEATHER SENSITIVE: Yes' : 'WEATHER SENSITIVE: No'}`;
 
     const template = `TITLE: ${title}
 
@@ -227,10 +223,16 @@ LOCATION: ${options.location}`;
     }
   };
 
-  const serviceTypes = ['Maintenance', 'Install', 'Pruning', 'Design', 'Repair', 'Consultation'];
+  // Updated to match calendar enhancer work types
+  const serviceTypes = ['Maintenance', 'Ad-hoc', 'Design', 'Office Work', 'Errands'];
   const priorities = ['High', 'Medium', 'Low'];
   const flexibilityOptions = ['Fixed', 'Preferred', 'Flexible'];
-  const statusOptions = ['Tentative', 'Self-Confirmed', 'Client-Confirmed', 'Rescheduled'];
+  // Updated status options to match calendar enhancer
+  const statusOptions = [
+    { value: 'C', label: 'C - Confirmed', description: 'Confirmed with client' },
+    { value: 'T', label: 'T - Tentative', description: 'Need to confirm with self and client' },
+    { value: 'P', label: 'P - Planning', description: 'Must happen, but hours/timing TBD' }
+  ];
 
   return (
     <Card>
@@ -353,8 +355,8 @@ LOCATION: ${options.location}`;
                 onChange={(e) => setOptions(prev => ({ ...prev, status: e.target.value }))}
               >
                 {statusOptions.map((option) => (
-                  <MenuItem key={option} value={option}>
-                    {option}
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
                   </MenuItem>
                 ))}
               </Select>

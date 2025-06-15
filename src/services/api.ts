@@ -61,7 +61,13 @@ export interface CalendarEvent {
   end: string;
   location?: string;
   description?: string;
-  eventType: 'client_visit' | 'office_work' | 'personal' | 'maintenance' | 'helper_schedule' | 'todo';
+  eventType: 'maintenance' | 'ad_hoc' | 'design' | 'office_work' | 'errands' | 'helper_schedule' | 'personal' | 'todo';
+  status?: {
+    confirmed: boolean;
+    clientNotified: boolean;
+    flexibility: 'Fixed' | 'Preferred' | 'Flexible';
+    level: 'C' | 'T' | 'P';
+  };
 }
 
 export interface ChatResponse {

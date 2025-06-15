@@ -71,8 +71,12 @@ const Schedule: React.FC = () => {
   const getEventTypeColor = (eventType: CalendarEvent['eventType']) => {
     switch (eventType) {
       case 'maintenance': return 'success';
-      case 'client_visit': return 'primary';
-      case 'office_work': return 'warning';
+      case 'ad_hoc': return 'error';
+      case 'design': return 'secondary';
+      case 'office_work': return 'default';
+      case 'errands': return 'warning';
+      case 'helper_schedule': return 'info';
+      case 'todo': return 'primary';
       case 'personal': return 'secondary';
       default: return 'default';
     }

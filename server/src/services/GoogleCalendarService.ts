@@ -84,8 +84,9 @@ export class GoogleCalendarService {
       },
       status: {
         confirmed: googleEvent.status === 'confirmed',
-        clientNotified: parsedData.clientNotified || false,
-        flexibility: parsedData.flexibility || 'Fixed',
+        clientNotified: Boolean(googleEvent.attendees?.some((a: any) => a.responseStatus === 'accepted')),
+        flexibility: (googleEvent.extendedProperties?.private?.flexibility as any) || 'Flexible',
+        level: 'C' // Default to Confirmed for existing events
       },
       logistics: {
         travelTimeBuffer: parsedData.travelTimeBuffer || 15,
@@ -183,10 +184,10 @@ export class GoogleCalendarService {
     const combined = `${titleLower} ${descLower}`;
 
     if (combined.includes('maintenance')) return 'maintenance';
-    if (combined.includes('client') || combined.includes('visit')) return 'client_visit';
+    if (combined.includes('client') || combined.includes('visit')) return 'ad_hoc';
     if (combined.includes('office') || combined.includes('admin') || combined.includes('design') || combined.includes('invoice')) return 'office_work';
     
-    return 'client_visit'; // Default assumption
+    return 'maintenance';
   }
 
   private getMockEvents(): CalendarEvent[] {
@@ -223,7 +224,8 @@ CLIENT NOTIFIED: Yes`,
         status: {
           confirmed: true,
           clientNotified: true,
-          flexibility: 'Fixed',
+          flexibility: 'Fixed' as const,
+          level: 'C' as const
         },
         logistics: {
           travelTimeBuffer: 15,
@@ -250,7 +252,7 @@ PROJECT: Lakefront property (P001)
 MATERIALS: Plants, mulch, irrigation supplies
 WEATHER SENSITIVE: Yes
 CLIENT NOTIFIED: No`,
-        eventType: 'client_visit',
+        eventType: 'ad_hoc',
         linkedRecords: {
           clientId: 'C004',
           helperId: 'H002',
@@ -259,7 +261,8 @@ CLIENT NOTIFIED: No`,
         status: {
           confirmed: true,
           clientNotified: false,
-          flexibility: 'Preferred',
+          flexibility: 'Preferred' as const,
+          level: 'T' as const
         },
         logistics: {
           travelTimeBuffer: 20,
@@ -272,29 +275,28 @@ CLIENT NOTIFIED: No`,
 
   // Helper method to generate calendar event templates
   generateEventTemplate(clientId: string, helperId: string, serviceType: string, options: any = {}): string {
-    // New format: [Status] Client Name - Service Type [+ Andrea]
-    const andreaOnSite = options.andreaOnSite !== false; // Default to true unless explicitly false
-    const andreaIndicator = andreaOnSite ? ' + Andrea' : '';
-    const statusPrefix = options.status ? `[${options.status}] ` : '[Tentative] ';
-    const title = `${statusPrefix}${options.clientName || '[Client Name]'} - ${serviceType}${andreaIndicator}`;
+    // Updated format to match calendar enhancer: [Status] Client - WorkType (Helper) | Notes
+    const helperInfo = options.helperName ? `(${options.helperName})` : '';
+    const statusLabel = options.status || 'C'; // Default to Confirmed
+    const notesSection = options.notes ? ` | ${options.notes}` : '';
+    const title = `[${statusLabel}] ${options.clientName || '[Client Name]'} - ${serviceType}${helperInfo}${notesSection}`;
     
+    // Enhanced description matching calendar enhancer format
     const description = `CLIENT: ${options.clientName || '[Client Name]'} (${clientId})
-HELPER: ${options.helperName || '[Helper Name]'} (${helperId})
 SERVICE: ${serviceType}
-ANDREA ON-SITE: ${andreaOnSite ? 'Yes' : 'No'}
-HOURS: ${options.hours || '[Hours]'}
-FLEXIBILITY: ${options.flexibility || 'Standard'}
-PRIORITY: ${options.priority || 'Medium'}
 
-LOCATION: ${options.location || '[Full Address]'}
-ZONE: ${options.zone || '[Zone]'}
-${options.projectId ? `PROJECT: ${options.projectName || '[Project Name]'} (${options.projectId})` : ''}
+${options.helperName ? `HELPER: ${options.helperName} (${helperId})` : ''}
+${options.hours ? `ESTIMATED HOURS: ${options.hours}` : ''}
+${options.priority ? `PRIORITY: ${options.priority}` : ''}
+${options.flexibility ? `FLEXIBILITY: ${options.flexibility}` : ''}
 
-STATUS: ${options.status || 'Tentative'}
-CLIENT NOTIFIED: ${options.clientNotified ? 'Yes' : 'No'}
-WEATHER SENSITIVE: ${options.weatherSensitive ? 'Yes' : 'No'}
+${options.zone ? `ZONE: ${options.zone}` : ''}
 
-NOTES: ${options.notes || '[Additional notes]'}`;
+${options.notes ? `NOTES: ${options.notes}` : ''}
+
+PREFERENCES:
+${options.clientNotified ? 'CLIENT NOTIFIED: Yes' : 'CLIENT NOTIFIED: No'}
+${options.weatherSensitive ? 'WEATHER SENSITIVE: Yes' : 'WEATHER SENSITIVE: No'}`;
 
     return `TITLE: ${title}
 
@@ -302,5 +304,39 @@ DESCRIPTION:
 ${description}
 
 LOCATION: ${options.location || '[Full Address]'}`;
+  }
+
+  // Helper method to determine work type from event content (matching calendar enhancer logic)
+  private determineWorkType(summary: string, description?: string): string {
+    if (!summary) return 'Maintenance';
+    
+    const combined = `${summary} ${description || ''}`.toLowerCase();
+    
+    // Check for specific work type keywords (matching calendar enhancer logic)
+    if (combined.includes('design') || combined.includes('consultation') || combined.includes('planning') || combined.includes('plan') || combined.includes('estimate')) {
+      return 'Design';
+    } else if (combined.includes('office') || combined.includes('invoice') || combined.includes('quote') || combined.includes('admin') || combined.includes('paperwork') || combined.includes('follow-up')) {
+      return 'Office Work';
+    } else if (combined.includes('errands') || combined.includes('supply') || combined.includes('pickup') || combined.includes('equipment service') || combined.includes('shop') || combined.includes('truck service') || combined.includes('tool') || combined.includes('equipment maintenance') || combined.includes('repair')) {
+      return 'Errands';
+    } else if (combined.includes('storm') || combined.includes('emergency') || combined.includes('urgent') || combined.includes('fix')) {
+      return 'Ad-hoc';
+    } else {
+      return 'Maintenance'; // Default for client work
+    }
+  }
+
+  private categorizeEventType(summary: string, description?: string): CalendarEvent['eventType'] {
+    const workType = this.determineWorkType(summary, description);
+    
+    // Map work types to event types
+    switch (workType) {
+      case 'Maintenance': return 'maintenance';
+      case 'Ad-hoc': return 'ad_hoc';
+      case 'Design': return 'design';
+      case 'Office Work': return 'office_work';
+      case 'Errands': return 'errands';
+      default: return 'maintenance';
+    }
   }
 } 
