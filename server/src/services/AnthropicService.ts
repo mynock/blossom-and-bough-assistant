@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
+import { debugLog } from '../utils/logger';
 
 export class AnthropicService {
   private client: Anthropic | null = null;
@@ -60,6 +61,12 @@ export class AnthropicService {
       throw error;
     }
 
+    // Preprocess broad queries to make them more specific
+    const processedQuery = this.preprocessBroadQuery(query);
+    if (processedQuery !== query) {
+      console.log(`🔄 Preprocessed broad query: "${processedQuery}"`);
+    }
+
     try {
       const systemPrompt = this.buildSystemPrompt(context);
       const fullSystemPrompt = this.buildFullSystemPrompt(context);
@@ -81,7 +88,7 @@ export class AnthropicService {
         messages: [
           {
             role: 'user' as const,
-            content: query
+            content: processedQuery
           }
         ]
       };
@@ -92,8 +99,8 @@ export class AnthropicService {
         temperature: requestPayload.temperature,
         system_prompt_length: systemPrompt.length,
         tools_count: tools.length,
-        message_length: query.length,
-        estimated_input_tokens: Math.round(systemPrompt.length / 4) + Math.round(query.length / 4)
+        message_length: processedQuery.length,
+        estimated_input_tokens: Math.round(systemPrompt.length / 4) + Math.round(processedQuery.length / 4)
       });
 
       const message = await this.client.messages.create(requestPayload);
@@ -106,6 +113,61 @@ export class AnthropicService {
         total_tokens: (message.usage?.input_tokens || 0) + (message.usage?.output_tokens || 0)
       });
 
+      // Add detailed analysis of the initial response
+      console.log(`🔍 INITIAL RESPONSE ANALYSIS:`);
+      console.log(`   - Model: ${message.model}`);
+      console.log(`   - Stop reason: ${message.stop_reason}`);
+      console.log(`   - Content array length: ${message.content?.length || 0}`);
+      
+      // Log detailed analysis to file for review
+      debugLog.log('🔍 INITIAL RESPONSE ANALYSIS', {
+        model: message.model,
+        stopReason: message.stop_reason,
+        contentLength: message.content?.length || 0,
+        usage: message.usage,
+        query: processedQuery.substring(0, 200),
+        timestamp: new Date().toISOString()
+      });
+      
+      if (message.content && message.content.length > 0) {
+        message.content.forEach((content: any, index: number) => {
+          console.log(`   - Content[${index}] type: ${content.type}`);
+          if (content.type === 'text') {
+            console.log(`   - Content[${index}] text length: ${content.text?.length || 0}`);
+            console.log(`   - Content[${index}] text preview: "${content.text?.substring(0, 100)}${content.text?.length > 100 ? '...' : ''}"`);
+            
+            // Log full text to file
+            debugLog.log(`INITIAL RESPONSE Content[${index}] full text`, {
+              type: content.type,
+              textLength: content.text?.length || 0,
+              fullText: content.text,
+              timestamp: new Date().toISOString()
+            });
+          } else if (content.type === 'tool_use') {
+            console.log(`   - Content[${index}] tool: ${content.name}`);
+            console.log(`   - Content[${index}] input: ${JSON.stringify(content.input)}`);
+            
+            // Log tool details to file
+            debugLog.log(`INITIAL RESPONSE Content[${index}] tool use`, {
+              type: content.type,
+              toolName: content.name,
+              toolInput: content.input,
+              toolId: content.id,
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
+      } else {
+        console.log(`   - EMPTY CONTENT ARRAY!`);
+        debugLog.error('INITIAL RESPONSE - EMPTY CONTENT ARRAY', {
+          model: message.model,
+          stopReason: message.stop_reason,
+          usage: message.usage,
+          fullResponse: message,
+          timestamp: new Date().toISOString()
+        });
+      }
+
       // Handle tool calls if present
       const toolUseContent = message.content.filter(content => content.type === 'tool_use');
       if (toolUseContent.length > 0) {
@@ -114,7 +176,7 @@ export class AnthropicService {
           console.log(`  ${index + 1}. ${tool.name}(${JSON.stringify(tool.input).substring(0, 100)}${JSON.stringify(tool.input).length > 100 ? '...' : ''})`);
         });
         
-        const result = await this.handleToolCalls(message, query, context);
+        const result = await this.handleToolCalls(message, processedQuery, context);
         const totalTime = Date.now() - startTime;
         console.log(`✅ === ANTHROPIC API CALL COMPLETE (with tools) === Total time: ${totalTime}ms\n`);
         return result;
@@ -142,8 +204,6 @@ export class AnthropicService {
           console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
           console.log(`📝 Incomplete response: "${response.text}"`);
           
-          // For regular text responses, we can't easily continue the conversation
-          // So provide a helpful fallback response
           return {
             response: `I started analyzing your schedule but my response was cut short. This often happens with complex queries that need multiple data sources.
 
@@ -395,7 +455,32 @@ This will help me provide a complete analysis without running into processing li
           console.log(`💬 Final response after ${toolCallRound - 1} tool rounds (${totalTime}ms): ${textResponse.text.length} characters`);
           console.log(`📝 Final response preview: "${textResponse.text.substring(0, 150)}${textResponse.text.length > 150 ? '...' : ''}"`);
           
-          // Check if the response looks incomplete (ends with a colon or seems to be asking for more data)
+          // Add detailed analysis of why the response ended
+          console.log(`🔍 FINAL RESPONSE ANALYSIS:`);
+          console.log(`   - Stop reason: ${currentMessage.stop_reason}`);
+          console.log(`   - Content array length: ${currentMessage.content?.length || 0}`);
+          console.log(`   - Text content length: ${textResponse.text.length}`);
+          console.log(`   - Full text: "${textResponse.text}"`);
+          
+          // Check for various incomplete response patterns
+          const incompletePatterns = [
+            { pattern: /:\s*$/, name: 'ends with colon' },
+            { pattern: /let me check/i, name: 'contains "let me check"' },
+            { pattern: /Now let me/i, name: 'contains "Now let me"' },
+            { pattern: /Let me also/i, name: 'contains "Let me also"' },
+            { pattern: /I should also/i, name: 'contains "I should also"' },
+            { pattern: /Next, I/i, name: 'contains "Next, I"' },
+            { pattern: /maintenance scheduling issues/i, name: 'contains "maintenance scheduling issues"' },
+            { pattern: /client details and maintenance/i, name: 'contains "client details and maintenance"' }
+          ];
+          
+          const matchedPatterns = incompletePatterns.filter(p => p.pattern.test(textResponse.text));
+          if (matchedPatterns.length > 0) {
+            console.log(`⚠️ INCOMPLETE RESPONSE PATTERNS DETECTED:`);
+            matchedPatterns.forEach(p => console.log(`   - ${p.name}`));
+          }
+          
+          // Check if response looks incomplete (ends with a colon or seems to be asking for more data)
           if (textResponse.text.trim().endsWith(':') || 
               textResponse.text.includes('let me check') || 
               textResponse.text.includes('Now let me') ||
@@ -408,62 +493,15 @@ This will help me provide a complete analysis without running into processing li
             console.log(`⚠️ Response appears incomplete - likely needs more tool calls`);
             console.log(`📝 Incomplete response: "${textResponse.text}"`);
             
-            // Check if this looks like the AI is about to make another tool call
-            // If so, we should force continuation rather than giving up
-            if (textResponse.text.includes('maintenance schedule') || 
-                textResponse.text.includes('get the maintenance') ||
-                textResponse.text.includes('Now let me get') ||
-                textResponse.text.includes('maintenance scheduling issues') ||
-                textResponse.text.includes('client details and maintenance') ||
-                textResponse.text.includes('let me check')) {
-              console.log(`🔄 Attempting to force tool continuation - looks like AI wants to call more tools`);
-              
-              // Add a more directive follow-up message
-              conversationHistory.push({
-                role: 'user' as const,
-                content: 'COMPLETE YOUR ANALYSIS NOW. Do not narrate what you plan to do - execute the tools you need (get_client_info, get_maintenance_schedule, etc.) and provide your final comprehensive response.'
-              });
-              
-              // Make another API call to continue
-              try {
-                const continuationStart = Date.now();
-                const continuationMessage = await this.client!.messages.create({
-                  model: 'claude-sonnet-4-20250514',
-                  max_tokens: 2000,
-                  temperature: 0.3,
-                  system: this.buildSystemPrompt(context),
-                  messages: conversationHistory
-                });
-
-                const continuationTime = Date.now() - continuationStart;
-                console.log(`⏱️ Forced continuation API call completed in ${continuationTime}ms`);
-                
-                // Update current message for next iteration
-                currentMessage = continuationMessage;
-                
-                // Add the continuation to conversation history
-                conversationHistory.push({
-                  role: 'assistant' as const,
-                  content: continuationMessage.content
-                });
-                
-                // Continue the loop to process any tool calls in the continuation
-                continue;
-              } catch (continuationError) {
-                console.error('❌ Error in forced continuation call:', continuationError);
-                // Fall through to the fallback response
-              }
-            }
-            
-            // Fallback response for other types of incomplete responses
             return {
-              response: `I started analyzing your schedule but my response was cut short. Let me try a more direct approach - please ask me something more specific like:
+              response: `I started analyzing your schedule but my response was cut short. This often happens with complex queries that need multiple data sources.
 
-• "What maintenance clients are overdue?"
-• "Show me my schedule conflicts for next week"
-• "Which helpers are available this Thursday?"
+Please try asking a more focused question like:
+• "What maintenance clients are overdue this week?"
+• "Show me conflicts in my schedule for next Monday"  
+• "Which helpers are available on Friday?"
 
-This will help me give you a complete analysis without getting interrupted.`,
+Or try rephrasing your question to be more specific about what you'd like me to analyze.`,
               reasoning: 'Response was incomplete - suggesting more specific queries',
               suggestions: []
             };
@@ -559,13 +597,20 @@ This will help me give you a complete analysis without getting interrupted.`,
       
       console.log(`📊 Tool results size: ${toolResultSize} chars, conversation history: ${conversationHistory.length} messages, using ${trimmedHistory.length} for API call`);
       
+      // Use minimal system prompt for large tool results to save tokens
+      const systemPromptForFollowUp = toolResultSize > 10000 
+        ? this.buildMinimalSystemPrompt(context)
+        : this.buildSystemPrompt(context);
+      
+      console.log(`🔧 Using ${toolResultSize > 10000 ? 'MINIMAL' : 'FULL'} system prompt for follow-up (${systemPromptForFollowUp.length} chars)`);
+      
       // Continue conversation with tool results
       const followUpStart = Date.now();
       const followUpMessage = await this.client!.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 2000,
         temperature: 0.3,
-        system: this.buildSystemPrompt(context),
+        system: systemPromptForFollowUp,
         messages: trimmedHistory
       });
 
@@ -578,6 +623,112 @@ This will help me give you a complete analysis without getting interrupted.`,
       });
       console.log(`📋 Follow-up response content length:`, followUpMessage.content?.length || 0);
       console.log(`📋 Follow-up response content preview:`, JSON.stringify(followUpMessage.content).substring(0, 200) + '...');
+      
+      // Add detailed analysis of the response
+      console.log(`🔍 DETAILED FOLLOW-UP RESPONSE ANALYSIS:`);
+      console.log(`   - Model: ${followUpMessage.model}`);
+      console.log(`   - Stop reason: ${followUpMessage.stop_reason}`);
+      console.log(`   - Content array length: ${followUpMessage.content?.length || 0}`);
+      
+      // Log detailed follow-up analysis to file
+      debugLog.log('🔍 DETAILED FOLLOW-UP RESPONSE ANALYSIS', {
+        round: toolCallRound,
+        model: followUpMessage.model,
+        stopReason: followUpMessage.stop_reason,
+        contentLength: followUpMessage.content?.length || 0,
+        usage: followUpMessage.usage,
+        systemPromptLength: systemPromptForFollowUp.length,
+        conversationHistoryLength: trimmedHistory.length,
+        timestamp: new Date().toISOString()
+      });
+      
+      if (followUpMessage.content && followUpMessage.content.length > 0) {
+        followUpMessage.content.forEach((content: any, index: number) => {
+          console.log(`   - Content[${index}] type: ${content.type}`);
+          if (content.type === 'text') {
+            console.log(`   - Content[${index}] text length: ${content.text?.length || 0}`);
+            console.log(`   - Content[${index}] text: "${content.text}"`);
+            
+            // Log full follow-up text to file
+            debugLog.log(`FOLLOW-UP RESPONSE Round ${toolCallRound} Content[${index}] full text`, {
+              round: toolCallRound,
+              type: content.type,
+              textLength: content.text?.length || 0,
+              fullText: content.text,
+              timestamp: new Date().toISOString()
+            });
+          } else if (content.type === 'tool_use') {
+            console.log(`   - Content[${index}] tool: ${content.name}`);
+            console.log(`   - Content[${index}] input: ${JSON.stringify(content.input)}`);
+            
+            // Log follow-up tool details to file
+            debugLog.log(`FOLLOW-UP RESPONSE Round ${toolCallRound} Content[${index}] tool use`, {
+              round: toolCallRound,
+              type: content.type,
+              toolName: content.name,
+              toolInput: content.input,
+              toolId: content.id,
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
+      } else {
+        console.log(`   - EMPTY CONTENT ARRAY!`);
+        debugLog.error(`FOLLOW-UP RESPONSE Round ${toolCallRound} - EMPTY CONTENT ARRAY`, {
+          round: toolCallRound,
+          model: followUpMessage.model,
+          stopReason: followUpMessage.stop_reason,
+          usage: followUpMessage.usage,
+          fullResponse: followUpMessage,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // Log the full request that was sent for debugging
+      console.log(`🔍 FOLLOW-UP REQUEST DETAILS:`);
+      console.log(`   - System prompt length: ${systemPromptForFollowUp.length}`);
+      console.log(`   - Messages count: ${trimmedHistory.length}`);
+      console.log(`   - Last message type: ${trimmedHistory[trimmedHistory.length - 1]?.role}`);
+      console.log(`   - Last message content type: ${Array.isArray(trimmedHistory[trimmedHistory.length - 1]?.content) ? 'array' : typeof trimmedHistory[trimmedHistory.length - 1]?.content}`);
+      
+      // Log request details to file
+      debugLog.log(`FOLLOW-UP REQUEST DETAILS Round ${toolCallRound}`, {
+        round: toolCallRound,
+        systemPromptLength: systemPromptForFollowUp.length,
+        messagesCount: trimmedHistory.length,
+        lastMessageType: trimmedHistory[trimmedHistory.length - 1]?.role,
+        lastMessageContentType: Array.isArray(trimmedHistory[trimmedHistory.length - 1]?.content) ? 'array' : typeof trimmedHistory[trimmedHistory.length - 1]?.content,
+        fullConversationHistory: trimmedHistory,
+        systemPromptPreview: systemPromptForFollowUp.substring(0, 500),
+        timestamp: new Date().toISOString()
+      });
+      
+      if (!followUpMessage.content || followUpMessage.content.length === 0) {
+        console.log(`🚨 EMPTY RESPONSE ANALYSIS:`);
+        console.log(`   - Input tokens: ${followUpMessage.usage?.input_tokens}`);
+        console.log(`   - Output tokens: ${followUpMessage.usage?.output_tokens}`);
+        console.log(`   - Model: ${followUpMessage.model}`);
+        console.log(`   - Stop reason: ${followUpMessage.stop_reason}`);
+        console.log(`   - Full response object:`, JSON.stringify(followUpMessage, null, 2));
+        
+        // Also log the request that caused this
+        console.log(`🚨 REQUEST THAT CAUSED EMPTY RESPONSE:`);
+        console.log(`   - System prompt (first 500 chars): ${systemPromptForFollowUp.substring(0, 500)}...`);
+        console.log(`   - Messages:`, JSON.stringify(trimmedHistory, null, 2));
+        
+        // Log comprehensive empty response analysis to file
+        debugLog.error(`EMPTY RESPONSE ANALYSIS Round ${toolCallRound}`, {
+          round: toolCallRound,
+          inputTokens: followUpMessage.usage?.input_tokens,
+          outputTokens: followUpMessage.usage?.output_tokens,
+          model: followUpMessage.model,
+          stopReason: followUpMessage.stop_reason,
+          fullResponse: followUpMessage,
+          systemPrompt: systemPromptForFollowUp,
+          conversationHistory: trimmedHistory,
+          timestamp: new Date().toISOString()
+        });
+      }
 
       // Add AI response to conversation history
       conversationHistory.push({
@@ -1073,5 +1224,82 @@ Be practical, specific, and collaborative. Focus on solutions that Andrea can re
 
   public getCurrentSystemPrompt(context: SchedulingContext): string {
     return this.buildSystemPrompt(context);
+  }
+
+  private preprocessBroadQuery(query: string): string {
+    const lowerQuery = query.toLowerCase();
+    
+    // Detect broad analysis queries and make them more specific
+    if (lowerQuery.includes('review') && (lowerQuery.includes('next') || lowerQuery.includes('upcoming')) && 
+        (lowerQuery.includes('weeks') || lowerQuery.includes('month') || lowerQuery.includes('days'))) {
+      
+      // Extract time period
+      let timePeriod = '4 weeks';
+      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
+        timePeriod = '30 days';
+      } else if (lowerQuery.includes('2 weeks')) {
+        timePeriod = '2 weeks';
+      } else if (lowerQuery.includes('3 weeks')) {
+        timePeriod = '3 weeks';
+      }
+      
+      return `Show me my calendar for the next ${timePeriod} and analyze it for: workload balance, scheduling conflicts, geographic efficiency, maintenance timing, and any concerns or recommendations you have.`;
+    }
+    
+    // Handle "look at" or "take a look" queries
+    if ((lowerQuery.includes('look at') || lowerQuery.includes('take a look')) && 
+        (lowerQuery.includes('schedule') || lowerQuery.includes('calendar'))) {
+      
+      let timePeriod = '4 weeks';
+      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
+        timePeriod = '30 days';
+      } else if (lowerQuery.includes('2 weeks')) {
+        timePeriod = '2 weeks';
+      }
+      
+      return `Show me my calendar for the next ${timePeriod} and provide analysis on workload distribution, potential conflicts, and any scheduling recommendations.`;
+    }
+    
+    // Handle "questions, concerns, suggestions" type queries
+    if (lowerQuery.includes('questions') && lowerQuery.includes('concerns') && lowerQuery.includes('suggestions')) {
+      let timePeriod = '4 weeks';
+      if (lowerQuery.includes('30 days') || lowerQuery.includes('month')) {
+        timePeriod = '30 days';
+      }
+      
+      return `Analyze my schedule for the next ${timePeriod}. Look for: scheduling conflicts, workload balance issues, geographic inefficiencies, maintenance timing problems, and provide specific recommendations for improvements.`;
+    }
+    
+    // Return original query if no preprocessing needed
+    return query;
+  }
+
+  private buildMinimalSystemPrompt(context: SchedulingContext): string {
+    const currentDate = new Date().toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+
+    return `# Andrea's AI Scheduling Assistant
+
+You are analyzing scheduling data for Andrea's landscaping business. Current date: ${currentDate}
+
+## Key Business Rules
+- Andrea targets 3 field days/week
+- Most work requires 2+ people (team jobs)
+- 4-week maintenance cycles for most clients
+- Group nearby clients to minimize travel
+
+## Your Task
+Analyze the provided calendar and tool data to give comprehensive insights on:
+- Workload balance and field day distribution
+- Scheduling conflicts or timing issues  
+- Geographic efficiency and travel optimization
+- Maintenance timing and overdue clients
+- Specific recommendations for improvements
+
+Provide detailed, actionable analysis based on the data you've received.`;
   }
 } 

@@ -29,6 +29,7 @@ service-account-*.json
 # Logs
 logs
 *.log
+server/logs/
 
 # OS generated files
 .DS_Store

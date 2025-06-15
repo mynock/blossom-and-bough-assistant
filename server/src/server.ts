@@ -151,62 +151,121 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Test endpoint to show system prompt
+// Debug endpoint for system prompt analysis
 app.get('/api/debug/system-prompt', async (req, res) => {
   try {
+    const { type, fullContent } = req.query;
     const context = await schedulingService.getSchedulingContext();
     
-    // Query parameters
-    const showType = req.query.type as string; // 'condensed', 'full', or 'both' (default)
-    const showFullContent = req.query.fullContent === 'true'; // Show full content without truncation
+    const anthropicService = new AnthropicService();
     
-    // Get both condensed and full prompts using public methods
-    const condensedPrompt = anthropicService.getCondensedSystemPrompt(context);
-    const fullPrompt = anthropicService.getFullSystemPrompt(context);
-    const currentPrompt = anthropicService.getCurrentSystemPrompt(context);
-    
-    const response: any = {
+    let result: any = {
       meta: {
-        showType: showType || 'both',
-        showFullContent: showFullContent,
+        showType: type || 'both',
+        showFullContent: fullContent === 'true',
         timestamp: new Date().toISOString()
-      },
-      current: {
-        type: condensedPrompt === currentPrompt ? 'condensed' : 'full',
-        length: currentPrompt.length,
-        estimatedTokens: Math.round(currentPrompt.length / 4),
-        content: currentPrompt
-      },
-      tokenSavings: {
-        characters: fullPrompt.length - condensedPrompt.length,
-        estimatedTokens: Math.round((fullPrompt.length - condensedPrompt.length) / 4),
-        percentReduction: Math.round(((fullPrompt.length - condensedPrompt.length) / fullPrompt.length) * 100)
       }
     };
-
-    // Add condensed prompt if requested
-    if (!showType || showType === 'both' || showType === 'condensed') {
-      response.condensed = {
+    
+    // Get current prompt (condensed by default)
+    const currentPrompt = anthropicService.getCurrentSystemPrompt(context);
+    const condensedPrompt = anthropicService.getCondensedSystemPrompt(context);
+    const fullPrompt = anthropicService.getFullSystemPrompt(context);
+    
+    // Estimate tokens (rough approximation: 1 token ≈ 4 characters)
+    const estimateTokens = (text: string) => Math.round(text.length / 4);
+    
+    result.current = {
+      type: 'condensed', // Currently always condensed
+      length: currentPrompt.length,
+      estimatedTokens: estimateTokens(currentPrompt),
+      content: fullContent === 'true' ? currentPrompt : 
+               currentPrompt.length > 1000 ? 
+               currentPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
+               currentPrompt
+    };
+    
+    if (type !== 'full') {
+      result.condensed = {
         length: condensedPrompt.length,
-        estimatedTokens: Math.round(condensedPrompt.length / 4),
-        content: condensedPrompt
-      };
-    }
-
-    // Add full prompt if requested
-    if (!showType || showType === 'both' || showType === 'full') {
-      response.full = {
-        length: fullPrompt.length,
-        estimatedTokens: Math.round(fullPrompt.length / 4),
-        content: showFullContent ? fullPrompt : fullPrompt.substring(0, 1000) + '...[truncated for display]'
+        estimatedTokens: estimateTokens(condensedPrompt),
+        content: fullContent === 'true' ? condensedPrompt : 
+                 condensedPrompt.length > 1000 ? 
+                 condensedPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
+                 condensedPrompt
       };
     }
     
-    res.json(response);
+    if (type !== 'condensed') {
+      result.full = {
+        length: fullPrompt.length,
+        estimatedTokens: estimateTokens(fullPrompt),
+        content: fullContent === 'true' ? fullPrompt : 
+                 fullPrompt.length > 1000 ? 
+                 fullPrompt.substring(0, 1000) + '\n\n[truncated for display - enable fullContent to see complete prompt]' : 
+                 fullPrompt
+      };
+    }
+    
+    // Calculate savings
+    result.tokenSavings = {
+      characters: fullPrompt.length - condensedPrompt.length,
+      estimatedTokens: estimateTokens(fullPrompt) - estimateTokens(condensedPrompt),
+      percentReduction: Math.round(((fullPrompt.length - condensedPrompt.length) / fullPrompt.length) * 100)
+    };
+    
+    res.json(result);
   } catch (error) {
-    console.error('Error getting system prompt:', error);
+    console.error('Debug endpoint error:', error);
     res.status(500).json({ 
-      error: 'Failed to get system prompt',
+      error: 'Failed to generate debug information',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Debug endpoint for API response analysis
+app.post('/api/debug/api-response', async (req, res) => {
+  try {
+    const { query } = req.body;
+    
+    if (!query) {
+      return res.status(400).json({ error: 'Query is required' });
+    }
+    
+    console.log('\n🔍 === DEBUG API RESPONSE ENDPOINT ===');
+    console.log(`📝 Debug query: "${query}"`);
+    
+    const context = await schedulingService.getSchedulingContext();
+    const anthropicService = new AnthropicService();
+    anthropicService.setSchedulingService(schedulingService);
+    
+    // Make the API call and capture detailed response info
+    try {
+      const result = await anthropicService.getSchedulingRecommendation(query, context);
+      
+      res.json({
+        success: true,
+        query: query,
+        response: result,
+        timestamp: new Date().toISOString(),
+        note: 'Check server logs for detailed API response analysis'
+      });
+    } catch (error) {
+      console.error('❌ Debug API call failed:', error);
+      res.json({
+        success: false,
+        query: query,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+        note: 'Check server logs for detailed error analysis'
+      });
+    }
+    
+  } catch (error) {
+    console.error('Debug API response endpoint error:', error);
+    res.status(500).json({ 
+      error: 'Failed to debug API response',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
