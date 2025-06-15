@@ -389,7 +389,7 @@ def extract_notes_from_summary(summary, client_name=None):
             # Clean up common separators and extra words
             remaining_text = re.sub(r'^(maintenance|maint)\s*', '', remaining_text, flags=re.IGNORECASE)
             remaining_text = re.sub(r'^[\-\(\)\s]+', '', remaining_text)
-            remaining_text = re.sub(r'[\)\s]+$', '', remaining_text)
+            remaining_text = re.sub(r'\s+$', '', remaining_text)  # Only remove trailing spaces, not parentheses
             return remaining_text.strip()
     
     return ""
@@ -633,9 +633,8 @@ def enhance_calendar_events(csv_file, service_account_file, calendar_id='primary
         # Determine what needs updating
         updates = {}
         
-        # Update status based on star logic
+        # Update status based on star logic (status is encoded in title, not stored separately)
         new_status, status_label = determine_status(summary, event_date, reference_date)
-        updates['status'] = new_status
         
         # Create new title with the updated format
         new_title = create_standardized_title(status_label, client_name, work_type, helper_info, notes)
