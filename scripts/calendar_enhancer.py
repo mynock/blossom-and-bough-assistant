@@ -608,7 +608,18 @@ def enhance_calendar_events(csv_file, service_account_file, calendar_id='primary
         print(f"  Work Type: {work_type}")
         print(f"  New Title: {new_title}")
         print(f"  Status: → {new_status} ({status_label})")
-        print(f"  Color: → {color_id} ({work_type})")
+        
+        # Enhanced color information with descriptive names
+        color_name_map = {
+            '10': 'Green/Basil',
+            '4': 'Flamingo/Pale Red', 
+            '3': 'Grape/Mauve',
+            '8': 'Graphite/Gray',
+            '6': 'Tangerine/Orange'
+        }
+        color_name = color_name_map.get(color_id, f'Color {color_id}')
+        print(f"  Color: → {color_id} ({color_name}) - {work_type}")
+        
         if helper_info:
             print(f"  Helper: → {helper_info}")
         if client_data and client_data['address']:
@@ -690,11 +701,11 @@ def main():
         print("Format: [Status] Client - WorkType (Helper) | Notes")
         print("")
         print("Work Types & Colors:")
-        print("  Maintenance         - Green   (recurring scheduled work)")
-        print("  Ad-hoc             - Red      (one-off client visits)")
-        print("  Design             - Purple   (consultation/planning work)")
-        print("  Office Work        - Gray     (internal business tasks)")
-        print("  Errands            - Orange   (supply runs, equipment service, truck/tool maintenance)")
+        print("  Maintenance         - Green/Basil (ID: 10)     (recurring scheduled work)")
+        print("  Ad-hoc             - Flamingo/Pale Red (ID: 4) (one-off client visits)")
+        print("  Design             - Grape/Mauve (ID: 3)       (consultation/planning work)")
+        print("  Office Work        - Graphite/Gray (ID: 8)     (internal business tasks)")
+        print("  Errands            - Tangerine/Orange (ID: 6)  (supply runs, equipment service, truck/tool maintenance)")
         print("")
         print("Note: This will REPLACE existing descriptions and locations for events")
         print("      Helper information will be extracted from all-day events and added to titles")
