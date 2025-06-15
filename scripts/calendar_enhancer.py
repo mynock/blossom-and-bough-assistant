@@ -52,6 +52,56 @@ WORK_TYPE_COLORS = {
     'Errands': '6',          # Tangerine/Orange - for supply runs, equipment service, truck service, tool maintenance
 }
 
+# Helper name mapping - convert informal names to formal names
+HELPER_NAME_MAPPING = {
+    'Rorick': 'Rebecca',
+    'rorick': 'Rebecca',
+    'RORICK': 'Rebecca',
+    # Add more mappings as needed
+    # 'Anne': 'Anne',  # Example - already correct
+    # 'Megan': 'Megan',  # Example - already correct
+    # 'Virginia': 'Virginia',  # Example - already correct
+}
+
+def map_helper_name(helper_name):
+    """Map informal helper names to formal names."""
+    if not helper_name:
+        return helper_name
+    
+    # Handle complex helper strings like "Rorick SOLO" or "**Anne?"
+    # Extract the base name and preserve any modifiers
+    original = helper_name
+    modifiers = ""
+    
+    # Extract modifiers (SOLO, ?, **, etc.)
+    import re
+    
+    # Pattern to match modifiers at the end
+    modifier_pattern = r'(\s+(?:SOLO|solo)|\?|\*+)$'
+    modifier_match = re.search(modifier_pattern, helper_name)
+    if modifier_match:
+        modifiers = modifier_match.group(1)
+        helper_name = helper_name[:modifier_match.start()]
+    
+    # Pattern to match modifiers at the beginning
+    prefix_pattern = r'^(\*+\s*)'
+    prefix_match = re.match(prefix_pattern, helper_name)
+    prefix = ""
+    if prefix_match:
+        prefix = prefix_match.group(1)
+        helper_name = helper_name[prefix_match.end():]
+    
+    # Clean up the core name
+    core_name = helper_name.strip()
+    
+    # Apply mapping
+    mapped_name = HELPER_NAME_MAPPING.get(core_name, core_name)
+    
+    # Reconstruct with modifiers
+    result = prefix + mapped_name + modifiers
+    
+    return result
+
 def parse_sheets_clients(service_account_file):
     """Parse client data from Google Sheets and return a dictionary keyed by client name."""
     clients = {}
@@ -188,8 +238,10 @@ def determine_work_type(summary, client_data=None):
     # Clean up summary for analysis
     clean_summary = re.sub(r'^\*+\s*', '', summary).lower()
     
-    # Check for specific work type keywords
-    if any(keyword in clean_summary for keyword in ['design', 'consultation', 'planning', 'plan', 'estimate']):
+    # Check for specific work type keywords with more precise matching
+    # Design work - use word boundaries to avoid false matches like "planting" containing "plan"
+    design_keywords = ['design', 'consultation', r'\bplanning\b', r'\bplan\b', 'estimate']
+    if any(re.search(keyword if keyword.startswith(r'\b') else re.escape(keyword), clean_summary) for keyword in design_keywords):
         return "Design"
     elif any(keyword in clean_summary for keyword in ['office', 'invoice', 'quote', 'admin', 'paperwork', 'follow-up']):
         return "Office Work"
@@ -569,6 +621,10 @@ def enhance_calendar_events(csv_file, service_account_file, calendar_id='primary
         
         # Get helper information for this date
         helper_info = get_helper_for_date(event_date, helper_schedule)
+        
+        # Apply helper name mapping (e.g., Rorick -> Rebecca Smith)
+        if helper_info:
+            helper_info = map_helper_name(helper_info)
         
         # Extract notes from summary
         client_name = client_data['full_name'] if client_data else None
