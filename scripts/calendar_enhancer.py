@@ -9,29 +9,35 @@ Requires Google Calendar API setup and authentication using service account.
 import re
 import csv
 import sys
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
-import json
 
-# Load environment variables
+# Import our shared library
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from calendar_lib import (
+        setup_google_calendar_api, get_service_account_file, get_calendar_id,
+        get_calendar_events, update_event, delete_all_events, WORK_TYPE_COLORS,
+        parse_event_date, show_help
+    )
 except ImportError:
-    print("Please install python-dotenv: pip install python-dotenv")
+    print("Error: calendar_lib.py not found in the same directory!")
+    print("Make sure both calendar_enhancer.py and calendar_lib.py are in the scripts/ directory.")
+    sys.exit(1)
 
-# Google Calendar API imports
+# Google Sheets API imports (for client data)
 try:
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
     from googleapiclient.errors import HttpError
+    import os
+    from pathlib import Path
+    from dotenv import load_dotenv
+    load_dotenv()
 except ImportError:
     print("Please install required packages:")
     print("pip install google-api-python-client google-auth python-dotenv")
     sys.exit(1)
 
-# Google Calendar API scopes - updated to include Sheets
+# Google Calendar API scopes
 SCOPES = [
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/spreadsheets.readonly'
@@ -45,39 +51,6 @@ WORK_TYPE_COLORS = {
     'Office Work': '8',      # Graphite/Gray - for internal business tasks
     'Errands': '6',          # Tangerine/Orange - for supply runs, equipment service, truck service, tool maintenance
 }
-
-def setup_google_calendar_api(service_account_file):
-    """Set up Google Calendar API authentication using service account."""
-    try:
-        if not Path(service_account_file).exists():
-            print(f"Error: Service account file '{service_account_file}' not found!")
-            print("\nTo set up Google Calendar API access with service account:")
-            print("1. Go to https://console.cloud.google.com/")
-            print("2. Create a new project or select existing project")
-            print("3. Enable the Google Calendar API")
-            print("4. Create a Service Account")
-            print("5. Download the service account key JSON file")
-            print("6. Share your calendar with the service account email address")
-            return None
-        
-        credentials = service_account.Credentials.from_service_account_file(
-            service_account_file, scopes=SCOPES)
-        
-        service = build('calendar', 'v3', credentials=credentials)
-        
-        # Test the connection
-        calendar_list = service.calendarList().list().execute()
-        print(f"Successfully connected! Found {len(calendar_list.get('items', []))} accessible calendars")
-        
-        return service
-        
-    except Exception as e:
-        print(f"Error setting up Calendar service: {e}")
-        print("Make sure:")
-        print("1. The service account key file is valid")
-        print("2. Google Calendar API is enabled in your project")
-        print("3. You've shared the calendar with the service account email")
-        return None
 
 def parse_sheets_clients(service_account_file):
     """Parse client data from Google Sheets and return a dictionary keyed by client name."""
@@ -507,78 +480,6 @@ def create_non_client_description(work_type, notes="", helper_info=None):
     
     return "\n".join(desc_parts)
 
-def parse_event_date(event):
-    """Parse event start date from Google Calendar event object."""
-    try:
-        start = event.get('start', {})
-        
-        if 'dateTime' in start:
-            # Parse datetime with timezone
-            date_str = start['dateTime']
-            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
-            # Convert to naive datetime for comparison
-            return dt.replace(tzinfo=None)
-        elif 'date' in start:
-            # Parse date-only events
-            date_str = start['date']
-            return datetime.strptime(date_str, '%Y-%m-%d')
-    except Exception:
-        pass
-    
-    return datetime.now()
-
-def get_calendar_events(service, calendar_id='primary', start_date=None, end_date=None):
-    """Retrieve events from Google Calendar within date range."""
-    try:
-        if start_date is None:
-            start_date = datetime(2025, 5, 1)  # May 2025
-        if end_date is None:
-            end_date = datetime(2025, 8, 31)  # August 2025
-        
-        # Convert to RFC3339 format
-        time_min = start_date.isoformat() + 'Z'
-        time_max = end_date.isoformat() + 'Z'
-        
-        events_result = service.events().list(
-            calendarId=calendar_id,
-            timeMin=time_min,
-            timeMax=time_max,
-            maxResults=2500,  # Adjust as needed
-            singleEvents=True,
-            orderBy='startTime'
-        ).execute()
-        
-        events = events_result.get('items', [])
-        print(f"Found {len(events)} events in calendar")
-        return events
-        
-    except HttpError as error:
-        print(f"An error occurred: {error}")
-        return []
-
-def update_event(service, calendar_id, event_id, updates):
-    """Update a specific event in Google Calendar."""
-    try:
-        # Get the current event
-        event = service.events().get(calendarId=calendar_id, eventId=event_id).execute()
-        
-        # Apply updates
-        for key, value in updates.items():
-            event[key] = value
-        
-        # Update the event
-        updated_event = service.events().update(
-            calendarId=calendar_id,
-            eventId=event_id,
-            body=event
-        ).execute()
-        
-        return True
-        
-    except HttpError as error:
-        print(f"Error updating event {event_id}: {error}")
-        return False
-
 def enhance_calendar_events(csv_file, service_account_file, calendar_id='primary', dry_run=False, force_reprocess=False, use_sheets=True):
     """Main function to enhance calendar events with client data."""
     
@@ -739,18 +640,10 @@ def enhance_calendar_events(csv_file, service_account_file, calendar_id='primary
 def main():
     """Main function with command line interface."""
     
-    # Default parameters - use environment variables
+    # Default parameters - use environment variables from shared library
     csv_file = "Clients.csv"  # Kept for backward compatibility, but deprecated
-    
-    # Handle service account file path - adjust for relative paths from server directory
-    service_account_from_env = os.getenv('GOOGLE_SERVICE_ACCOUNT_KEY_FILE', 'google-account-key.json')
-    if service_account_from_env.startswith('../'):
-        # Remove ../ prefix if running from root directory
-        service_account_file = service_account_from_env[3:]
-    else:
-        service_account_file = service_account_from_env
-    
-    calendar_id = os.getenv('GOOGLE_CALENDAR_ID', 'primary')
+    service_account_file = get_service_account_file()
+    calendar_id = get_calendar_id()
     dry_run = False
     force_reprocess = False
     delete_all = False
@@ -811,7 +704,7 @@ def main():
         print("  Use --dry-run with this option to see what would be deleted first.")
         return
     
-    # Process arguments
+    # Process arguments - same logic as before
     if '--dry-run' in args:
         dry_run = True
         args.remove('--dry-run')

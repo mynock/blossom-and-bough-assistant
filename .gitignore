@@ -111,3 +111,4 @@ coverage/
 .yarn/install-state.gz
 .pnp.*
 venv/
+__pycache__/
