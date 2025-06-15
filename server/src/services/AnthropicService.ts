@@ -6,6 +6,7 @@ export class AnthropicService {
   private client: Anthropic | null = null;
   private schedulingService: any = null; // Will be injected to avoid circular dependency
   private useCondensedPrompt: boolean = true; // Flag to control prompt type
+  private useNaturalMode: boolean = true; // Flag to enable natural Claude behavior
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -31,6 +32,12 @@ export class AnthropicService {
     console.log(`🔧 Switched to ${useCondensed ? 'CONDENSED' : 'FULL'} system prompts`);
   }
 
+  // Method to toggle natural mode
+  setNaturalMode(useNatural: boolean) {
+    this.useNaturalMode = useNatural;
+    console.log(`🧠 Switched to ${useNatural ? 'NATURAL' : 'MANAGED'} Claude behavior`);
+  }
+
   // Temporary method to test with full prompt
   async getSchedulingRecommendationWithFullPrompt(query: string, context: SchedulingContext): Promise<SchedulingResponse> {
     const originalSetting = this.useCondensedPrompt;
@@ -54,6 +61,7 @@ export class AnthropicService {
     console.log('\n🚀 === ANTHROPIC API CALL START ===');
     console.log(`📝 Query: "${query.substring(0, 100)}${query.length > 100 ? '...' : ''}"`);
     console.log(`📊 Context size: ${JSON.stringify(context).length} characters`);
+    console.log(`🧠 Mode: ${this.useNaturalMode ? 'NATURAL' : 'MANAGED'}`);
 
     if (!this.client) {
       const error = new Error('Anthropic API client not initialized. Please check your ANTHROPIC_API_KEY environment variable.');
@@ -61,6 +69,135 @@ export class AnthropicService {
       throw error;
     }
 
+    // Use natural mode if enabled
+    if (this.useNaturalMode) {
+      return this.handleNaturalMode(query, context, startTime);
+    }
+
+    // Original managed mode (existing implementation)
+    return this.handleManagedMode(query, context, startTime);
+  }
+
+  private async handleNaturalMode(
+    query: string, 
+    context: SchedulingContext, 
+    startTime: number
+  ): Promise<SchedulingResponse> {
+    console.log('🧠 Using NATURAL mode - letting Claude work without interference');
+    
+    try {
+      // Use full system prompt for natural mode - no condensing
+      const systemPrompt = this.buildFullSystemPrompt(context);
+      const tools = this.getSchedulingTools();
+      
+      console.log(`📋 System prompt: ${systemPrompt.length} characters (FULL)`);
+      console.log(`🛠️ Available tools: ${tools.map(t => t.name).join(', ')}`);
+      
+      // Simple, clean conversation with Claude
+      let messages: Array<{role: 'user' | 'assistant', content: any}> = [
+        { role: 'user' as const, content: query }
+      ];
+      
+      let currentMessage = await this.client!.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000, // Increased for comprehensive responses
+        temperature: 0.3,
+        system: systemPrompt,
+        tools: tools,
+        messages: messages
+      });
+
+      console.log(`⏱️ Initial response: ${Date.now() - startTime}ms`);
+      console.log(`📈 Usage: ${currentMessage.usage?.input_tokens} in, ${currentMessage.usage?.output_tokens} out`);
+      
+      // Handle tool calls naturally - no interference
+      let toolRound = 1;
+      const maxRounds = 10; // Allow more rounds for complex analysis
+      
+      while (toolRound <= maxRounds) {
+        const toolUseContent = currentMessage.content.filter((content: any) => content.type === 'tool_use');
+        
+        if (toolUseContent.length === 0) {
+          // No more tools needed - Claude is done
+          const textResponse = currentMessage.content.find((content: any) => content.type === 'text');
+          if (textResponse && textResponse.type === 'text') {
+            const totalTime = Date.now() - startTime;
+            console.log(`✅ Natural mode complete: ${totalTime}ms, ${toolRound - 1} tool rounds`);
+            console.log(`📝 Response: ${(textResponse as any).text.length} characters`);
+            
+            return {
+              response: (textResponse as any).text,
+              reasoning: `Natural Claude analysis with ${toolRound - 1} rounds of tool usage`,
+              suggestions: []
+            };
+          }
+          break;
+        }
+
+        console.log(`🔧 Tool round ${toolRound}: ${toolUseContent.length} tools`);
+        
+        // Execute tools and add results to conversation
+        messages.push({ role: 'assistant' as const, content: currentMessage.content });
+        
+        const toolResults = [];
+        for (const toolUse of toolUseContent) {
+          console.log(`🛠️ Executing: ${(toolUse as any).name}`);
+          const result = await this.executeToolCall((toolUse as any).name, (toolUse as any).input);
+          
+          // NO SUMMARIZATION - give Claude the full data
+          toolResults.push({
+            type: 'tool_result' as const,
+            tool_use_id: (toolUse as any).id,
+            content: JSON.stringify(result)
+          });
+        }
+        
+        messages.push({ role: 'user' as const, content: toolResults });
+        
+        // Continue conversation - NO conversation trimming
+        currentMessage = await this.client!.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 4000,
+          temperature: 0.3,
+          system: systemPrompt, // Always use full prompt
+          tools: tools,
+          messages: messages
+        });
+
+        console.log(`⏱️ Round ${toolRound} response: ${Date.now() - startTime}ms total`);
+        console.log(`📈 Usage: ${currentMessage.usage?.input_tokens} in, ${currentMessage.usage?.output_tokens} out`);
+        
+        toolRound++;
+      }
+      
+      // If we hit max rounds, return what we have
+      const textResponse = currentMessage.content.find((content: any) => content.type === 'text');
+      if (textResponse && textResponse.type === 'text') {
+        console.log(`⚠️ Hit max rounds (${maxRounds}) but got response`);
+        return {
+          response: (textResponse as any).text,
+          reasoning: `Natural Claude analysis (hit ${maxRounds} round limit)`,
+          suggestions: []
+        };
+      }
+      
+      throw new Error('No text response found after tool execution');
+      
+    } catch (error) {
+      const totalTime = Date.now() - startTime;
+      console.error(`❌ Natural mode failed: ${totalTime}ms`);
+      console.error('Error:', error);
+      throw error;
+    }
+  }
+
+  private async handleManagedMode(
+    query: string, 
+    context: SchedulingContext, 
+    startTime: number
+  ): Promise<SchedulingResponse> {
+    console.log('🔧 Using MANAGED mode - original implementation with optimizations');
+    
     // Preprocess broad queries to make them more specific
     const processedQuery = this.preprocessBroadQuery(query);
     if (processedQuery !== query) {
@@ -103,7 +240,7 @@ export class AnthropicService {
         estimated_input_tokens: Math.round(systemPrompt.length / 4) + Math.round(processedQuery.length / 4)
       });
 
-      const message = await this.client.messages.create(requestPayload);
+      const message = await this.client!.messages.create(requestPayload);
 
       const apiCallTime = Date.now() - startTime;
       console.log(`⏱️ Initial API call completed in ${apiCallTime}ms`);
