@@ -11,6 +11,8 @@ import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
+import employeesRouter from './routes/employees';
+import migrationRouter from './routes/migration';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -43,6 +45,12 @@ app.get('/api/health', (req, res) => {
 
 // Mount work activities routes
 app.use('/api/work-activities', workActivitiesRouter);
+
+// Mount employees routes
+app.use('/api/employees', employeesRouter);
+
+// Mount migration routes
+app.use('/api/migration', migrationRouter);
 
 // Get all helpers
 app.get('/api/helpers', async (req, res) => {
