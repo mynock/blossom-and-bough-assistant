@@ -10,6 +10,7 @@ import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
+import workActivitiesRouter from './routes/workActivities';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -39,6 +40,9 @@ const schedulingService = new SchedulingService(
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
+
+// Mount work activities routes
+app.use('/api/work-activities', workActivitiesRouter);
 
 // Get all helpers
 app.get('/api/helpers', async (req, res) => {
