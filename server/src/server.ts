@@ -14,6 +14,7 @@ import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
 import migrationRouter from './routes/migration';
 import clientsRouter from './routes/clients';
+import projectsRouter from './routes/projects';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -52,6 +53,9 @@ app.use('/api/employees', employeesRouter);
 
 // Mount clients routes
 app.use('/api/clients', clientsRouter);
+
+// Mount projects routes
+app.use('/api/projects', projectsRouter);
 
 // Mount migration routes
 app.use('/api/migration', migrationRouter);

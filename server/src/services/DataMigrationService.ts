@@ -90,18 +90,15 @@ export class DataMigrationService extends DatabaseService {
       const helpers = await this.googleSheetsService.getHelpers();
       console.log(`Found ${helpers.length} employees in Google Sheets`);
 
-      for (const helper of helpers) {
+      for (let i = 0; i < helpers.length; i++) {
+        const helper = helpers[i];
         try {
-          // Check if employee already exists
-          const existing = await this.employeeService.getEmployeeByEmployeeId(helper.id);
-          if (existing) {
-            console.log(`⏭️  Employee ${helper.name} (${helper.id}) already exists, skipping`);
-            continue;
-          }
+          // Generate simple sequential employee ID
+          const employeeId = `EMP${String(i + 1).padStart(2, '0')}`;
 
-          // Convert Helper to NewEmployee format
+          // Convert Helper to NewEmployee format (ignoring Google Sheets ID)
           const employeeData: NewEmployee = {
-            employeeId: helper.id,
+            employeeId: employeeId, // Use simple sequential ID
             name: helper.name,
             regularWorkdays: helper.workdays.join(' '), // Convert array to space-separated string
             homeAddress: helper.homeAddress,
@@ -113,10 +110,10 @@ export class DataMigrationService extends DatabaseService {
             activeStatus: helper.status === 'active' ? 'active' : 'inactive'
           };
 
-          // Create employee in database
+          // Create employee in database (database will auto-increment the primary key ID)
           await this.employeeService.createEmployee(employeeData);
           imported++;
-          console.log(`✅ Imported employee: ${helper.name} (${helper.id})`);
+          console.log(`✅ Imported employee: ${helper.name} (ID: ${employeeId})`);
 
         } catch (error) {
           const errorMsg = `Failed to import employee ${helper.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -148,18 +145,15 @@ export class DataMigrationService extends DatabaseService {
       const clients = await this.googleSheetsService.getClients();
       console.log(`Found ${clients.length} clients in Google Sheets`);
 
-      for (const client of clients) {
+      for (let i = 0; i < clients.length; i++) {
+        const client = clients[i];
         try {
-          // Check if client already exists
-          const existing = await this.clientService.getClientByClientId(client.id);
-          if (existing) {
-            console.log(`⏭️  Client ${client.name} (${client.id}) already exists, skipping`);
-            continue;
-          }
+          // Generate simple sequential client ID
+          const clientId = `CLT${String(i + 1).padStart(2, '0')}`;
 
-          // Convert Client to NewClient format
+          // Convert Client to NewClient format (ignoring Google Sheets ID)
           const clientData: NewClient = {
-            clientId: client.id,
+            clientId: clientId, // Use simple sequential ID
             name: client.name,
             address: client.address,
             geoZone: client.zone,
@@ -177,10 +171,10 @@ export class DataMigrationService extends DatabaseService {
             activeStatus: client.status === 'active' ? 'active' : 'inactive'
           };
 
-          // Create client in database
+          // Create client in database (database will auto-increment the primary key ID)
           await this.clientService.createClient(clientData);
           imported++;
-          console.log(`✅ Imported client: ${client.name} (${client.id})`);
+          console.log(`✅ Imported client: ${client.name} (ID: ${clientId})`);
 
         } catch (error) {
           const errorMsg = `Failed to import client ${client.name}: ${error instanceof Error ? error.message : 'Unknown error'}`;
