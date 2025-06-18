@@ -10,6 +10,7 @@ import Debug from './components/Debug';
 import ClientManagement from './components/ClientManagement';
 import EmployeeManagement from './components/EmployeeManagement';
 import ProjectManagement from './components/ProjectManagement';
+import WorkActivityManagement from './components/WorkActivityManagement';
 import Navigation from './components/Navigation';
 
 const theme = createTheme({
@@ -52,6 +53,7 @@ function App() {
               <Route path="/clients" element={<ClientManagement />} />
               <Route path="/employees" element={<EmployeeManagement />} />
               <Route path="/projects" element={<ProjectManagement />} />
+              <Route path="/work-activities" element={<WorkActivityManagement />} />
               <Route path="/debug" element={<Debug />} />
             </Routes>
           </div>

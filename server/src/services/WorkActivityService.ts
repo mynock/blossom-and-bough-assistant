@@ -3,12 +3,15 @@ import {
   workActivities, 
   workActivityEmployees, 
   otherCharges,
+  clients,
+  projects,
+  employees,
   type WorkActivity, 
   type NewWorkActivity,
   type OtherCharge,
   type NewOtherCharge
 } from '../db';
-import { eq } from 'drizzle-orm';
+import { eq, desc, like, and } from 'drizzle-orm';
 
 export interface CreateWorkActivityData {
   workActivity: NewWorkActivity;
@@ -16,25 +19,164 @@ export interface CreateWorkActivityData {
   charges?: Array<Omit<NewOtherCharge, 'workActivityId'>>;
 }
 
+export interface WorkActivityWithDetails extends WorkActivity {
+  clientName?: string | null;
+  projectName?: string | null;
+  employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
+  chargesList: OtherCharge[];
+  totalCharges: number;
+}
+
 export class WorkActivityService extends DatabaseService {
   
   /**
-   * Get all work activities
+   * Get all work activities with related data
    */
-  async getAllWorkActivities(): Promise<WorkActivity[]> {
-    return await this.db.select().from(workActivities);
+  async getAllWorkActivities(): Promise<WorkActivityWithDetails[]> {
+    const activities = await this.db
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
+      .from(workActivities)
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
+      .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
+
+    // Get employees and charges for each activity
+    const activitiesWithDetails: WorkActivityWithDetails[] = [];
+    
+    for (const activity of activities) {
+      const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+      const chargesList = await this.getWorkActivityCharges(activity.id);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+      activitiesWithDetails.push({
+        ...activity,
+        employeesList,
+        chargesList,
+        totalCharges
+      });
+    }
+
+    return activitiesWithDetails;
   }
 
   /**
-   * Get a single work activity by ID
+   * Get a single work activity by ID with related data
    */
-  async getWorkActivityById(id: number): Promise<WorkActivity | undefined> {
+  async getWorkActivityById(id: number): Promise<WorkActivityWithDetails | undefined> {
     const results = await this.db
-      .select()
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
       .from(workActivities)
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
       .where(eq(workActivities.id, id));
     
-    return results[0];
+    if (!results[0]) return undefined;
+
+    const activity = results[0];
+    const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+    const chargesList = await this.getWorkActivityCharges(activity.id);
+    const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+    return {
+      ...activity,
+      employeesList,
+      chargesList,
+      totalCharges
+    };
+  }
+
+  /**
+   * Get work activities by date range
+   */
+  async getWorkActivitiesByDateRange(startDate: string, endDate: string): Promise<WorkActivityWithDetails[]> {
+    const activities = await this.db
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
+      .from(workActivities)
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
+      .where(and(
+        eq(workActivities.date, startDate), // For now, just match exact date
+        // TODO: Add proper date range filtering
+      ))
+      .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
+
+    // Get employees and charges for each activity
+    const activitiesWithDetails: WorkActivityWithDetails[] = [];
+    
+    for (const activity of activities) {
+      const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+      const chargesList = await this.getWorkActivityCharges(activity.id);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+      activitiesWithDetails.push({
+        ...activity,
+        employeesList,
+        chargesList,
+        totalCharges
+      });
+    }
+
+    return activitiesWithDetails;
   }
 
   /**
@@ -101,7 +243,24 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
-   * Get employees for a work activity
+   * Get employees for a work activity with names
+   */
+  async getWorkActivityEmployeesWithNames(workActivityId: number): Promise<Array<{ employeeId: number; employeeName: string | null; hours: number }>> {
+    const results = await this.db
+      .select({
+        employeeId: workActivityEmployees.employeeId,
+        employeeName: employees.name,
+        hours: workActivityEmployees.hours
+      })
+      .from(workActivityEmployees)
+      .leftJoin(employees, eq(workActivityEmployees.employeeId, employees.id))
+      .where(eq(workActivityEmployees.workActivityId, workActivityId));
+
+    return results;
+  }
+
+  /**
+   * Get employees for a work activity (basic)
    */
   async getWorkActivityEmployees(workActivityId: number): Promise<any[]> {
     return await this.db

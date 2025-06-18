@@ -34,15 +34,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Work activity not found' });
     }
 
-    // Get related data
-    const employees = await workActivityService.getWorkActivityEmployees(id);
-    const charges = await workActivityService.getWorkActivityCharges(id);
-
-    res.json({
-      ...workActivity,
-      employees,
-      charges
-    });
+    res.json(workActivity);
   } catch (error) {
     console.error('Error fetching work activity:', error);
     res.status(500).json({ error: 'Failed to fetch work activity' });
@@ -122,7 +114,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Work activity not found' });
     }
 
-    res.json({ message: 'Work activity deleted successfully' });
+    res.status(204).send(); // No content response for successful delete
   } catch (error) {
     console.error('Error deleting work activity:', error);
     res.status(500).json({ error: 'Failed to delete work activity' });
