@@ -13,6 +13,7 @@ import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
 import migrationRouter from './routes/migration';
+import clientsRouter from './routes/clients';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -49,6 +50,9 @@ app.use('/api/work-activities', workActivitiesRouter);
 // Mount employees routes
 app.use('/api/employees', employeesRouter);
 
+// Mount clients routes
+app.use('/api/clients', clientsRouter);
+
 // Mount migration routes
 app.use('/api/migration', migrationRouter);
 
@@ -60,17 +64,6 @@ app.get('/api/helpers', async (req, res) => {
   } catch (error) {
     console.error('Error fetching helpers:', error);
     res.status(500).json({ error: 'Failed to fetch helpers' });
-  }
-});
-
-// Get all clients
-app.get('/api/clients', async (req, res) => {
-  try {
-    const clients = await schedulingService.getClients();
-    res.json({ clients });
-  } catch (error) {
-    console.error('Error fetching clients:', error);
-    res.status(500).json({ error: 'Failed to fetch clients' });
   }
 });
 
