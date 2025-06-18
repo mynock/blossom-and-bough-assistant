@@ -7,6 +7,8 @@ import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import Schedule from './components/Schedule';
 import Debug from './components/Debug';
+import ClientManagement from './components/ClientManagement';
+import EmployeeManagement from './components/EmployeeManagement';
 import Navigation from './components/Navigation';
 
 const theme = createTheme({
@@ -46,6 +48,8 @@ function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/chat" element={<Chat />} />
               <Route path="/schedule" element={<Schedule />} />
+              <Route path="/clients" element={<ClientManagement />} />
+              <Route path="/employees" element={<EmployeeManagement />} />
               <Route path="/debug" element={<Debug />} />
             </Routes>
           </div>
