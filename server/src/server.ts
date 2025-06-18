@@ -15,6 +15,7 @@ import employeesRouter from './routes/employees';
 import migrationRouter from './routes/migration';
 import clientsRouter from './routes/clients';
 import projectsRouter from './routes/projects';
+import { createWorkNotesImportRouter } from './routes/workNotesImport';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -56,6 +57,9 @@ app.use('/api/clients', clientsRouter);
 
 // Mount projects routes
 app.use('/api/projects', projectsRouter);
+
+// Mount work notes import routes
+app.use('/api/work-notes', createWorkNotesImportRouter(anthropicService));
 
 // Mount migration routes
 app.use('/api/migration', migrationRouter);

@@ -11,6 +11,7 @@ import ClientManagement from './components/ClientManagement';
 import EmployeeManagement from './components/EmployeeManagement';
 import ProjectManagement from './components/ProjectManagement';
 import WorkActivityManagement from './components/WorkActivityManagement';
+import WorkNotesImport from './components/WorkNotesImport';
 import Navigation from './components/Navigation';
 
 const theme = createTheme({
@@ -54,6 +55,7 @@ function App() {
               <Route path="/employees" element={<EmployeeManagement />} />
               <Route path="/projects" element={<ProjectManagement />} />
               <Route path="/work-activities" element={<WorkActivityManagement />} />
+              <Route path="/work-notes-import" element={<WorkNotesImport />} />
               <Route path="/debug" element={<Debug />} />
             </Routes>
           </div>

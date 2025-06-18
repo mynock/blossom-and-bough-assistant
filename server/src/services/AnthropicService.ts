@@ -1,6 +1,32 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
 
+export interface ParsedWorkActivity {
+  date: string;
+  clientName: string;
+  employees: string[];
+  startTime?: string;
+  endTime?: string;
+  totalHours: number;
+  workType: string;
+  tasks: string[];
+  notes: string;
+  charges?: Array<{
+    description: string;
+    type: string;
+    cost?: number;
+  }>;
+  driveTime?: number;
+  lunchTime?: number;
+  confidence: number; // 0-1 confidence score
+}
+
+export interface WorkNotesParseResult {
+  activities: ParsedWorkActivity[];
+  unparsedSections: string[];
+  warnings: string[];
+}
+
 export class AnthropicService {
   private client: Anthropic | null = null;
   private schedulingService: any = null; // Will be injected to avoid circular dependency
@@ -685,6 +711,121 @@ Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and 
     } catch (error) {
       console.error('❌ Error in buildSystemPrompt:', error);
       return 'Error building system prompt. Using fallback.';
+    }
+  }
+
+  /**
+   * Parse free-form work notes into structured work activities
+   */
+  async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
+    if (!this.client) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    const prompt = `You are an expert at parsing landscaping work logs into structured data. 
+
+Parse the following work notes and extract individual work activities. Each activity should represent work done for a specific client on a specific date.
+
+IMPORTANT PATTERNS TO RECOGNIZE:
+
+TIME FORMATS:
+- "8:45-3:10 w V inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
+- "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
+- "R 8:30-4:15, Me 9:40-5" = Rebecca 8:30-4:15, Me 9:40-5:00
+
+EMPLOYEE CODES:
+- "w V" = with Virginia
+- "w R" = with Rebecca  
+- "w A" = with Anne
+- "w M" = with Megan
+- "solo" = solo work
+
+CLIENT NAMES:
+- Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
+
+CHARGES:
+- "charge 1 debris bag" 
+- "Charge: Sluggo, fert, 2-3 bags debris, 3 aspidistra (60 pdxn)"
+
+WORK TYPES:
+- maintenance (most common)
+- installation/planting
+- design/consultation
+- pruning
+- weeding
+- cleanup
+
+For each work activity found, extract:
+1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume current year if not specified)
+2. Client name
+3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan)
+4. Start/end times if available
+5. Total hours worked (calculate from times or extract from context)
+6. Work type (categorize the main type of work)
+7. Detailed tasks performed (bullet points of work done)
+8. Notes (any client conversations, follow-ups, or observations)
+9. Charges (materials, debris bags, plants, etc.)
+10. Drive time if mentioned
+11. Confidence score (0-1) based on how clear the parsing was
+
+Return JSON in this exact format:
+{
+  "activities": [
+    {
+      "date": "2024-06-03",
+      "clientName": "Stoller",
+      "employees": ["Virginia"],
+      "startTime": "08:45",
+      "endTime": "15:10",
+      "totalHours": 6.42,
+      "workType": "maintenance",
+      "tasks": [
+        "Misc clean up/weeds",
+        "Deadhead brunnera",
+        "Deadhead / weeds / bulb clean up on east slope"
+      ],
+      "notes": "Stayed solo extra 15 min for design work. Take photos for design drawing + brainstorm ideas",
+      "charges": [],
+      "driveTime": 44,
+      "lunchTime": 85,
+      "confidence": 0.9
+    }
+  ],
+  "unparsedSections": ["Any text sections that couldn't be parsed into activities"],
+  "warnings": ["Any parsing concerns or ambiguities"]
+}
+
+WORK NOTES TO PARSE:
+${workNotesText}`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      });
+
+      if (response.content && response.content.length > 0) {
+        const content = response.content[0];
+        if (content && content.type === 'text') {
+          // Extract JSON from the response
+          const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
+            return result;
+          }
+        }
+      }
+
+      throw new Error('Failed to parse AI response');
+    } catch (error) {
+      console.error('Error parsing work notes:', error);
+      throw new Error('Failed to parse work notes with AI');
     }
   }
 } 

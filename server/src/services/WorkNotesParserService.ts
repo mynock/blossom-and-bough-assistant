@@ -1,0 +1,386 @@
+import { AnthropicService, ParsedWorkActivity, WorkNotesParseResult } from './AnthropicService';
+import { ClientService } from './ClientService';
+import { EmployeeService } from './EmployeeService';
+import { WorkActivityService, CreateWorkActivityData } from './WorkActivityService';
+import { NewWorkActivity } from '../db';
+
+export interface ClientMatch {
+  originalName: string;
+  matchedClient: { id: number; name: string } | null;
+  confidence: number;
+  suggestions: Array<{ id: number; name: string; score: number }>;
+}
+
+export interface EmployeeMatch {
+  originalName: string;
+  matchedEmployee: { id: number; name: string } | null;
+  confidence: number;
+}
+
+export interface ValidationIssue {
+  type: 'error' | 'warning';
+  field: string;
+  message: string;
+  suggestion?: string;
+}
+
+export interface ValidatedWorkActivity extends ParsedWorkActivity {
+  clientId?: number;
+  employeeIds: number[];
+  validationIssues: ValidationIssue[];
+  canImport: boolean;
+}
+
+export interface ImportPreview {
+  activities: ValidatedWorkActivity[];
+  clientMatches: ClientMatch[];
+  employeeMatches: EmployeeMatch[];
+  summary: {
+    totalActivities: number;
+    validActivities: number;
+    issuesCount: number;
+    estimatedImportTime: number;
+  };
+}
+
+export class WorkNotesParserService {
+  private anthropicService: AnthropicService;
+  private clientService: ClientService;
+  private employeeService: EmployeeService;
+  private workActivityService: WorkActivityService;
+
+  // Employee name mapping for common abbreviations
+  private readonly EMPLOYEE_NAME_MAP: Record<string, string> = {
+    'V': 'Virginia',
+    'Virginia': 'Virginia',
+    'R': 'Rebecca', 
+    'Rebecca': 'Rebecca',
+    'A': 'Anne',
+    'Anne': 'Anne',
+    'M': 'Megan',
+    'Megan': 'Megan',
+    'solo': 'Andrea', // Assume solo work is done by Andrea
+    'me': 'Andrea',
+    'Andrea': 'Andrea'
+  };
+
+  constructor(anthropicService: AnthropicService) {
+    this.anthropicService = anthropicService;
+    this.clientService = new ClientService();
+    this.employeeService = new EmployeeService();
+    this.workActivityService = new WorkActivityService();
+  }
+
+  /**
+   * Parse work notes text and return preview with validation
+   */
+  async parseAndPreview(workNotesText: string): Promise<ImportPreview> {
+    try {
+      // Step 1: Parse with AI
+      console.log('🤖 Parsing work notes with AI...');
+      const aiResult = await this.anthropicService.parseWorkNotes(workNotesText);
+      
+      // Step 2: Get all clients and employees for matching
+      const [allClients, allEmployees] = await Promise.all([
+        this.clientService.getAllClients(),
+        this.employeeService.getAllEmployees()
+      ]);
+
+      // Step 3: Match clients
+      console.log('🔍 Matching clients...');
+      const clientMatches = await this.matchClients(
+        [...new Set(aiResult.activities.map(a => a.clientName))],
+        allClients
+      );
+
+      // Step 4: Match employees
+      console.log('👥 Matching employees...');
+      const employeeMatches = await this.matchEmployees(
+        [...new Set(aiResult.activities.flatMap(a => a.employees))],
+        allEmployees
+      );
+
+      // Step 5: Validate activities
+      console.log('✅ Validating activities...');
+      const validatedActivities = await this.validateActivities(
+        aiResult.activities,
+        clientMatches,
+        employeeMatches
+      );
+
+      // Step 6: Generate summary
+      const summary = {
+        totalActivities: validatedActivities.length,
+        validActivities: validatedActivities.filter(a => a.canImport).length,
+        issuesCount: validatedActivities.reduce((sum, a) => sum + a.validationIssues.length, 0),
+        estimatedImportTime: validatedActivities.length * 2 // 2 seconds per activity estimate
+      };
+
+      return {
+        activities: validatedActivities,
+        clientMatches,
+        employeeMatches,
+        summary
+      };
+
+    } catch (error) {
+      console.error('Error parsing work notes:', error);
+      throw new Error(`Failed to parse work notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Import validated activities to the database
+   */
+  async importActivities(validatedActivities: ValidatedWorkActivity[]): Promise<{
+    imported: number;
+    failed: number;
+    errors: string[];
+  }> {
+    const results = {
+      imported: 0,
+      failed: 0,
+      errors: [] as string[]
+    };
+
+    for (const activity of validatedActivities) {
+      if (!activity.canImport) {
+        results.failed++;
+        results.errors.push(`Skipped ${activity.clientName} on ${activity.date}: validation issues`);
+        continue;
+      }
+
+      try {
+        // Convert to work activity format
+        const workActivity: NewWorkActivity = {
+          workType: activity.workType,
+          date: activity.date,
+          status: 'completed', // Default to completed for imported activities
+          startTime: activity.startTime,
+          endTime: activity.endTime,
+          billableHours: activity.totalHours, // Assume all hours are billable unless specified
+          totalHours: activity.totalHours,
+          hourlyRate: null, // Will be set based on client rate
+          clientId: activity.clientId || null,
+          projectId: null, // TODO: Add project matching
+          travelTimeMinutes: activity.driveTime || 0,
+          breakTimeMinutes: activity.lunchTime || 0,
+          notes: activity.notes,
+          tasks: activity.tasks.join('\n')
+        };
+
+        // Prepare employee assignments
+        const employees = activity.employeeIds.map(employeeId => ({
+          employeeId,
+          hours: activity.totalHours / activity.employeeIds.length // Split hours evenly
+        }));
+
+        // Prepare charges
+        const charges = activity.charges?.map(charge => ({
+          chargeType: charge.type,
+          description: charge.description,
+          quantity: 1,
+          unitRate: charge.cost || 0,
+          totalCost: charge.cost || 0,
+          billable: true
+        })) || [];
+
+        // Create work activity
+        const createData: CreateWorkActivityData = {
+          workActivity,
+          employees,
+          charges
+        };
+
+        await this.workActivityService.createWorkActivity(createData);
+        results.imported++;
+
+      } catch (error) {
+        results.failed++;
+        results.errors.push(`Failed to import ${activity.clientName} on ${activity.date}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Match client names to existing clients using fuzzy matching
+   */
+  private async matchClients(clientNames: string[], allClients: any[]): Promise<ClientMatch[]> {
+    return clientNames.map(originalName => {
+      const suggestions = allClients
+        .map(client => ({
+          id: client.id,
+          name: client.name,
+          score: this.calculateStringSimilarity(originalName.toLowerCase(), client.name.toLowerCase())
+        }))
+        .filter(s => s.score > 0.3) // Only include reasonable matches
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 5); // Top 5 suggestions
+
+      const bestMatch = suggestions[0];
+      const confidence = bestMatch?.score || 0;
+
+      return {
+        originalName,
+        matchedClient: confidence > 0.8 ? { id: bestMatch.id, name: bestMatch.name } : null,
+        confidence,
+        suggestions
+      };
+    });
+  }
+
+  /**
+   * Match employee names to existing employees
+   */
+  private async matchEmployees(employeeNames: string[], allEmployees: any[]): Promise<EmployeeMatch[]> {
+    return employeeNames.map(originalName => {
+      // First try direct mapping from abbreviations
+      const mappedName = this.EMPLOYEE_NAME_MAP[originalName];
+      if (mappedName) {
+        const exactMatch = allEmployees.find(emp => 
+          emp.name.toLowerCase().includes(mappedName.toLowerCase())
+        );
+        
+        if (exactMatch) {
+          return {
+            originalName,
+            matchedEmployee: { id: exactMatch.id, name: exactMatch.name },
+            confidence: 1.0
+          };
+        }
+      }
+
+      // Fallback to fuzzy matching
+      const bestMatch = allEmployees
+        .map(emp => ({
+          id: emp.id,
+          name: emp.name,
+          score: this.calculateStringSimilarity(originalName.toLowerCase(), emp.name.toLowerCase())
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+
+      return {
+        originalName,
+        matchedEmployee: bestMatch?.score > 0.7 ? { id: bestMatch.id, name: bestMatch.name } : null,
+        confidence: bestMatch?.score || 0
+      };
+    });
+  }
+
+  /**
+   * Validate parsed activities and add validation issues
+   */
+  private async validateActivities(
+    activities: ParsedWorkActivity[],
+    clientMatches: ClientMatch[],
+    employeeMatches: EmployeeMatch[]
+  ): Promise<ValidatedWorkActivity[]> {
+    return activities.map(activity => {
+      const validationIssues: ValidationIssue[] = [];
+      
+      // Find matches for this activity
+      const clientMatch = clientMatches.find(c => c.originalName === activity.clientName);
+      const activityEmployeeMatches = activity.employees.map(empName => 
+        employeeMatches.find(e => e.originalName === empName)
+      );
+
+      // Validate client
+      if (!clientMatch?.matchedClient) {
+        validationIssues.push({
+          type: 'error',
+          field: 'client',
+          message: `Client "${activity.clientName}" could not be matched`,
+          suggestion: clientMatch?.suggestions[0]?.name
+        });
+      }
+
+      // Validate employees
+      const matchedEmployeeIds: number[] = [];
+      activity.employees.forEach((empName, index) => {
+        const match = activityEmployeeMatches[index];
+        if (!match?.matchedEmployee) {
+          validationIssues.push({
+            type: 'error',
+            field: 'employees',
+            message: `Employee "${empName}" could not be matched`,
+            suggestion: 'Check employee name or add to system'
+          });
+        } else {
+          matchedEmployeeIds.push(match.matchedEmployee.id);
+        }
+      });
+
+      // Validate date
+      if (!this.isValidDate(activity.date)) {
+        validationIssues.push({
+          type: 'error',
+          field: 'date',
+          message: `Invalid date format: ${activity.date}`
+        });
+      }
+
+      // Validate hours
+      if (activity.totalHours <= 0 || activity.totalHours > 24) {
+        validationIssues.push({
+          type: 'warning',
+          field: 'hours',
+          message: `Unusual hour count: ${activity.totalHours}`
+        });
+      }
+
+      // Validate confidence
+      if (activity.confidence < 0.7) {
+        validationIssues.push({
+          type: 'warning',
+          field: 'parsing',
+          message: `Low parsing confidence: ${Math.round(activity.confidence * 100)}%`
+        });
+      }
+
+      const canImport = validationIssues.filter(i => i.type === 'error').length === 0;
+
+      return {
+        ...activity,
+        clientId: clientMatch?.matchedClient?.id,
+        employeeIds: matchedEmployeeIds,
+        validationIssues,
+        canImport
+      };
+    });
+  }
+
+  /**
+   * Calculate string similarity using Levenshtein distance
+   */
+  private calculateStringSimilarity(str1: string, str2: string): number {
+    const matrix = Array(str2.length + 1).fill(null).map(() => Array(str1.length + 1).fill(null));
+
+    for (let i = 0; i <= str1.length; i++) matrix[0][i] = i;
+    for (let j = 0; j <= str2.length; j++) matrix[j][0] = j;
+
+    for (let j = 1; j <= str2.length; j++) {
+      for (let i = 1; i <= str1.length; i++) {
+        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[j][i] = Math.min(
+          matrix[j][i - 1] + 1,
+          matrix[j - 1][i] + 1,
+          matrix[j - 1][i - 1] + indicator
+        );
+      }
+    }
+
+    const distance = matrix[str2.length][str1.length];
+    const maxLength = Math.max(str1.length, str2.length);
+    return maxLength === 0 ? 1 : 1 - distance / maxLength;
+  }
+
+  /**
+   * Validate date string
+   */
+  private isValidDate(dateString: string): boolean {
+    const date = new Date(dateString);
+    return date instanceof Date && !isNaN(date.getTime());
+  }
+} 
