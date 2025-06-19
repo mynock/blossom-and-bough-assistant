@@ -54,15 +54,27 @@ export class AuthService {
       callbackURL: process.env.GOOGLE_OAUTH_CALLBACK_URL || '/api/auth/google/callback'
     }, async (accessToken, refreshToken, profile, done) => {
       try {
+        console.log('🔵 [OAUTH] Google strategy callback triggered');
+        console.log('🔵 [OAUTH] Profile ID:', profile.id);
+        console.log('🔵 [OAUTH] Profile displayName:', profile.displayName);
+        console.log('🔵 [OAUTH] Profile emails:', profile.emails);
+        console.log('🔵 [OAUTH] Profile photos:', profile.photos);
+        
         const email = profile.emails?.[0]?.value?.toLowerCase();
         
         if (!email) {
+          console.log('❌ [OAUTH] No email found in Google profile');
           return done(new Error('No email found in Google profile'), undefined);
         }
+
+        console.log('🔵 [OAUTH] Email from profile:', email);
+        console.log('🔵 [OAUTH] Checking against allowlist...');
+        console.log('🔵 [OAUTH] Allowed emails:', Array.from(this.allowedEmails));
 
         // Check if user is in allowlist
         if (!this.allowedEmails.has(email)) {
           console.log(`🚫 Unauthorized login attempt: ${email}`);
+          console.log('🚫 [OAUTH] Email not in allowlist');
           return done(new Error(`Access denied. Email ${email} is not authorized.`), undefined);
         }
 
@@ -73,20 +85,24 @@ export class AuthService {
           picture: profile.photos?.[0]?.value
         };
 
+        console.log('✅ [OAUTH] User object created:', user);
         console.log(`✅ Authorized login: ${email}`);
         return done(null, user);
       } catch (error) {
+        console.log('❌ [OAUTH] Error in Google strategy:', error);
         return done(error, undefined);
       }
     }));
 
     // Serialize user for session
     passport.serializeUser((user: any, done) => {
+      console.log('🔵 [SESSION] Serializing user:', user);
       done(null, user);
     });
 
     // Deserialize user from session
     passport.deserializeUser((user: any, done) => {
+      console.log('🔵 [SESSION] Deserializing user:', user);
       done(null, user);
     });
 

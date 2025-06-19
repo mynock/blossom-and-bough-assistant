@@ -28,7 +28,7 @@
     "concurrently": "^8.2.0"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "PORT=3000 react-scripts start",
     "build": "react-scripts build",
     "build:production": "CI=false react-scripts build",
     "test": "react-scripts test",

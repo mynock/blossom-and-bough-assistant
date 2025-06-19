@@ -31,14 +31,14 @@ import { requireAuth } from './middleware/auth';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(helmet());
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'http://localhost:3001'
-    : 'http://localhost:3001',
+    ? process.env.FRONTEND_URL || 'http://localhost:3000'
+    : 'http://localhost:3000',
   credentials: true
 }));
 
@@ -46,11 +46,13 @@ app.use(cors({
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
   resave: false,
-  saveUninitialized: false,
+  saveUninitialized: true, // Changed to true for debugging
+  name: 'garden-care-session', // Custom session name
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Always false for localhost
     httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax' // Lax for localhost development
   }
 }));
 

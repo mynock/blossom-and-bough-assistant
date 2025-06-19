@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Box,
@@ -12,6 +12,7 @@ import {
   Divider
 } from '@mui/material';
 import { Google as GoogleIcon, LocalFlorist } from '@mui/icons-material';
+import { API_ENDPOINTS, apiClient } from '../config/api';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -19,24 +20,9 @@ const Login: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    // Check if already authenticated
-    checkAuthStatus();
-    
-    // Check for error in URL params
-    const errorParam = searchParams.get('error');
-    if (errorParam === 'auth_failed') {
-      setError('Authentication failed. Please try again.');
-    } else if (errorParam === 'oauth_not_configured') {
-      setError('Google OAuth is not configured. Please contact your administrator.');
-    }
-  }, [searchParams]);
-
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/auth/status', {
-        credentials: 'include'
-      });
+      const response = await apiClient.get(API_ENDPOINTS.AUTH_STATUS);
       
       if (response.ok) {
         const data = await response.json();
@@ -50,10 +36,26 @@ const Login: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [navigate]);
+
+  useEffect(() => {
+    // Check if already authenticated
+    checkAuthStatus();
+    
+    // Check for error in URL params
+    const errorParam = searchParams.get('error');
+    if (errorParam === 'auth_failed') {
+      setError('Authentication failed. Please try again.');
+    } else if (errorParam === 'oauth_not_configured') {
+      setError('Google OAuth is not configured. Please contact your administrator.');
+    }
+  }, [searchParams, checkAuthStatus]);
 
   const handleGoogleLogin = () => {
-    window.location.href = '/api/auth/google';
+    console.log('🔵 [FRONTEND] Sign in with Google button clicked');
+    console.log('🔵 [FRONTEND] Redirecting to OAuth endpoint:', API_ENDPOINTS.AUTH_LOGIN);
+    // Use centralized OAuth URL (environment-aware)
+    window.location.href = API_ENDPOINTS.AUTH_LOGIN;
   };
 
   if (isLoading) {
@@ -135,6 +137,11 @@ const Login: React.FC = () => {
           >
             Sign in with Google
           </Button>
+
+          {/* Temporary direct link for testing */}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Or try: <a href={API_ENDPOINTS.AUTH_LOGIN} style={{ color: 'blue' }}>Direct OAuth Link</a>
+          </Typography>
 
           <Divider sx={{ width: '100%', my: 3 }}>
             <Typography variant="body2" color="text.secondary">

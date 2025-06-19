@@ -40,6 +40,7 @@ import {
   Remove as RemoveIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
+import { API_ENDPOINTS, apiClient } from '../config/api';
 
 interface WorkActivity {
   id: number;
@@ -127,7 +128,7 @@ const WorkActivityManagement: React.FC = () => {
 
   const fetchWorkActivities = useCallback(async () => {
     try {
-      const response = await fetch('/api/work-activities');
+      const response = await apiClient.get(API_ENDPOINTS.WORK_ACTIVITIES);
       const data = await response.json();
       setWorkActivities(data);
     } catch (error) {
@@ -146,7 +147,7 @@ const WorkActivityManagement: React.FC = () => {
 
   const fetchClients = async () => {
     try {
-      const response = await fetch('/api/clients');
+      const response = await apiClient.get(API_ENDPOINTS.CLIENTS);
       const data = await response.json();
       setClients(data.clients);
     } catch (error) {
@@ -156,7 +157,7 @@ const WorkActivityManagement: React.FC = () => {
 
   const fetchProjects = async () => {
     try {
-      const response = await fetch('/api/projects');
+      const response = await apiClient.get(API_ENDPOINTS.PROJECTS);
       const data = await response.json();
       setProjects(data);
     } catch (error) {
@@ -166,7 +167,7 @@ const WorkActivityManagement: React.FC = () => {
 
   const fetchEmployees = async () => {
     try {
-      const response = await fetch('/api/employees');
+      const response = await apiClient.get(API_ENDPOINTS.EMPLOYEES);
       const data = await response.json();
       setEmployees(data);
     } catch (error) {

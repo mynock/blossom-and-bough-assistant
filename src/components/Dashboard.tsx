@@ -31,6 +31,7 @@ import {
   ArrowForward,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
+import { API_ENDPOINTS, apiClient } from '../config/api';
 
 interface WorkActivityStats {
   totalActivities: number;
@@ -77,9 +78,9 @@ const Dashboard: React.FC = () => {
         
         // Fetch work activities and other data
         const [workActivitiesRes, clientsRes, employeesRes] = await Promise.all([
-          fetch('/api/work-activities'),
-          fetch('/api/clients'),
-          fetch('/api/employees'),
+          fetch(API_ENDPOINTS.WORK_ACTIVITIES),
+          fetch(API_ENDPOINTS.CLIENTS),
+          fetch(API_ENDPOINTS.EMPLOYEES),
         ]);
 
         const workActivities = await workActivitiesRes.json();

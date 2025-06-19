@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { Navigate } from 'react-router-dom';
+import { API_ENDPOINTS, apiClient } from '../config/api';
 
 export interface User {
   id: string;
@@ -28,9 +30,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch('/api/auth/status', {
-        credentials: 'include'
-      });
+      const response = await apiClient.get(API_ENDPOINTS.AUTH_STATUS);
       
       if (response.ok) {
         const data = await response.json();
@@ -51,15 +51,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const login = () => {
-    window.location.href = '/api/auth/google';
+    window.location.href = API_ENDPOINTS.AUTH_LOGIN;
   };
 
   const logout = async () => {
     try {
-      const response = await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
-      });
+      const response = await apiClient.post(API_ENDPOINTS.AUTH_LOGOUT);
       
       if (response.ok) {
         setUser(null);
@@ -118,8 +115,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
   }
 
   if (!isAuthenticated) {
-    window.location.href = '/login';
-    return null;
+    return <Navigate to="/login" replace />;
   }
 
   return <>{children}</>;
