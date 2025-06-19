@@ -95,11 +95,13 @@ router.post('/', async (req, res) => {
       });
     }
 
-    if (!employeeData.capabilityLevel || !employeeData.hourlyRate) {
+    if (!employeeData.capabilityLevel) {
       return res.status(400).json({ 
-        error: 'Missing required fields: capabilityLevel, hourlyRate' 
+        error: 'Missing required field: capabilityLevel' 
       });
     }
+
+    // Note: hourlyRate is now optional for business owners and special employees
 
     const created = await employeeService.createEmployee(employeeData);
     res.status(201).json(created);

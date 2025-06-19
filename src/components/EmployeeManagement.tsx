@@ -44,7 +44,7 @@ interface Employee {
   minHoursPerDay: number;
   maxHoursPerDay: number;
   capabilityLevel: number;
-  hourlyRate: number;
+  hourlyRate: number | null;
   notes?: string;
   activeStatus: 'active' | 'inactive';
   createdAt: string;
@@ -69,7 +69,7 @@ const EmployeeManagement: React.FC = () => {
     minHoursPerDay: 7,
     maxHoursPerDay: 8,
     capabilityLevel: 3,
-    hourlyRate: 22,
+    hourlyRate: null,
     activeStatus: 'active',
   });
 
@@ -112,7 +112,7 @@ const EmployeeManagement: React.FC = () => {
       minHoursPerDay: 7,
       maxHoursPerDay: 8,
       capabilityLevel: 3,
-      hourlyRate: 22,
+      hourlyRate: null,
       activeStatus: 'active',
     });
     setSelectedWorkdays([]);
@@ -247,7 +247,9 @@ const EmployeeManagement: React.FC = () => {
                     size="small"
                   />
                 </TableCell>
-                <TableCell>${employee.hourlyRate}/hr</TableCell>
+                <TableCell>
+                  {employee.hourlyRate ? `$${employee.hourlyRate}/hr` : 'Owner'}
+                </TableCell>
                 <TableCell>
                   <Chip
                     label={employee.activeStatus}
@@ -359,8 +361,9 @@ const EmployeeManagement: React.FC = () => {
                 type="number"
                 fullWidth
                 value={formData.hourlyRate || ''}
-                onChange={(e) => handleInputChange('hourlyRate', parseFloat(e.target.value))}
+                onChange={(e) => handleInputChange('hourlyRate', e.target.value ? parseFloat(e.target.value) : null)}
                 inputProps={{ min: 0, step: 0.5 }}
+                helperText="Leave empty for business owners or non-hourly employees"
               />
             </Grid>
             <Grid item xs={12} sm={6}>

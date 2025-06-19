@@ -738,7 +738,13 @@ EMPLOYEE CODES:
 - "w R" = with Rebecca  
 - "w A" = with Anne
 - "w M" = with Megan
-- "solo" = solo work
+- "solo" = solo work (Andrea Wilson working alone)
+- "me" or "Me" = Andrea Wilson (the business owner)
+
+BUSINESS CONTEXT:
+- Andrea Wilson is the business owner of this landscaping company
+- When notes mention "me", "Me", or "I", this refers to Andrea Wilson
+- Andrea often works alongside her employees or solo on client sites
 
 CLIENT NAMES:
 - Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
@@ -758,7 +764,7 @@ WORK TYPES:
 For each work activity found, extract:
 1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume current year if not specified)
 2. Client name
-3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan)
+3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
 5. Total hours worked (calculate from times or extract from context)
 6. Work type (categorize the main type of work)
@@ -853,7 +859,13 @@ EMPLOYEE CODES:
 - "w R" = with Rebecca  
 - "w A" = with Anne
 - "w M" = with Megan
-- "solo" = solo work
+- "solo" = solo work (Andrea Wilson working alone)
+- "me" or "Me" = Andrea Wilson (the business owner)
+
+BUSINESS CONTEXT:
+- Andrea Wilson is the business owner of this landscaping company
+- When notes mention "me", "Me", or "I", this refers to Andrea Wilson
+- Andrea often works alongside her employees or solo on client sites
 
 CLIENT NAMES:
 - Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
@@ -873,7 +885,7 @@ WORK TYPES:
 For each work activity found, extract:
 1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume current year if not specified)
 2. Client name
-3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan)
+3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
 5. Total hours worked (calculate from times or extract from context)
 6. Work type (categorize the main type of work)

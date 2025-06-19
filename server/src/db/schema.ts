@@ -34,7 +34,7 @@ export const employees = sqliteTable('employees', {
   minHoursPerDay: integer('min_hours_per_day').notNull(),
   maxHoursPerDay: real('max_hours_per_day').notNull(),
   capabilityLevel: real('capability_level').notNull(),
-  hourlyRate: real('hourly_rate').notNull(),
+  hourlyRate: real('hourly_rate'),
   notes: text('notes'),
   activeStatus: text('active_status').notNull().default('active'),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
