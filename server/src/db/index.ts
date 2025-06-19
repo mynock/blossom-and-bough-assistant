@@ -1,4 +1,4 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
 import * as schema from './schema';
 import path from 'path';
@@ -19,8 +19,8 @@ const sqlite = new Database(dbPath);
 // Enable foreign key constraints
 sqlite.pragma('foreign_keys = ON');
 
-// Create Drizzle database instance
-export const db = drizzle(sqlite, { schema });
+// Create Drizzle database instance with explicit typing
+export const db: BetterSQLite3Database<typeof schema> = drizzle(sqlite, { schema });
 
 // Export schema for use in other files
 export * from './schema';
