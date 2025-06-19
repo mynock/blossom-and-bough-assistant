@@ -4,6 +4,11 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
+
+// Explicit type imports to help Railway's TypeScript compiler
+import type { CorsOptions } from 'cors';
+import type { Options as MorganOptions } from 'morgan';
+
 import { SchedulingService } from './services/SchedulingService';
 import { GoogleSheetsService } from './services/GoogleSheetsService';
 import { GoogleCalendarService } from './services/GoogleCalendarService';

@@ -13,6 +13,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
     "types": ["node"]
   },
   "include": ["src/**/*"],
