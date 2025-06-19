@@ -356,6 +356,21 @@ app.post('/api/calendar/template', async (req, res) => {
   }
 });
 
+// Serve React build files in production
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the React app build directory
+  app.use(express.static(path.join(__dirname, '../../build')));
+  
+  // Handle React routing - send all non-API requests to React app
+  app.get('*', (req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API route not found' });
+    }
+    res.sendFile(path.join(__dirname, '../../build/index.html'));
+  });
+}
+
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
