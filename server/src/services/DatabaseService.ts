@@ -1,7 +1,7 @@
 import { db } from '../db';
 
 export class DatabaseService {
-  protected db = db;
+  public readonly db = db;
 
   /**
    * Get the database instance for direct queries
