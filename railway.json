@@ -5,7 +5,7 @@
     "buildCommand": "cd server && npm install && cd .. && npm install && npm run build:production"
   },
   "deploy": {
-    "startCommand": "node server/dist/server.js",
+    "startCommand": "node dist/server.js",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
