@@ -131,6 +131,21 @@ router.get('/me', (req, res) => {
   console.log('🔍 [AUTH] isAuthenticated():', req.isAuthenticated?.());
   console.log('🔍 [AUTH] req.user:', req.user);
   
+  // Development auth bypass (only in development mode)
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+    console.log('🟡 [AUTH] Development auth bypass enabled for /me endpoint');
+    const mockUser = {
+      id: 'dev-user-123',
+      email: 'dev@example.com',
+      name: 'Development User',
+      picture: undefined
+    };
+    return res.json({
+      authenticated: true,
+      user: mockUser
+    });
+  }
+  
   const user = getCurrentUser(req);
   
   if (!user) {
@@ -165,6 +180,21 @@ router.get('/status', (req, res) => {
   console.log('🔍 [AUTH] Status check - isAuthenticated():', isAuthenticated);
   console.log('🔍 [AUTH] Status check - req.user:', req.user);
   console.log('🔍 [AUTH] Status check - getCurrentUser():', user);
+  
+  // Development auth bypass (only in development mode)
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+    console.log('🟡 [AUTH] Development auth bypass enabled for status check');
+    const mockUser = {
+      id: 'dev-user-123',
+      email: 'dev@example.com',
+      name: 'Development User',
+      picture: undefined
+    };
+    return res.json({
+      authenticated: true,
+      user: mockUser
+    });
+  }
   
   res.json({
     authenticated: isAuthenticated,

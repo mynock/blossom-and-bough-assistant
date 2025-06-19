@@ -19,6 +19,19 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
   console.log('🔒 [MIDDLEWARE] isAuthenticated():', req.isAuthenticated?.());
   console.log('🔒 [MIDDLEWARE] req.user:', req.user);
   
+  // Development auth bypass (only in development mode)
+  if (process.env.NODE_ENV === 'development' && process.env.DEV_BYPASS_AUTH === 'true') {
+    console.log('🟡 [MIDDLEWARE] Development auth bypass enabled - creating mock user');
+    // Create a mock user for development
+    req.user = {
+      id: 'dev-user-123',
+      email: 'dev@example.com',
+      name: 'Development User',
+      picture: undefined
+    };
+    return next();
+  }
+  
   // Check if OAuth is configured
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
     // If OAuth is not configured, allow access with a warning

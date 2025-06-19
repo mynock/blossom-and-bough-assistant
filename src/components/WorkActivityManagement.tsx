@@ -28,7 +28,6 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  Divider,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -42,6 +41,11 @@ import {
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
 import { useSearchParams } from 'react-router-dom';
+import { Editor } from 'react-draft-wysiwyg';
+import { EditorState, convertToRaw, ContentState } from 'draft-js';
+import draftToHtml from 'draftjs-to-html';
+import htmlToDraft from 'html-to-draftjs';
+import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
 
 interface WorkActivity {
   id: number;
@@ -123,6 +127,26 @@ const WorkActivityManagement: React.FC = () => {
   });
 
   const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number }>>([]);
+  
+  // Editor states for WYSIWYG
+  const [notesEditorState, setNotesEditorState] = useState(() => EditorState.createEmpty());
+  const [tasksEditorState, setTasksEditorState] = useState(() => EditorState.createEmpty());
+
+  // Helper function to convert HTML to EditorState
+  const htmlToEditorState = (html: string) => {
+    if (!html) return EditorState.createEmpty();
+    const contentBlock = htmlToDraft(html);
+    if (contentBlock) {
+      const contentState = ContentState.createFromBlockArray(contentBlock.contentBlocks);
+      return EditorState.createWithContent(contentState);
+    }
+    return EditorState.createEmpty();
+  };
+
+  // Helper function to convert EditorState to HTML
+  const editorStateToHtml = (editorState: EditorState) => {
+    return draftToHtml(convertToRaw(editorState.getCurrentContent()));
+  };
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
     setSnackbar({ open: true, message, severity });
@@ -164,6 +188,9 @@ const WorkActivityManagement: React.FC = () => {
         breakTimeMinutes: 30,
       });
       setSelectedEmployees([]);
+      // Reset editor states
+      setNotesEditorState(EditorState.createEmpty());
+      setTasksEditorState(EditorState.createEmpty());
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
@@ -206,6 +233,9 @@ const WorkActivityManagement: React.FC = () => {
       employeeId: emp.employeeId,
       hours: emp.hours
     })));
+    // Initialize editor states with existing content
+    setNotesEditorState(htmlToEditorState(activity.notes || ''));
+    setTasksEditorState(htmlToEditorState(activity.tasks || ''));
     setIsCreating(false);
     setEditDialogOpen(true);
   };
@@ -222,6 +252,9 @@ const WorkActivityManagement: React.FC = () => {
       breakTimeMinutes: 30,
     });
     setSelectedEmployees([]);
+    // Reset editor states
+    setNotesEditorState(EditorState.createEmpty());
+    setTasksEditorState(EditorState.createEmpty());
     setIsCreating(true);
     setEditDialogOpen(true);
   };
@@ -433,8 +466,15 @@ const WorkActivityManagement: React.FC = () => {
           {isCreating ? 'Log New Work Activity' : `Edit Work Activity`}
         </DialogTitle>
         <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
+          <Grid container spacing={3} sx={{ mt: 1 }}>
+            {/* Basic Information Row */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom>
+                Basic Information
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
               <TextField
                 label="Date"
                 type="date"
@@ -444,7 +484,8 @@ const WorkActivityManagement: React.FC = () => {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            
+            <Grid item xs={12} sm={4}>
               <FormControl fullWidth>
                 <InputLabel>Work Type</InputLabel>
                 <Select
@@ -459,6 +500,24 @@ const WorkActivityManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <FormControl fullWidth>
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={formData.status || 'planned'}
+                  onChange={(e) => handleInputChange('status', e.target.value)}
+                >
+                  {WORK_STATUSES.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {status.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Client & Project Row */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Client</InputLabel>
@@ -475,6 +534,7 @@ const WorkActivityManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
+            
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Project</InputLabel>
@@ -493,22 +553,15 @@ const WorkActivityManagement: React.FC = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={formData.status || 'planned'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                >
-                  {WORK_STATUSES.map((status) => (
-                    <MenuItem key={status} value={status}>
-                      {status.replace('_', ' ').toUpperCase()}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+
+            {/* Time & Rate Information */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
+                Time & Billing
+              </Typography>
             </Grid>
-            <Grid item xs={12} sm={6}>
+            
+            <Grid item xs={12} sm={3}>
               <TextField
                 label="Total Hours"
                 type="number"
@@ -519,7 +572,8 @@ const WorkActivityManagement: React.FC = () => {
                 required
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            
+            <Grid item xs={12} sm={3}>
               <TextField
                 label="Billable Hours"
                 type="number"
@@ -529,7 +583,8 @@ const WorkActivityManagement: React.FC = () => {
                 inputProps={{ min: 0, step: 0.5 }}
               />
             </Grid>
-            <Grid item xs={12} sm={6}>
+            
+            <Grid item xs={12} sm={3}>
               <TextField
                 label="Hourly Rate ($)"
                 type="number"
@@ -540,9 +595,60 @@ const WorkActivityManagement: React.FC = () => {
               />
             </Grid>
             
+            <Grid item xs={12} sm={3}>
+              <TextField
+                label="Break Time (min)"
+                type="number"
+                fullWidth
+                value={formData.breakTimeMinutes || 0}
+                onChange={(e) => handleInputChange('breakTimeMinutes', parseInt(e.target.value))}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+
+            {/* Schedule Details */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
+                Schedule Details
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Start Time"
+                type="time"
+                fullWidth
+                value={formData.startTime || ''}
+                onChange={(e) => handleInputChange('startTime', e.target.value)}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="End Time"
+                type="time"
+                fullWidth
+                value={formData.endTime || ''}
+                onChange={(e) => handleInputChange('endTime', e.target.value)}
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={4}>
+              <TextField
+                label="Travel Time (min)"
+                type="number"
+                fullWidth
+                value={formData.travelTimeMinutes || 0}
+                onChange={(e) => handleInputChange('travelTimeMinutes', parseInt(e.target.value))}
+                inputProps={{ min: 0 }}
+              />
+            </Grid>
+
             {/* Employee Assignment */}
             <Grid item xs={12}>
-              <Typography variant="h6" sx={{ mb: 1 }}>Assigned Employees</Typography>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
+                Assigned Employees
+              </Typography>
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
@@ -584,69 +690,87 @@ const WorkActivityManagement: React.FC = () => {
               </List>
             </Grid>
 
+            {/* Notes & Tasks */}
             <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
+                Documentation
+              </Typography>
             </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Start Time"
-                type="time"
-                fullWidth
-                value={formData.startTime || ''}
-                onChange={(e) => handleInputChange('startTime', e.target.value)}
-              />
+            
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" gutterBottom>
+                Work Notes
+              </Typography>
+              <Box sx={{ 
+                '& .rdw-editor-wrapper': {
+                  border: '1px solid rgba(0, 0, 0, 0.23)',
+                  borderRadius: 1,
+                  backgroundColor: '#fff'
+                },
+                '& .rdw-editor-toolbar': {
+                  borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '4px 4px 0 0',
+                  padding: '8px'
+                },
+                '& .rdw-editor-main': {
+                  minHeight: '120px',
+                  padding: '12px',
+                  fontSize: '14px'
+                }
+              }}>
+                <Editor
+                  editorState={notesEditorState}
+                  onEditorStateChange={(state) => {
+                    handleInputChange('notes', editorStateToHtml(state));
+                    setNotesEditorState(state);
+                  }}
+                  toolbar={{
+                    options: ['inline', 'blockType', 'list', 'textAlign', 'link', 'history'],
+                    inline: { options: ['bold', 'italic', 'underline'] },
+                    blockType: { options: ['Normal', 'H1', 'H2', 'H3'] },
+                    list: { options: ['unordered', 'ordered'] }
+                  }}
+                />
+              </Box>
             </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="End Time"
-                type="time"
-                fullWidth
-                value={formData.endTime || ''}
-                onChange={(e) => handleInputChange('endTime', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Travel Time (minutes)"
-                type="number"
-                fullWidth
-                value={formData.travelTimeMinutes || 0}
-                onChange={(e) => handleInputChange('travelTimeMinutes', parseInt(e.target.value))}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Break Time (minutes)"
-                type="number"
-                fullWidth
-                value={formData.breakTimeMinutes || 0}
-                onChange={(e) => handleInputChange('breakTimeMinutes', parseInt(e.target.value))}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                fullWidth
-                multiline
-                rows={3}
-                value={formData.notes || ''}
-                onChange={(e) => handleInputChange('notes', e.target.value)}
-                placeholder="Add any notes about the work performed..."
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Tasks / To-Do Items"
-                fullWidth
-                multiline
-                rows={3}
-                value={formData.tasks || ''}
-                onChange={(e) => handleInputChange('tasks', e.target.value)}
-                placeholder="Add future work items or tasks to be completed..."
-              />
+            
+            <Grid item xs={12} md={6}>
+              <Typography variant="subtitle2" gutterBottom>
+                Tasks / To-Do Items
+              </Typography>
+              <Box sx={{ 
+                '& .rdw-editor-wrapper': {
+                  border: '1px solid rgba(0, 0, 0, 0.23)',
+                  borderRadius: 1,
+                  backgroundColor: '#fff'
+                },
+                '& .rdw-editor-toolbar': {
+                  borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
+                  backgroundColor: '#f5f5f5',
+                  borderRadius: '4px 4px 0 0',
+                  padding: '8px'
+                },
+                '& .rdw-editor-main': {
+                  minHeight: '120px',
+                  padding: '12px',
+                  fontSize: '14px'
+                }
+              }}>
+                <Editor
+                  editorState={tasksEditorState}
+                  onEditorStateChange={(state) => {
+                    handleInputChange('tasks', editorStateToHtml(state));
+                    setTasksEditorState(state);
+                  }}
+                  toolbar={{
+                    options: ['inline', 'blockType', 'list', 'textAlign', 'link', 'history'],
+                    inline: { options: ['bold', 'italic', 'underline'] },
+                    blockType: { options: ['Normal', 'H1', 'H2', 'H3'] },
+                    list: { options: ['unordered', 'ordered'] }
+                  }}
+                />
+              </Box>
             </Grid>
           </Grid>
         </DialogContent>

@@ -13,8 +13,12 @@
     "@types/react-dom": "^18.2.0",
     "axios": "^1.5.0",
     "date-fns": "^2.30.0",
+    "draft-js": "^0.11.7",
+    "draftjs-to-html": "^0.9.1",
+    "html-to-draftjs": "^1.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-draft-wysiwyg": "^1.15.0",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^6.15.0",
     "react-scripts": "5.0.1",
@@ -24,7 +28,11 @@
     "web-vitals": "^3.0.0"
   },
   "devDependencies": {
+    "@types/draft-js": "^0.11.18",
+    "@types/draftjs-to-html": "^0.8.4",
+    "@types/html-to-draftjs": "^1.5.0",
     "@types/jest": "^29.5.0",
+    "@types/react-draft-wysiwyg": "^1.13.8",
     "concurrently": "^8.2.0"
   },
   "scripts": {
@@ -34,7 +42,13 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "dev": "concurrently \"npm run server\" \"npm start\"",
-    "server": "cd server && npm run dev"
+    "server": "cd server && npm run dev",
+    "type-check": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "import-data": "ts-node scripts/import-data.ts"
   },
   "eslintConfig": {
     "extends": [
