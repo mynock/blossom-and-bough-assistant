@@ -41,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
+import { useSearchParams } from 'react-router-dom';
 
 interface WorkActivity {
   id: number;
@@ -99,6 +100,7 @@ const WORK_STATUSES = [
 ];
 
 const WorkActivityManagement: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [workActivities, setWorkActivities] = useState<WorkActivity[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -144,6 +146,28 @@ const WorkActivityManagement: React.FC = () => {
     fetchProjects();
     fetchEmployees();
   }, [fetchWorkActivities]);
+
+  // Check for create parameter and auto-open dialog
+  useEffect(() => {
+    if (searchParams.get('create') === 'true') {
+      // Set a flag to open the dialog on next render
+      setIsCreating(true);
+      setEditDialogOpen(true);
+      setSelectedActivity(null);
+      setFormData({
+        workType: 'maintenance',
+        date: new Date().toISOString().split('T')[0],
+        status: 'planned',
+        totalHours: 8,
+        billableHours: 8,
+        travelTimeMinutes: 0,
+        breakTimeMinutes: 30,
+      });
+      setSelectedEmployees([]);
+      // Remove the parameter from URL without triggering navigation
+      setSearchParams({});
+    }
+  }, [searchParams, setSearchParams]);
 
   const fetchClients = async () => {
     try {

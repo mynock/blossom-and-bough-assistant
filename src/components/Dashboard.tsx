@@ -31,7 +31,7 @@ import {
   ArrowForward,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { API_ENDPOINTS, apiClient } from '../config/api';
+import { API_ENDPOINTS } from '../config/api';
 
 interface WorkActivityStats {
   totalActivities: number;
@@ -242,7 +242,7 @@ const Dashboard: React.FC = () => {
                 variant="contained" 
                 sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
                 startIcon={<Assignment />}
-                onClick={() => navigate('/work-activities')}
+                onClick={() => navigate('/work-activities?create=true')}
                 fullWidth
               >
                 Log Activity
@@ -358,7 +358,7 @@ const Dashboard: React.FC = () => {
                   <Button 
                     variant="contained" 
                     startIcon={<Add />}
-                    onClick={() => navigate('/work-activities')}
+                    onClick={() => navigate('/work-activities?create=true')}
                   >
                     Log First Activity
                   </Button>
