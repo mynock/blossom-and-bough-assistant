@@ -21,6 +21,9 @@ RUN npm run build:production
 # Build backend
 RUN cd server && npm run build
 
+# Create data directory for SQLite database
+RUN mkdir -p /app/server/data
+
 # Remove devDependencies after build
 RUN npm prune --production
 RUN cd server && npm prune --production
