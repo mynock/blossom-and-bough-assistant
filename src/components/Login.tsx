@@ -48,6 +48,8 @@ const Login: React.FC = () => {
       setError('Authentication failed. Please try again.');
     } else if (errorParam === 'oauth_not_configured') {
       setError('Google OAuth is not configured. Please contact your administrator.');
+    } else if (errorParam === 'email_not_authorized') {
+      setError('Your email address is not authorized to access this system. Please contact your administrator to request access.');
     }
   }, [searchParams, checkAuthStatus]);
 
@@ -137,11 +139,6 @@ const Login: React.FC = () => {
           >
             Sign in with Google
           </Button>
-
-          {/* Temporary direct link for testing */}
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            Or try: <a href={API_ENDPOINTS.AUTH_LOGIN} style={{ color: 'blue' }}>Direct OAuth Link</a>
-          </Typography>
 
           <Divider sx={{ width: '100%', my: 3 }}>
             <Typography variant="body2" color="text.secondary">

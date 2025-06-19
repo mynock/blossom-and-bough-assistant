@@ -41,18 +41,31 @@ router.get('/google/callback', (req, res, next) => {
   // Check if OAuth is configured
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
     console.log('❌ [AUTH] OAuth not configured, redirecting to login with error');
-    return res.redirect('/login?error=oauth_not_configured');
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    const loginUrl = isDevelopment ? 'http://localhost:3000/login?error=oauth_not_configured' : '/login?error=oauth_not_configured';
+    return res.redirect(loginUrl);
   }
   
   console.log('🟡 [AUTH] Attempting passport authentication...');
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const failureRedirect = isDevelopment ? 'http://localhost:3000/login?error=auth_failed' : '/login?error=auth_failed';
+  
   passport.authenticate('google', { 
-    failureRedirect: '/login?error=auth_failed',
+    failureRedirect: failureRedirect,
     failureMessage: true
   })(req, res, (err: any) => {
     if (err) {
       console.error('❌ [AUTH] Passport authentication error:', err);
       console.error('❌ [AUTH] Error stack:', err.stack);
-      return res.redirect('/login?error=auth_failed');
+      
+      // Determine the specific error type for better user feedback
+      let errorType = 'auth_failed';
+      if (err.message && err.message.includes('not authorized')) {
+        errorType = 'email_not_authorized';
+      }
+      
+      const errorRedirect = isDevelopment ? `http://localhost:3000/login?error=${errorType}` : `/login?error=${errorType}`;
+      return res.redirect(errorRedirect);
     }
     next();
   });
