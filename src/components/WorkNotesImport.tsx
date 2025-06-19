@@ -27,23 +27,22 @@ import {
   Tooltip,
   IconButton,
   Snackbar,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   FormControlLabel,
   Switch,
   Select,
   MenuItem,
   FormControl,
   InputLabel,
-  Autocomplete,
-  Stack
+  Stack,
+  Stepper,
+  Step,
+  StepLabel,
+  StepContent,
+  Fab
 } from '@mui/material';
 import {
   Upload as UploadIcon,
+  CloudUpload as CloudUploadIcon,
   Preview as PreviewIcon,
   Download as ImportIcon,
   ExpandMore as ExpandMoreIcon,
@@ -58,7 +57,14 @@ import {
   Close as CloseIcon,
   Edit as EditIcon,
   Save as SaveIcon,
-  Cancel as CancelIcon
+  Cancel as CancelIcon,
+  NavigateNext as NextIcon,
+  NavigateBefore as PrevIcon,
+  Check as AcceptIcon,
+  Clear as RejectIcon,
+  FileUpload as FileUploadIcon,
+  TextFields as TextIcon,
+  Description as FileIcon
 } from '@mui/icons-material';
 
 interface ValidationIssue {
@@ -90,28 +96,18 @@ interface ValidatedWorkActivity {
   canImport: boolean;
 }
 
-interface ClientMatch {
-  originalName: string;
-  matchedClient: { id: number; name: string } | null;
-  confidence: number;
-  suggestions: Array<{ id: number; name: string; score: number }>;
-}
-
-interface EmployeeMatch {
-  originalName: string;
-  matchedEmployee: { id: number; name: string } | null;
-  confidence: number;
-}
-
 interface ImportPreview {
   activities: ValidatedWorkActivity[];
-  clientMatches: ClientMatch[];
-  employeeMatches: EmployeeMatch[];
   summary: {
     totalActivities: number;
     validActivities: number;
     issuesCount: number;
     estimatedImportTime: number;
+  };
+  sourceFile?: {
+    name: string;
+    size: number;
+    type: string;
   };
 }
 
@@ -142,17 +138,32 @@ const WORK_TYPES = [
   'other'
 ];
 
+type ImportStep = 'upload' | 'review' | 'complete';
+
 const WorkNotesImport: React.FC = () => {
+  // Main workflow state
+  const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
+  const [importMethod, setImportMethod] = useState<'text' | 'file'>('file');
+  
+  // Upload state
   const [workNotesText, setWorkNotesText] = useState('');
-  const [parsing, setParsing] = useState(false);
-  const [importing, setImporting] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  
+  // Review state
   const [preview, setPreview] = useState<ImportPreview | null>(null);
-  const [editedActivities, setEditedActivities] = useState<ValidatedWorkActivity[]>([]);
+  const [activities, setActivities] = useState<ValidatedWorkActivity[]>([]);
+  const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
+  const [editingActivity, setEditingActivity] = useState<ValidatedWorkActivity | null>(null);
+  const [activityDecisions, setActivityDecisions] = useState<Record<number, 'accept' | 'reject' | 'pending'>>({});
+  
+  // Import state
+  const [importing, setImporting] = useState(false);
+  const [importResults, setImportResults] = useState<any>(null);
+  
+  // UI state
   const [templates, setTemplates] = useState<ImportTemplates | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
-  const [selectedActivities, setSelectedActivities] = useState<Set<number>>(new Set());
-  const [showValidationDetails, setShowValidationDetails] = useState(false);
-  const [editingActivity, setEditingActivity] = useState<number | null>(null);
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -165,7 +176,14 @@ const WorkNotesImport: React.FC = () => {
 
   useEffect(() => {
     if (preview) {
-      setEditedActivities([...preview.activities]);
+      setActivities([...preview.activities]);
+      setCurrentActivityIndex(0);
+      // Initialize all activities as pending
+      const initialDecisions: Record<number, 'accept' | 'reject' | 'pending'> = {};
+      preview.activities.forEach((_, index) => {
+        initialDecisions[index] = 'pending';
+      });
+      setActivityDecisions(initialDecisions);
     }
   }, [preview]);
 
@@ -181,65 +199,115 @@ const WorkNotesImport: React.FC = () => {
     }
   };
 
-  const handleParseNotes = async () => {
-    if (!workNotesText.trim()) {
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
+  const handleUpload = async () => {
+    if (importMethod === 'file' && !selectedFile) {
+      showSnackbar('Please select a file to upload', 'warning');
+      return;
+    }
+
+    if (importMethod === 'text' && !workNotesText.trim()) {
       showSnackbar('Please enter work notes to parse', 'warning');
       return;
     }
 
-    setParsing(true);
+    setUploading(true);
     try {
-      const response = await fetch('/api/work-notes/parse', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workNotesText })
-      });
+      let response;
+
+      if (importMethod === 'file') {
+        const formData = new FormData();
+        formData.append('file', selectedFile!);
+
+        response = await fetch('/api/work-notes/upload', {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        response = await fetch('/api/work-notes/parse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ workNotesText })
+        });
+      }
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to parse work notes');
+        throw new Error(error.error || 'Failed to process work notes');
       }
 
       const previewData = await response.json();
       setPreview(previewData);
-      
-      // Select all valid activities by default
-      const validActivityIndexes = new Set<number>(
-        previewData.activities
-          .map((activity: ValidatedWorkActivity, index: number) => activity.canImport ? index : -1)
-          .filter((index: number) => index !== -1)
-      );
-      setSelectedActivities(validActivityIndexes);
+      setCurrentStep('review');
 
       showSnackbar(
-        `Parsed ${previewData.summary.totalActivities} activities (${previewData.summary.validActivities} ready to import)`,
+        `Parsed ${previewData.summary.totalActivities} activities successfully`,
         'success'
       );
     } catch (error) {
-      console.error('Error parsing work notes:', error);
+      console.error('Error processing work notes:', error);
       showSnackbar(
-        error instanceof Error ? error.message : 'Failed to parse work notes',
+        error instanceof Error ? error.message : 'Failed to process work notes',
         'error'
       );
     } finally {
-      setParsing(false);
+      setUploading(false);
+    }
+  };
+
+  const handleActivityDecision = (decision: 'accept' | 'reject') => {
+    const newDecisions = { ...activityDecisions };
+    newDecisions[currentActivityIndex] = decision;
+    setActivityDecisions(newDecisions);
+
+    // Auto-advance to next pending activity
+    const nextPendingIndex = activities.findIndex((_, index) => 
+      index > currentActivityIndex && newDecisions[index] === 'pending'
+    );
+    
+    if (nextPendingIndex !== -1) {
+      setCurrentActivityIndex(nextPendingIndex);
+    } else {
+      // Check if all activities have been decided
+      const allDecided = activities.every((_, index) => newDecisions[index] !== 'pending');
+      if (allDecided) {
+        showSnackbar('All activities reviewed! Ready to import.', 'success');
+      }
+    }
+  };
+
+  const handleSaveEdit = () => {
+    if (editingActivity) {
+      const newActivities = [...activities];
+      newActivities[currentActivityIndex] = editingActivity;
+      setActivities(newActivities);
+      setEditingActivity(null);
+      showSnackbar('Activity updated successfully', 'success');
     }
   };
 
   const handleImportActivities = async () => {
-    if (!preview || selectedActivities.size === 0) {
-      showSnackbar('No activities selected for import', 'warning');
+    const acceptedActivities = activities.filter((_, index) => 
+      activityDecisions[index] === 'accept'
+    );
+
+    if (acceptedActivities.length === 0) {
+      showSnackbar('No activities accepted for import', 'warning');
       return;
     }
 
-    const activitiesToImport = Array.from(selectedActivities).map(index => editedActivities[index]);
-    
     setImporting(true);
     try {
       const response = await fetch('/api/work-notes/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ activities: activitiesToImport })
+        body: JSON.stringify({ activities: acceptedActivities })
       });
 
       if (!response.ok) {
@@ -248,19 +316,13 @@ const WorkNotesImport: React.FC = () => {
       }
 
       const results = await response.json();
-      
+      setImportResults(results);
+      setCurrentStep('complete');
+
       showSnackbar(
         `Import complete: ${results.imported} imported, ${results.failed} failed`,
         results.failed > 0 ? 'warning' : 'success'
       );
-
-      if (results.imported > 0) {
-        // Clear the form after successful import
-        setWorkNotesText('');
-        setPreview(null);
-        setEditedActivities([]);
-        setSelectedActivities(new Set());
-      }
     } catch (error) {
       console.error('Error importing activities:', error);
       showSnackbar(
@@ -272,45 +334,16 @@ const WorkNotesImport: React.FC = () => {
     }
   };
 
-  const handleActivitySelection = (index: number) => {
-    const newSelection = new Set(selectedActivities);
-    if (newSelection.has(index)) {
-      newSelection.delete(index);
-    } else {
-      newSelection.add(index);
-    }
-    setSelectedActivities(newSelection);
-  };
-
-  const handleSelectAll = () => {
-    if (!preview) return;
-    
-    const validActivityIndexes = new Set(
-      editedActivities
-        .map((activity, index) => activity.canImport ? index : -1)
-        .filter(index => index !== -1)
-    );
-    setSelectedActivities(validActivityIndexes);
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedActivities(new Set());
-  };
-
-  const handleEditActivity = (index: number) => {
-    setEditingActivity(index);
-  };
-
-  const handleSaveActivity = (index: number, updatedActivity: ValidatedWorkActivity) => {
-    const newActivities = [...editedActivities];
-    newActivities[index] = updatedActivity;
-    setEditedActivities(newActivities);
+  const handleStartOver = () => {
+    setCurrentStep('upload');
+    setPreview(null);
+    setActivities([]);
+    setCurrentActivityIndex(0);
+    setActivityDecisions({});
     setEditingActivity(null);
-    showSnackbar('Activity updated successfully', 'success');
-  };
-
-  const handleCancelEdit = () => {
-    setEditingActivity(null);
+    setImportResults(null);
+    setSelectedFile(null);
+    setWorkNotesText('');
   };
 
   const showSnackbar = (message: string, severity: 'success' | 'error' | 'warning' | 'info') => {
@@ -321,15 +354,16 @@ const WorkNotesImport: React.FC = () => {
     setSnackbar(prev => ({ ...prev, open: false }));
   };
 
-  const getIssueIcon = (type: 'error' | 'warning') => {
-    return type === 'error' ? <ErrorIcon color="error" /> : <WarningIcon color="warning" />;
-  };
-
   const getConfidenceColor = (confidence: number) => {
     if (confidence >= 0.8) return 'success';
     if (confidence >= 0.6) return 'warning';
     return 'error';
   };
+
+  const currentActivity = activities[currentActivityIndex];
+  const acceptedCount = Object.values(activityDecisions).filter(d => d === 'accept').length;
+  const rejectedCount = Object.values(activityDecisions).filter(d => d === 'reject').length;
+  const pendingCount = Object.values(activityDecisions).filter(d => d === 'pending').length;
 
   return (
     <Box sx={{ p: 3 }}>
@@ -337,32 +371,95 @@ const WorkNotesImport: React.FC = () => {
         Work Notes Import
       </Typography>
       <Typography variant="body1" color="text.secondary" paragraph>
-        Import work activities from free-form notes using AI parsing. The system will automatically
-        match clients, employees, and extract work details. Review and edit each activity before importing.
+        Import work activities from files or text using AI parsing. Review and edit each activity before importing.
       </Typography>
 
-      <Grid container spacing={3}>
-        {/* Input Section */}
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" sx={{ flexGrow: 1 }}>
-                Work Notes Input
-              </Typography>
-              <Tooltip title="View examples and formatting tips">
-                <IconButton onClick={() => setShowTemplates(true)}>
-                  <HelpIcon />
-                </IconButton>
-              </Tooltip>
-            </Box>
+      <Stepper activeStep={currentStep === 'upload' ? 0 : currentStep === 'review' ? 1 : 2} sx={{ mb: 4 }}>
+        <Step>
+          <StepLabel>Upload & Parse</StepLabel>
+        </Step>
+        <Step>
+          <StepLabel>Review Activities</StepLabel>
+        </Step>
+        <Step>
+          <StepLabel>Import Complete</StepLabel>
+        </Step>
+      </Stepper>
 
-            <TextField
-              fullWidth
-              multiline
-              rows={12}
-              value={workNotesText}
-              onChange={(e) => setWorkNotesText(e.target.value)}
-              placeholder="Paste your work notes here...
+      {/* Upload Step */}
+      {currentStep === 'upload' && (
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Choose Import Method
+              </Typography>
+              
+              <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+                <Button
+                  variant={importMethod === 'file' ? 'contained' : 'outlined'}
+                  onClick={() => setImportMethod('file')}
+                  startIcon={<FileUploadIcon />}
+                  fullWidth
+                >
+                  Upload File
+                </Button>
+                <Button
+                  variant={importMethod === 'text' ? 'contained' : 'outlined'}
+                  onClick={() => setImportMethod('text')}
+                  startIcon={<TextIcon />}
+                  fullWidth
+                >
+                  Enter Text
+                </Button>
+              </Stack>
+
+              {importMethod === 'file' ? (
+                <Box>
+                  <input
+                    type="file"
+                    accept=".pdf,.txt"
+                    onChange={handleFileSelect}
+                    style={{ display: 'none' }}
+                    id="file-upload"
+                  />
+                  <label htmlFor="file-upload">
+                    <Card
+                      sx={{
+                        p: 4,
+                        textAlign: 'center',
+                        border: '2px dashed',
+                        borderColor: selectedFile ? 'primary.main' : 'grey.300',
+                        bgcolor: selectedFile ? 'primary.light' : 'grey.50',
+                        cursor: 'pointer',
+                        mb: 2,
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          bgcolor: 'primary.light'
+                        }
+                      }}
+                    >
+                      <CloudUploadIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                      <Typography variant="h6" gutterBottom>
+                        {selectedFile ? selectedFile.name : 'Click to upload file'}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {selectedFile 
+                          ? `${(selectedFile.size / 1024).toFixed(1)} KB - ${selectedFile.type}`
+                          : 'Supports PDF and text files (max 32MB)'
+                        }
+                      </Typography>
+                    </Card>
+                  </label>
+                </Box>
+              ) : (
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={12}
+                  value={workNotesText}
+                  onChange={(e) => setWorkNotesText(e.target.value)}
+                  placeholder="Paste your work notes here...
 
 Example:
 6/3
@@ -373,169 +470,245 @@ Work Completed:
 - Misc clean up/weeds
 - Deadhead brunnera
 - Prune choisya (n side)"
-              variant="outlined"
-              sx={{ mb: 2 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
-              <Button
-                variant="contained"
-                onClick={handleParseNotes}
-                disabled={parsing || !workNotesText.trim()}
-                startIcon={parsing ? undefined : <PreviewIcon />}
-                sx={{ flexGrow: 1 }}
-              >
-                {parsing ? 'Parsing...' : 'Parse Notes'}
-              </Button>
-              
-              <Button
-                variant="outlined"
-                onClick={() => setShowTemplates(true)}
-                startIcon={<HelpIcon />}
-              >
-                Examples
-              </Button>
-            </Box>
-
-            {parsing && (
-              <Box sx={{ mt: 2 }}>
-                <LinearProgress />
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                  AI is parsing your work notes...
-                </Typography>
-              </Box>
-            )}
-          </Paper>
-        </Grid>
-
-        {/* Preview Section */}
-        <Grid item xs={12} md={6}>
-          {preview && (
-            <Paper sx={{ p: 3 }}>
-              <Typography variant="h6" gutterBottom>
-                Import Preview
-              </Typography>
-
-              {/* Summary */}
-              <Card sx={{ mb: 2, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-                <CardContent>
-                  <Grid container spacing={2}>
-                    <Grid item xs={6}>
-                      <Typography variant="body2">Total Activities</Typography>
-                      <Typography variant="h6">{preview.summary.totalActivities}</Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="body2">Ready to Import</Typography>
-                      <Typography variant="h6">{editedActivities.filter(a => a.canImport).length}</Typography>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
-
-              {/* Issues Summary */}
-              {preview.summary.issuesCount > 0 && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  <AlertTitle>Validation Issues Found</AlertTitle>
-                  {preview.summary.issuesCount} issues need attention before import.
-                  <Button
-                    size="small"
-                    onClick={() => setShowValidationDetails(true)}
-                    sx={{ ml: 1 }}
-                  >
-                    View Details
-                  </Button>
-                </Alert>
+                  variant="outlined"
+                  sx={{ mb: 2 }}
+                />
               )}
 
-              {/* Activity Selection */}
-              <Box sx={{ mb: 2 }}>
-                <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-                  <Button size="small" onClick={handleSelectAll}>
-                    Select All Valid
-                  </Button>
-                  <Button size="small" onClick={handleDeselectAll}>
-                    Deselect All
-                  </Button>
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  {selectedActivities.size} of {editedActivities.length} activities selected
-                </Typography>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <Button
+                  variant="contained"
+                  onClick={handleUpload}
+                  disabled={uploading || (importMethod === 'file' ? !selectedFile : !workNotesText.trim())}
+                  startIcon={uploading ? undefined : <PreviewIcon />}
+                  sx={{ flexGrow: 1 }}
+                >
+                  {uploading ? 'Processing...' : 'Parse Notes'}
+                </Button>
+                
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowTemplates(true)}
+                  startIcon={<HelpIcon />}
+                >
+                  Examples
+                </Button>
               </Box>
 
-              {/* Import Button */}
-              <Button
-                variant="contained"
-                color="success"
-                onClick={handleImportActivities}
-                disabled={importing || selectedActivities.size === 0}
-                startIcon={importing ? undefined : <ImportIcon />}
-                fullWidth
-                sx={{ mb: 2 }}
-              >
-                {importing ? 'Importing...' : `Import ${selectedActivities.size} Activities`}
-              </Button>
-
-              {importing && (
-                <Box sx={{ mb: 2 }}>
-                  <LinearProgress color="success" />
+              {uploading && (
+                <Box sx={{ mt: 2 }}>
+                  <LinearProgress />
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    Importing activities to database...
+                    AI is analyzing your work notes...
                   </Typography>
                 </Box>
               )}
             </Paper>
-          )}
-        </Grid>
+          </Grid>
 
-        {/* Activities List with Editable Previews */}
-        {preview && (
-          <Grid item xs={12}>
+          <Grid item xs={12} md={6}>
             <Paper sx={{ p: 3 }}>
               <Typography variant="h6" gutterBottom>
-                Work Activity Drafts - Review & Edit
+                How it works
               </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Each activity below is a draft based on AI parsing. Click "Edit" to review and modify details before importing.
-              </Typography>
-
-              {editedActivities.map((activity, index) => (
-                <Card
-                  key={index}
-                  sx={{
-                    mb: 2,
-                    border: activity.canImport ? '1px solid' : '1px solid',
-                    borderColor: activity.canImport ? 'success.main' : 'error.main',
-                    bgcolor: selectedActivities.has(index) ? 'action.selected' : undefined
-                  }}
-                >
-                  <CardContent>
-                    {editingActivity === index ? (
-                      <ActivityEditForm
-                        activity={activity}
-                        index={index}
-                        onSave={handleSaveActivity}
-                        onCancel={handleCancelEdit}
-                        clientMatches={preview.clientMatches}
-                        employeeMatches={preview.employeeMatches}
-                      />
-                    ) : (
-                      <ActivityPreview
-                        activity={activity}
-                        index={index}
-                        selected={selectedActivities.has(index)}
-                        onToggleSelect={handleActivitySelection}
-                        onEdit={handleEditActivity}
-                        getConfidenceColor={getConfidenceColor}
-                        getIssueIcon={getIssueIcon}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+              <List>
+                <ListItem>
+                  <ListItemIcon><FileIcon color="primary" /></ListItemIcon>
+                  <ListItemText 
+                    primary="Upload or paste your work notes"
+                    secondary="Supports handwritten PDFs, typed documents, or plain text"
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><PreviewIcon color="primary" /></ListItemIcon>
+                  <ListItemText 
+                    primary="AI parses and structures the data"
+                    secondary="Extracts clients, dates, times, tasks, and charges automatically"
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><EditIcon color="primary" /></ListItemIcon>
+                  <ListItemText 
+                    primary="Review and edit each activity"
+                    secondary="Cycle through activities one-by-one to verify and correct"
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon><ImportIcon color="primary" /></ListItemIcon>
+                  <ListItemText 
+                    primary="Import approved activities"
+                    secondary="Only activities you approve are added to the database"
+                  />
+                </ListItem>
+              </List>
             </Paper>
           </Grid>
-        )}
-      </Grid>
+        </Grid>
+      )}
+
+      {/* Review Step */}
+      {currentStep === 'review' && currentActivity && (
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={8}>
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">
+                  Review Activity {currentActivityIndex + 1} of {activities.length}
+                </Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Chip size="small" label={`${acceptedCount} accepted`} color="success" />
+                  <Chip size="small" label={`${rejectedCount} rejected`} color="error" />
+                  <Chip size="small" label={`${pendingCount} pending`} color="default" />
+                </Box>
+              </Box>
+
+              {editingActivity ? (
+                <ActivityEditForm
+                  activity={editingActivity}
+                  onChange={setEditingActivity}
+                  onSave={handleSaveEdit}
+                  onCancel={() => setEditingActivity(null)}
+                />
+              ) : (
+                <ActivityReviewCard
+                  activity={currentActivity}
+                  onEdit={() => setEditingActivity({ ...currentActivity })}
+                  getConfidenceColor={getConfidenceColor}
+                />
+              )}
+
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 3 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => setCurrentActivityIndex(Math.max(0, currentActivityIndex - 1))}
+                  disabled={currentActivityIndex === 0}
+                  startIcon={<PrevIcon />}
+                >
+                  Previous
+                </Button>
+
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    onClick={() => handleActivityDecision('accept')}
+                    disabled={activityDecisions[currentActivityIndex] === 'accept'}
+                    startIcon={<AcceptIcon />}
+                  >
+                    Accept
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={() => handleActivityDecision('reject')}
+                    disabled={activityDecisions[currentActivityIndex] === 'reject'}
+                    startIcon={<RejectIcon />}
+                  >
+                    Reject
+                  </Button>
+                </Box>
+
+                <Button
+                  variant="outlined"
+                  onClick={() => setCurrentActivityIndex(Math.min(activities.length - 1, currentActivityIndex + 1))}
+                  disabled={currentActivityIndex === activities.length - 1}
+                  endIcon={<NextIcon />}
+                >
+                  Next
+                </Button>
+              </Box>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Import Summary
+              </Typography>
+              
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Progress</Typography>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={((acceptedCount + rejectedCount) / activities.length) * 100}
+                  sx={{ mt: 1 }}
+                />
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  {acceptedCount + rejectedCount} of {activities.length} reviewed
+                </Typography>
+              </Box>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2">
+                  <strong>Activities to import:</strong> {acceptedCount}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Activities rejected:</strong> {rejectedCount}
+                </Typography>
+                <Typography variant="body2">
+                  <strong>Pending review:</strong> {pendingCount}
+                </Typography>
+              </Box>
+
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleImportActivities}
+                disabled={acceptedCount === 0 || importing}
+                startIcon={importing ? undefined : <ImportIcon />}
+                fullWidth
+                sx={{ mt: 2 }}
+              >
+                {importing ? 'Importing...' : `Import ${acceptedCount} Activities`}
+              </Button>
+
+              <Button
+                variant="outlined"
+                onClick={handleStartOver}
+                fullWidth
+                sx={{ mt: 1 }}
+              >
+                Start Over
+              </Button>
+            </Paper>
+          </Grid>
+        </Grid>
+      )}
+
+      {/* Complete Step */}
+      {currentStep === 'complete' && importResults && (
+        <Grid container spacing={3} justifyContent="center">
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 4, textAlign: 'center' }}>
+              <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+              <Typography variant="h5" gutterBottom>
+                Import Complete!
+              </Typography>
+              
+              <Box sx={{ my: 3 }}>
+                <Typography variant="h6" color="success.main">
+                  {importResults.imported} activities imported successfully
+                </Typography>
+                {importResults.failed > 0 && (
+                  <Typography variant="body1" color="error.main">
+                    {importResults.failed} activities failed to import
+                  </Typography>
+                )}
+              </Box>
+
+              <Button
+                variant="contained"
+                onClick={handleStartOver}
+                sx={{ mt: 2 }}
+              >
+                Import More Notes
+              </Button>
+            </Paper>
+          </Grid>
+        </Grid>
+      )}
 
       {/* Templates Dialog */}
       <Dialog
@@ -556,7 +729,6 @@ Work Completed:
         <DialogContent>
           {templates && (
             <Box>
-              {/* Examples */}
               <Typography variant="h6" gutterBottom>
                 Examples
               </Typography>
@@ -578,6 +750,7 @@ Work Completed:
                       size="small"
                       onClick={() => {
                         setWorkNotesText(example.text);
+                        setImportMethod('text');
                         setShowTemplates(false);
                       }}
                       sx={{ mt: 1 }}
@@ -590,7 +763,6 @@ Work Completed:
 
               <Divider sx={{ my: 3 }} />
 
-              {/* Tips */}
               <Typography variant="h6" gutterBottom>
                 Formatting Tips
               </Typography>
@@ -609,55 +781,6 @@ Work Completed:
         </DialogContent>
       </Dialog>
 
-      {/* Validation Details Dialog */}
-      <Dialog
-        open={showValidationDetails}
-        onClose={() => setShowValidationDetails(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Validation Issues</DialogTitle>
-        <DialogContent>
-          {preview && (
-            <TableContainer>
-              <Table>
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Activity</TableCell>
-                    <TableCell>Issue Type</TableCell>
-                    <TableCell>Field</TableCell>
-                    <TableCell>Message</TableCell>
-                    <TableCell>Suggestion</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {editedActivities.flatMap((activity, actIndex) =>
-                    activity.validationIssues.map((issue, issueIndex) => (
-                      <TableRow key={`${actIndex}-${issueIndex}`}>
-                        <TableCell>{activity.clientName} ({activity.date})</TableCell>
-                        <TableCell>
-                          <Chip
-                            size="small"
-                            label={issue.type}
-                            color={issue.type === 'error' ? 'error' : 'warning'}
-                          />
-                        </TableCell>
-                        <TableCell>{issue.field}</TableCell>
-                        <TableCell>{issue.message}</TableCell>
-                        <TableCell>{issue.suggestion || '-'}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowValidationDetails(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
       {/* Snackbar */}
       <Snackbar
         open={snackbar.open}
@@ -672,160 +795,125 @@ Work Completed:
   );
 };
 
-// Activity Preview Component
-interface ActivityPreviewProps {
+// Activity Review Card Component
+interface ActivityReviewCardProps {
   activity: ValidatedWorkActivity;
-  index: number;
-  selected: boolean;
-  onToggleSelect: (index: number) => void;
-  onEdit: (index: number) => void;
+  onEdit: () => void;
   getConfidenceColor: (confidence: number) => 'success' | 'warning' | 'error';
-  getIssueIcon: (type: 'error' | 'warning') => React.ReactElement;
 }
 
-const ActivityPreview: React.FC<ActivityPreviewProps> = ({
+const ActivityReviewCard: React.FC<ActivityReviewCardProps> = ({
   activity,
-  index,
-  selected,
-  onToggleSelect,
   onEdit,
-  getConfidenceColor,
-  getIssueIcon
+  getConfidenceColor
 }) => (
-  <Box>
-    <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
-      <FormControlLabel
-        control={
-          <Switch
-            checked={selected}
-            onChange={() => onToggleSelect(index)}
-            disabled={!activity.canImport}
-          />
-        }
-        label=""
-        sx={{ mr: 2 }}
-      />
-      
-      <Box sx={{ flexGrow: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Typography variant="h6">
+  <Card sx={{ border: activity.canImport ? '2px solid' : '2px solid', borderColor: activity.canImport ? 'success.main' : 'error.main' }}>
+    <CardContent>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+        <Box>
+          <Typography variant="h6" gutterBottom>
             {activity.clientName}
           </Typography>
-          <Chip
-            size="small"
-            label={activity.date}
-            icon={<ScheduleIcon />}
-          />
-          <Chip
-            size="small"
-            label={`${activity.totalHours}h`}
-            color="primary"
-          />
-          <Chip
-            size="small"
-            label={`${Math.round(activity.confidence * 100)}%`}
-            color={getConfidenceColor(activity.confidence)}
-          />
-        </Box>
-
-        <Typography variant="body2" color="text.secondary" gutterBottom>
-          {activity.startTime} - {activity.endTime} | {activity.employees.join(', ')}
-        </Typography>
-
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
-          <Chip size="small" label={activity.workType} variant="outlined" />
-          {activity.charges?.map((charge, chargeIndex) => (
-            <Chip
-              key={chargeIndex}
-              size="small"
-              label={charge.description}
-              icon={<MoneyIcon />}
-              color="secondary"
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+            <Chip size="small" label={activity.date} icon={<ScheduleIcon />} />
+            <Chip size="small" label={`${activity.totalHours}h`} color="primary" />
+            <Chip 
+              size="small" 
+              label={`${Math.round(activity.confidence * 100)}%`} 
+              color={getConfidenceColor(activity.confidence)} 
             />
-          ))}
+            <Chip size="small" label={activity.workType} variant="outlined" />
+          </Box>
         </Box>
-
-        {activity.tasks.length > 0 && (
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            <strong>Tasks:</strong> {activity.tasks.join(', ')}
-          </Typography>
-        )}
-
-        {activity.notes && (
-          <Typography variant="body2" color="text.secondary">
-            <strong>Notes:</strong> {activity.notes}
-          </Typography>
-        )}
+        <IconButton onClick={onEdit} color="primary">
+          <EditIcon />
+        </IconButton>
       </Box>
 
-      <Stack direction="row" spacing={1}>
-        <Tooltip title="Edit activity details">
-          <IconButton onClick={() => onEdit(index)} color="primary">
-            <EditIcon />
-          </IconButton>
-        </Tooltip>
-        {!activity.canImport && (
-          <Tooltip title="Has validation issues">
-            <ErrorIcon color="error" />
-          </Tooltip>
-        )}
-      </Stack>
-    </Box>
+      <Typography variant="body2" color="text.secondary" gutterBottom>
+        <strong>Time:</strong> {activity.startTime} - {activity.endTime} | <strong>Staff:</strong> {activity.employees.join(', ')}
+      </Typography>
 
-    {/* Validation Issues */}
-    {activity.validationIssues.length > 0 && (
-      <Accordion>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-          <Typography variant="body2" color="error">
-            {activity.validationIssues.length} Validation Issue(s)
-          </Typography>
-        </AccordionSummary>
-        <AccordionDetails>
+      {activity.tasks.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" gutterBottom><strong>Tasks:</strong></Typography>
           <List dense>
-            {activity.validationIssues.map((issue, issueIndex) => (
-              <ListItem key={issueIndex}>
-                <ListItemIcon>
-                  {getIssueIcon(issue.type)}
-                </ListItemIcon>
-                <ListItemText
-                  primary={issue.message}
-                  secondary={issue.suggestion}
-                />
+            {activity.tasks.map((task, index) => (
+              <ListItem key={index} sx={{ py: 0 }}>
+                <ListItemText primary={`• ${task}`} />
               </ListItem>
             ))}
           </List>
-        </AccordionDetails>
-      </Accordion>
-    )}
-  </Box>
+        </Box>
+      )}
+
+      {activity.charges && activity.charges.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" gutterBottom><strong>Charges:</strong></Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+            {activity.charges.map((charge, index) => (
+              <Chip
+                key={index}
+                size="small"
+                label={charge.description}
+                icon={<MoneyIcon />}
+                color="secondary"
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
+
+      {activity.notes && (
+        <Typography variant="body2" color="text.secondary">
+          <strong>Notes:</strong> {activity.notes}
+        </Typography>
+      )}
+
+      {activity.validationIssues.length > 0 && (
+        <Accordion sx={{ mt: 2 }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="body2" color="error">
+              {activity.validationIssues.length} Validation Issue(s)
+            </Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <List dense>
+              {activity.validationIssues.map((issue, index) => (
+                <ListItem key={index}>
+                  <ListItemIcon>
+                    {issue.type === 'error' ? <ErrorIcon color="error" /> : <WarningIcon color="warning" />}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={issue.message}
+                    secondary={issue.suggestion}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </AccordionDetails>
+        </Accordion>
+      )}
+    </CardContent>
+  </Card>
 );
 
 // Activity Edit Form Component
 interface ActivityEditFormProps {
   activity: ValidatedWorkActivity;
-  index: number;
-  onSave: (index: number, activity: ValidatedWorkActivity) => void;
+  onChange: (activity: ValidatedWorkActivity) => void;
+  onSave: () => void;
   onCancel: () => void;
-  clientMatches: ClientMatch[];
-  employeeMatches: EmployeeMatch[];
 }
 
 const ActivityEditForm: React.FC<ActivityEditFormProps> = ({
   activity,
-  index,
+  onChange,
   onSave,
-  onCancel,
-  clientMatches,
-  employeeMatches
+  onCancel
 }) => {
-  const [editedActivity, setEditedActivity] = useState<ValidatedWorkActivity>({ ...activity });
-
-  const handleSave = () => {
-    onSave(index, editedActivity);
-  };
-
   const updateField = (field: keyof ValidatedWorkActivity, value: any) => {
-    setEditedActivity(prev => ({ ...prev, [field]: value }));
+    onChange({ ...activity, [field]: value });
   };
 
   const updateTasks = (taskText: string) => {
@@ -834,148 +922,143 @@ const ActivityEditForm: React.FC<ActivityEditFormProps> = ({
   };
 
   return (
-    <Box>
-      <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <EditIcon /> Edit Work Activity
-      </Typography>
-      
-      <Grid container spacing={2}>
-        {/* Basic Info */}
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            label="Client Name"
-            value={editedActivity.clientName}
-            onChange={(e) => updateField('clientName', e.target.value)}
-            margin="normal"
-          />
-        </Grid>
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            label="Date"
-            type="date"
-            value={editedActivity.date}
-            onChange={(e) => updateField('date', e.target.value)}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-        </Grid>
+    <Card sx={{ border: '2px solid', borderColor: 'primary.main' }}>
+      <CardContent>
+        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <EditIcon /> Edit Work Activity
+        </Typography>
+        
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Client Name"
+              value={activity.clientName}
+              onChange={(e) => updateField('clientName', e.target.value)}
+              margin="normal"
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Date"
+              type="date"
+              value={activity.date}
+              onChange={(e) => updateField('date', e.target.value)}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
 
-        {/* Time Info */}
-        <Grid item xs={12} md={4}>
-          <TextField
-            fullWidth
-            label="Start Time"
-            type="time"
-            value={editedActivity.startTime}
-            onChange={(e) => updateField('startTime', e.target.value)}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <TextField
-            fullWidth
-            label="End Time"
-            type="time"
-            value={editedActivity.endTime}
-            onChange={(e) => updateField('endTime', e.target.value)}
-            margin="normal"
-            InputLabelProps={{ shrink: true }}
-          />
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <TextField
-            fullWidth
-            label="Total Hours"
-            type="number"
-            value={editedActivity.totalHours}
-            onChange={(e) => updateField('totalHours', parseFloat(e.target.value) || 0)}
-            margin="normal"
-            inputProps={{ step: 0.25, min: 0 }}
-          />
-        </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="Start Time"
+              type="time"
+              value={activity.startTime}
+              onChange={(e) => updateField('startTime', e.target.value)}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="End Time"
+              type="time"
+              value={activity.endTime}
+              onChange={(e) => updateField('endTime', e.target.value)}
+              margin="normal"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              fullWidth
+              label="Total Hours"
+              type="number"
+              value={activity.totalHours}
+              onChange={(e) => updateField('totalHours', parseFloat(e.target.value) || 0)}
+              margin="normal"
+              inputProps={{ step: 0.25, min: 0 }}
+            />
+          </Grid>
 
-        {/* Work Type */}
-        <Grid item xs={12} md={6}>
-          <FormControl fullWidth margin="normal">
-            <InputLabel>Work Type</InputLabel>
-            <Select
-              value={editedActivity.workType}
-              onChange={(e) => updateField('workType', e.target.value)}
-              label="Work Type"
-            >
-              {WORK_TYPES.map(type => (
-                <MenuItem key={type} value={type}>
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
+          <Grid item xs={12} md={6}>
+            <FormControl fullWidth margin="normal">
+              <InputLabel>Work Type</InputLabel>
+              <Select
+                value={activity.workType}
+                onChange={(e) => updateField('workType', e.target.value)}
+                label="Work Type"
+              >
+                {WORK_TYPES.map(type => (
+                  <MenuItem key={type} value={type}>
+                    {type.charAt(0).toUpperCase() + type.slice(1)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
 
-        {/* Employees */}
-        <Grid item xs={12} md={6}>
-          <TextField
-            fullWidth
-            label="Employees (comma separated)"
-            value={editedActivity.employees.join(', ')}
-            onChange={(e) => updateField('employees', e.target.value.split(',').map(emp => emp.trim()).filter(emp => emp))}
-            margin="normal"
-            helperText="e.g., Virginia, Rebecca, Anne"
-          />
-        </Grid>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Employees (comma separated)"
+              value={activity.employees.join(', ')}
+              onChange={(e) => updateField('employees', e.target.value.split(',').map(emp => emp.trim()).filter(emp => emp))}
+              margin="normal"
+              helperText="e.g., Virginia, Rebecca, Anne"
+            />
+          </Grid>
 
-        {/* Tasks */}
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Tasks"
-            multiline
-            rows={3}
-            value={editedActivity.tasks.join('\n')}
-            onChange={(e) => updateTasks(e.target.value)}
-            margin="normal"
-            helperText="Enter each task on a new line"
-          />
-        </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Tasks"
+              multiline
+              rows={3}
+              value={activity.tasks.join('\n')}
+              onChange={(e) => updateTasks(e.target.value)}
+              margin="normal"
+              helperText="Enter each task on a new line"
+            />
+          </Grid>
 
-        {/* Notes */}
-        <Grid item xs={12}>
-          <TextField
-            fullWidth
-            label="Notes"
-            multiline
-            rows={2}
-            value={editedActivity.notes}
-            onChange={(e) => updateField('notes', e.target.value)}
-            margin="normal"
-          />
-        </Grid>
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Notes"
+              multiline
+              rows={2}
+              value={activity.notes}
+              onChange={(e) => updateField('notes', e.target.value)}
+              margin="normal"
+            />
+          </Grid>
 
-        {/* Action Buttons */}
-        <Grid item xs={12}>
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-            <Button
-              variant="contained"
-              onClick={handleSave}
-              startIcon={<SaveIcon />}
-              color="primary"
-            >
-              Save Changes
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={onCancel}
-              startIcon={<CancelIcon />}
-            >
-              Cancel
-            </Button>
-          </Box>
+          <Grid item xs={12}>
+            <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+              <Button
+                variant="contained"
+                onClick={onSave}
+                startIcon={<SaveIcon />}
+                color="primary"
+              >
+                Save Changes
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={onCancel}
+                startIcon={<CancelIcon />}
+              >
+                Cancel
+              </Button>
+            </Box>
+          </Grid>
         </Grid>
-      </Grid>
-    </Box>
+      </CardContent>
+    </Card>
   );
 };
 

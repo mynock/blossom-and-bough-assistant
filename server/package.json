@@ -15,7 +15,8 @@
     "import-data": "ts-node scripts/import-data.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
+    "@anthropic-ai/sdk": "^0.54.0",
+    "@types/multer": "^1.4.13",
     "axios": "^1.5.0",
     "better-sqlite3": "^11.10.0",
     "cors": "^2.8.5",
@@ -27,6 +28,7 @@
     "googleapis": "^126.0.0",
     "helmet": "^7.0.0",
     "morgan": "^1.10.0",
+    "multer": "^2.0.1",
     "winston": "^3.17.0"
   },
   "devDependencies": {

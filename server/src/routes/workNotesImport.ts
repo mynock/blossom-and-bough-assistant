@@ -1,6 +1,23 @@
 import express from 'express';
+import multer from 'multer';
 import { WorkNotesParserService } from '../services/WorkNotesParserService';
 import { AnthropicService } from '../services/AnthropicService';
+
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 32 * 1024 * 1024, // 32MB limit (Anthropic's limit)
+  },
+  fileFilter: (req, file, cb) => {
+    // Accept PDFs and text files
+    if (file.mimetype === 'application/pdf' || file.mimetype === 'text/plain') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only PDF and text files are allowed'));
+    }
+  }
+});
 
 // Create a factory function that accepts the anthropicService
 export function createWorkNotesImportRouter(anthropicService: AnthropicService) {
@@ -44,39 +61,93 @@ export function createWorkNotesImportRouter(anthropicService: AnthropicService) 
   });
 
   /**
+   * POST /api/work-notes/upload
+   * Upload and parse work notes from file (PDF or text)
+   */
+  router.post('/upload', upload.single('file'), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ 
+          error: 'No file uploaded' 
+        });
+      }
+
+      const { file } = req;
+      console.log(`📁 Processing uploaded file: ${file.originalname} (${file.size} bytes, ${file.mimetype})`);
+
+      let preview;
+
+      if (file.mimetype === 'application/pdf') {
+        // Handle PDF files using Anthropic's native PDF support
+        console.log(`📄 Processing PDF file with AI...`);
+        const aiResult = await anthropicService.parseWorkNotesFromPDF(file.buffer, file.originalname);
+        preview = await workNotesParserService.validateAndPreview(aiResult);
+      } else if (file.mimetype === 'text/plain') {
+        // Handle text files
+        const workNotesText = file.buffer.toString('utf-8');
+        preview = await workNotesParserService.parseAndPreview(workNotesText);
+      } else {
+        return res.status(400).json({
+          error: 'Unsupported file type. Only PDF and text files are supported.'
+        });
+      }
+
+      if (preview.activities.length === 0) {
+        return res.status(400).json({ 
+          error: 'No work activities could be extracted from the file. Please check the file format and content.' 
+        });
+      }
+
+      console.log(`✅ Parsed ${preview.summary.totalActivities} activities (${preview.summary.validActivities} valid)`);
+      
+      res.json({
+        ...preview,
+        sourceFile: {
+          name: file.originalname,
+          size: file.size,
+          type: file.mimetype
+        }
+      });
+    } catch (error) {
+      console.error('Error processing uploaded file:', error);
+      res.status(500).json({ 
+        error: 'Failed to process uploaded file',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  /**
    * POST /api/work-notes/import
-   * Import validated work activities to the database
+   * Import validated activities to database
    */
   router.post('/import', async (req, res) => {
     try {
       const { activities } = req.body;
 
-      if (!activities || !Array.isArray(activities)) {
+      if (!Array.isArray(activities)) {
         return res.status(400).json({ 
-          error: 'activities array is required' 
+          error: 'activities must be an array' 
         });
       }
 
       if (activities.length === 0) {
         return res.status(400).json({ 
-          error: 'No activities to import' 
+          error: 'No activities provided for import' 
         });
       }
 
-      console.log(`📥 Importing ${activities.length} work activities...`);
+      console.log(`💾 Importing ${activities.length} activities...`);
       
       const results = await workNotesParserService.importActivities(activities);
       
       console.log(`✅ Import complete: ${results.imported} imported, ${results.failed} failed`);
       
-      res.json({
-        success: true,
-        ...results
-      });
+      res.json(results);
     } catch (error) {
-      console.error('Error importing work activities:', error);
+      console.error('Error importing activities:', error);
       res.status(500).json({ 
-        error: 'Failed to import work activities',
+        error: 'Failed to import activities',
         details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
@@ -84,75 +155,93 @@ export function createWorkNotesImportRouter(anthropicService: AnthropicService) 
 
   /**
    * GET /api/work-notes/templates
-   * Get parsing templates and examples
+   * Get example templates and formatting tips
    */
   router.get('/templates', async (req, res) => {
     try {
       const templates = {
         examples: [
           {
-            title: "Single Client Entry",
-            description: "Basic work entry for one client",
+            title: "Basic Daily Entry",
+            description: "Simple single-day work log with time tracking",
             text: `6/3
 Time: 8:45-3:10 w V inc 22x2 min drive
 Lunch: 12:35-2
+Stoller
 Work Completed:
 - Misc clean up/weeds
 - Deadhead brunnera
-- Prune choisya (n side)
-- Take photos for design drawing`
+- Prune choisya (n side)`
           },
           {
-            title: "Multi-Client Day",
-            description: "Multiple clients in one day",
-            text: `6/10 w Anne & V
+            title: "Multiple Clients",
+            description: "Multiple clients worked on the same day",
+            text: `5/13
+Time: 8:30-4:15 w R
+Nadler - 8:30-11:45
+- Weeding front beds
+- Pruning roses
+- Charge: 2 debris bags
+
+Kurzweil - 1:00-4:15
+- Installation: 3 hostas, 2 ferns
+- Mulching new plantings
+- Charge: Plants $120, mulch 3 yards`
+          },
+          {
+            title: "With Charges",
+            description: "Work entry including material charges",
+            text: `6/15
+Solo work - 9:00-2:30
 Silver
-Kabeiseman on site 1:30-3:50 (V stayed extra 10 min) charge 1 debris bag
-Kurzweil me & Anne til 5:10 - light weeds, debris, deadheading, sluggo`
-          },
-          {
-            title: "Solo Work",
-            description: "Solo work with charges",
-            text: `5/29 solo
-Stassi on site 9/9:25-11:45 inc lil break, add .5 drive
-Weeds, debris clean up, pruning hinokis, sluggo
-Charge: Sluggo, fert, 2-3 bags debris`
+Work Completed:
+- Spring cleanup
+- Deadheading perennials
+- Applied fertilizer
+Charges:
+- Sluggo application
+- Fertilizer treatment
+- 3 debris bags removal`
           }
         ],
         patterns: {
           timeFormats: [
-            "8:45-3:10",
-            "on site 9/9:25-11:45",
-            "R 8:30-4:15, Me 9:40-5"
+            "8:45-3:10 w V (with Virginia)",
+            "R 8:30-4:15, Me 9:40-5 (Rebecca and Me different times)",
+            "solo 9:00-2:30 (working alone)",
+            "on site 9/9:25-11:45 inc lil break (complex timing)"
           ],
           employeeCodes: {
             "V": "Virginia",
             "R": "Rebecca", 
             "A": "Anne",
             "M": "Megan",
-            "solo": "Solo work",
-            "w V": "With Virginia"
+            "solo": "Andrea (working alone)"
           },
           chargeFormats: [
             "charge 1 debris bag",
             "Charge: Sluggo, fert, 2-3 bags debris",
+            "Plants $120, mulch 3 yards",
             "3 aspidistra (60 pdxn)"
           ]
         },
         tips: [
-          "Use consistent date formats (6/3, 5/29, etc.)",
-          "Include employee codes (w V, w R, solo)",
-          "List work tasks as bullet points",
-          "Mention charges and materials used",
-          "Include drive time and lunch breaks for accurate hour calculations"
+          "Start each entry with the date (e.g., '6/3', '5/13')",
+          "Include time ranges and employee codes (e.g., '8:45-3:10 w V')",
+          "List client names clearly on their own line",
+          "Use bullet points for work completed",
+          "Include charges and materials used",
+          "Note drive time if significant (e.g., 'inc 22x2 min drive')",
+          "Mention lunch breaks for accurate time tracking"
         ]
       };
-
+      
       res.json(templates);
     } catch (error) {
       console.error('Error getting templates:', error);
       res.status(500).json({ 
-        error: 'Failed to get templates' 
+        error: 'Failed to get templates',
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });
@@ -163,25 +252,23 @@ Charge: Sluggo, fert, 2-3 bags debris`
    */
   router.get('/stats', async (req, res) => {
     try {
-      // TODO: Implement import history tracking
+      // For now, return basic stats
+      // In the future, this could query the database for actual statistics
       const stats = {
         totalImports: 0,
         totalActivities: 0,
-        averageParsingAccuracy: 0,
-        lastImportDate: null,
-        commonIssues: [
-          "Client name matching",
-          "Employee code recognition", 
-          "Date format parsing",
-          "Hour calculation accuracy"
-        ]
+        lastImport: null,
+        averageActivitiesPerImport: 0,
+        topClients: [],
+        recentImports: []
       };
-
+      
       res.json(stats);
     } catch (error) {
       console.error('Error getting stats:', error);
       res.status(500).json({ 
-        error: 'Failed to get stats' 
+        error: 'Failed to get stats',
+        details: error instanceof Error ? error.message : 'Unknown error'
       });
     }
   });

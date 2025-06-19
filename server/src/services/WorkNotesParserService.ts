@@ -80,27 +80,39 @@ export class WorkNotesParserService {
       console.log('🤖 Parsing work notes with AI...');
       const aiResult = await this.anthropicService.parseWorkNotes(workNotesText);
       
-      // Step 2: Get all clients and employees for matching
+      return await this.validateAndPreview(aiResult);
+    } catch (error) {
+      console.error('Error parsing work notes:', error);
+      throw new Error(`Failed to parse work notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Validate already parsed work notes and return preview
+   */
+  async validateAndPreview(aiResult: WorkNotesParseResult): Promise<ImportPreview> {
+    try {
+      // Step 1: Get all clients and employees for matching
       const [allClients, allEmployees] = await Promise.all([
         this.clientService.getAllClients(),
         this.employeeService.getAllEmployees()
       ]);
 
-      // Step 3: Match clients
+      // Step 2: Match clients
       console.log('🔍 Matching clients...');
       const clientMatches = await this.matchClients(
         [...new Set(aiResult.activities.map(a => a.clientName))],
         allClients
       );
 
-      // Step 4: Match employees
+      // Step 3: Match employees
       console.log('👥 Matching employees...');
       const employeeMatches = await this.matchEmployees(
         [...new Set(aiResult.activities.flatMap(a => a.employees))],
         allEmployees
       );
 
-      // Step 5: Validate activities
+      // Step 4: Validate activities
       console.log('✅ Validating activities...');
       const validatedActivities = await this.validateActivities(
         aiResult.activities,
@@ -108,7 +120,7 @@ export class WorkNotesParserService {
         employeeMatches
       );
 
-      // Step 6: Generate summary
+      // Step 5: Generate summary
       const summary = {
         totalActivities: validatedActivities.length,
         validActivities: validatedActivities.filter(a => a.canImport).length,
@@ -124,8 +136,8 @@ export class WorkNotesParserService {
       };
 
     } catch (error) {
-      console.error('Error parsing work notes:', error);
-      throw new Error(`Failed to parse work notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error validating work notes:', error);
+      throw new Error(`Failed to validate work notes: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
