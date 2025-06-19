@@ -64,8 +64,15 @@ router.get('/google/callback', (req, res, next) => {
   console.log('🟢 [AUTH] isAuthenticated():', req.isAuthenticated?.());
   console.log(`✅ User logged in: ${req.user?.email}`);
   
-  // Redirect to React app
-  res.redirect('http://localhost:3000/');
+  // Environment-aware redirect URL
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const redirectUrl = isDevelopment ? 'http://localhost:3000/' : '/';
+  
+  console.log('🟢 [AUTH] Redirecting to:', redirectUrl);
+  console.log('🟢 [AUTH] Environment:', process.env.NODE_ENV);
+  
+  // Redirect to appropriate URL based on environment
+  res.redirect(redirectUrl);
 });
 
 /**
