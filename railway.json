@@ -4,30 +4,8 @@
     "builder": "DOCKERFILE"
   },
   "deploy": {
-<<<<<<< HEAD
-<<<<<<< HEAD
     "startCommand": "npm run start:prod",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
   }
-<<<<<<< HEAD
 }
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-    "startCommand": "npm run db:push && echo 'Database migration complete, starting server...' && npm run start:prod",
-=======
-    "startCommand": "npm run start:prod",
->>>>>>> 4bb417b (Update railway.json)
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-} 
->>>>>>> 91dc62c (Update railway.json)
-=======
->>>>>>> 793915f (Update railway.json)
-=======
-=======
-}
->>>>>>> 88edabc (Fix Google OAuth with proxy setup and add production compatibility - Fixed OAuth redirect loop by removing requireGuest middleware - Added environment-aware OAuth URL configuration - Updated proxy configuration for proper session handling - OAuth flow now fully functional with proxy setup)
->>>>>>> 0029201 (Fix Google OAuth with proxy setup and add production compatibility - Fixed OAuth redirect loop by removing requireGuest middleware - Added environment-aware OAuth URL configuration - Updated proxy configuration for proper session handling - OAuth flow now fully functional with proxy setup)
