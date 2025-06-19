@@ -15,8 +15,8 @@ RUN cd server && npm ci --only=production
 # Copy source code
 COPY . .
 
-# Build React frontend
-RUN npm run build
+# Build React frontend with CI=false to not treat warnings as errors
+RUN npm run build:production
 
 # Build backend
 RUN cd server && npm run build
