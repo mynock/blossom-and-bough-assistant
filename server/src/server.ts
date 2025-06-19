@@ -4,12 +4,23 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
+
+// Explicit type imports to help Railway's TypeScript compiler
+import type { CorsOptions } from 'cors';
+import type { Options as MorganOptions } from 'morgan';
+
 import { SchedulingService } from './services/SchedulingService';
 import { GoogleSheetsService } from './services/GoogleSheetsService';
 import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
+import workActivitiesRouter from './routes/workActivities';
+import employeesRouter from './routes/employees';
+import migrationRouter from './routes/migration';
+import clientsRouter from './routes/clients';
+import projectsRouter from './routes/projects';
+import { createWorkNotesImportRouter } from './routes/workNotesImport';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -40,6 +51,24 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Mount work activities routes
+app.use('/api/work-activities', workActivitiesRouter);
+
+// Mount employees routes
+app.use('/api/employees', employeesRouter);
+
+// Mount clients routes
+app.use('/api/clients', clientsRouter);
+
+// Mount projects routes
+app.use('/api/projects', projectsRouter);
+
+// Mount work notes import routes
+app.use('/api/work-notes', createWorkNotesImportRouter(anthropicService));
+
+// Mount migration routes
+app.use('/api/migration', migrationRouter);
+
 // Get all helpers
 app.get('/api/helpers', async (req, res) => {
   try {
@@ -48,17 +77,6 @@ app.get('/api/helpers', async (req, res) => {
   } catch (error) {
     console.error('Error fetching helpers:', error);
     res.status(500).json({ error: 'Failed to fetch helpers' });
-  }
-});
-
-// Get all clients
-app.get('/api/clients', async (req, res) => {
-  try {
-    const clients = await schedulingService.getClients();
-    res.json({ clients });
-  } catch (error) {
-    console.error('Error fetching clients:', error);
-    res.status(500).json({ error: 'Failed to fetch clients' });
   }
 });
 
@@ -342,6 +360,21 @@ app.post('/api/calendar/template', async (req, res) => {
     });
   }
 });
+
+// Serve React build files in production
+if (process.env.NODE_ENV === 'production') {
+  // Serve static files from the React app build directory
+  app.use(express.static(path.join(__dirname, '../../build')));
+  
+  // Handle React routing - send all non-API requests to React app
+  app.get('*', (req, res) => {
+    // Don't serve index.html for API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ error: 'API route not found' });
+    }
+    res.sendFile(path.join(__dirname, '../../build/index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

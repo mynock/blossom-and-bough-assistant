@@ -58,16 +58,6 @@ const Schedule: React.FC = () => {
     );
   }
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString([], {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
   const getEventTypeColor = (eventType: CalendarEvent['eventType']) => {
     switch (eventType) {
       case 'maintenance': return 'success';

@@ -34,24 +34,25 @@ export interface Helper {
 }
 
 export interface Client {
-  id: string;
+  id: number;
+  clientId: string;
   name: string;
   address: string;
-  zone: string;
-  maintenanceSchedule: {
-    isMaintenance: boolean;
-    intervalWeeks?: number;
-    hoursPerVisit?: number;
-    lastVisit?: string;
-    nextTarget?: string;
-  };
-  preferences: {
-    preferredDays: string[];
-    preferredTime: 'morning' | 'afternoon' | 'evening' | 'flexible';
-    flexibility: 'Fixed' | 'Preferred' | 'Flexible';
-  };
-  priority: 'High' | 'Medium' | 'Low';
-  status: 'active' | 'inactive' | 'seasonal';
+  geoZone: string;
+  isRecurringMaintenance: boolean;
+  maintenanceIntervalWeeks?: number;
+  maintenanceHoursPerVisit?: string;
+  maintenanceRate?: string;
+  lastMaintenanceDate?: string;
+  nextMaintenanceTarget?: string;
+  priorityLevel?: string;
+  scheduleFlexibility?: string;
+  preferredDays?: string;
+  preferredTime?: string;
+  specialNotes?: string;
+  activeStatus: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface CalendarEvent {

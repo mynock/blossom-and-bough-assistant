@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { Helper, Client, Project } from '../types';
+import path from 'path';
 
 export interface BusinessSettings {
   maxTravelBetweenJobsMinutes: number;
@@ -14,26 +15,62 @@ export interface BusinessSettings {
 export class GoogleSheetsService {
   private auth: any = null;
   private sheets: any = null;
+  private initialized: boolean = false;
 
   constructor() {
-    this.initializeAuth();
+    // Don't call initializeAuth in constructor since it's async
+  }
+
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      await this.initializeAuth();
+      this.initialized = true;
+    }
   }
 
   private async initializeAuth() {
     try {
+      // Check if Google Sheets credentials are available
+      if (!process.env.GOOGLE_SHEETS_ID || !process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
+        console.log('📝 Google Sheets credentials not configured, using mock data');
+        return;
+      }
+
+      // Resolve the key file path relative to the root directory (where .env is located)
+      // The .env file is in the root directory, and the path in env is relative to root
+      const rootDir = path.resolve(__dirname, '../../');
+      let keyFilePath = path.resolve(rootDir, process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
+      
+      // If the file doesn't exist at the specified path, try looking in the root directory
+      if (!require('fs').existsSync(keyFilePath)) {
+        const filename = path.basename(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
+        keyFilePath = path.resolve(rootDir, filename);
+      }
+      
+      console.log('🔑 Attempting to load Google Sheets credentials from:', keyFilePath);
+
+      // Check if the key file exists
+      if (!require('fs').existsSync(keyFilePath)) {
+        console.log('📝 Google Sheets key file not found, using mock data. Expected path:', keyFilePath);
+        return;
+      }
+
       // Initialize Google Sheets API
       this.auth = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
+        keyFile: keyFilePath,
         scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
       });
 
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
+      console.log('✅ Google Sheets API initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Google Sheets auth:', error);
+      console.log('📝 Google Sheets authentication failed, using mock data:', error instanceof Error ? error.message : 'Unknown error');
     }
   }
 
   async getBusinessSettings(): Promise<BusinessSettings> {
+    await this.ensureInitialized();
+    
     if (!this.sheets) {
       return this.getMockBusinessSettings();
     }
@@ -56,7 +93,10 @@ export class GoogleSheetsService {
   }
 
   async getHelpers(): Promise<Helper[]> {
+    await this.ensureInitialized();
+    
     if (!this.sheets) {
+      console.log('📝 Using mock employee data (Google Sheets not configured)');
       return this.getMockHelpers();
     }
 
@@ -70,15 +110,20 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      return rows.map((row: any[]) => this.parseHelperRow(row)).filter(Boolean);
+      const helpers = rows.map((row: any[]) => this.parseHelperRow(row)).filter(Boolean);
+      console.log(`✅ Loaded ${helpers.length} employees from Google Sheets`);
+      return helpers;
     } catch (error) {
-      console.error('Error fetching helpers from Google Sheets:', error);
+      console.log('📝 Google Sheets unavailable, using mock employee data:', error instanceof Error ? error.message : 'Unknown error');
       return this.getMockHelpers();
     }
   }
 
   async getClients(): Promise<Client[]> {
+    await this.ensureInitialized();
+    
     if (!this.sheets) {
+      console.log('📝 Using mock client data (Google Sheets not configured)');
       return this.getMockClients();
     }
 
@@ -92,9 +137,11 @@ export class GoogleSheetsService {
       });
 
       const rows = response.data.values || [];
-      return rows.map((row: any[]) => this.parseClientRow(row)).filter(Boolean);
+      const clients = rows.map((row: any[]) => this.parseClientRow(row)).filter(Boolean);
+      console.log(`✅ Loaded ${clients.length} clients from Google Sheets`);
+      return clients;
     } catch (error) {
-      console.error('Error fetching clients from Google Sheets:', error);
+      console.log('📝 Google Sheets unavailable, using mock client data:', error instanceof Error ? error.message : 'Unknown error');
       return this.getMockClients();
     }
   }

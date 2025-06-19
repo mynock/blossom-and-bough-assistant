@@ -6,34 +6,67 @@ import {
   CardContent,
   Typography,
   Box,
+  Button,
   Chip,
   List,
   ListItem,
   ListItemText,
+  ListItemIcon,
   CircularProgress,
   Alert,
+  Divider,
 } from '@mui/material';
-import { People, Event, Business, Schedule } from '@mui/icons-material';
-import { helpersApi, clientsApi, calendarApi, Helper, Client, CalendarEvent } from '../services/api';
-import CalendarTemplateGenerator from './CalendarTemplateGenerator';
+import { 
+  Assignment,
+  CloudUpload,
+  Schedule,
+  People,
+  Business,
+  Add,
+  FileUpload,
+  Analytics,
+  Today,
+  AccessTime,
+  AttachMoney,
+  ArrowForward,
+} from '@mui/icons-material';
+import { useNavigate } from 'react-router-dom';
 
-interface DashboardStats {
-  activeHelpers: number;
+interface WorkActivityStats {
+  totalActivities: number;
+  thisWeekActivities: number;
+  totalHours: number;
+  billableHours: number;
+  recentActivities: Array<{
+    id: number;
+    date: string;
+    workType: string;
+    clientName: string;
+    totalHours: number;
+    status: string;
+  }>;
+}
+
+interface QuickStats {
   activeClients: number;
-  upcomingEvents: number;
-  maintenanceClients: number;
+  activeEmployees: number;
+  pendingActivities: number;
 }
 
 const Dashboard: React.FC = () => {
-  const [stats, setStats] = useState<DashboardStats>({
-    activeHelpers: 0,
-    activeClients: 0,
-    upcomingEvents: 0,
-    maintenanceClients: 0,
+  const navigate = useNavigate();
+  const [workStats, setWorkStats] = useState<WorkActivityStats>({
+    totalActivities: 0,
+    thisWeekActivities: 0,
+    totalHours: 0,
+    billableHours: 0,
+    recentActivities: [],
   });
-  const [helpers, setHelpers] = useState<Helper[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [quickStats, setQuickStats] = useState<QuickStats>({
+    activeClients: 0,
+    activeEmployees: 0,
+    pendingActivities: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,22 +74,61 @@ const Dashboard: React.FC = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [helpersData, clientsData, eventsData] = await Promise.all([
-          helpersApi.getAll(),
-          clientsApi.getAll(),
-          calendarApi.getEvents(7),
+        
+        // Fetch work activities and other data
+        const [workActivitiesRes, clientsRes, employeesRes] = await Promise.all([
+          fetch('/api/work-activities'),
+          fetch('/api/clients'),
+          fetch('/api/employees'),
         ]);
 
-        setHelpers(helpersData.helpers);
-        setClients(clientsData.clients);
-        setEvents(eventsData.events);
+        const workActivities = await workActivitiesRes.json();
+        const clientsData = await clientsRes.json();
+        const employeesData = await employeesRes.json();
 
-        setStats({
-          activeHelpers: helpersData.helpers.filter(h => h.status === 'active').length,
-          activeClients: clientsData.clients.filter(c => c.status === 'active').length,
-          upcomingEvents: eventsData.events.length,
-          maintenanceClients: clientsData.clients.filter(c => c.maintenanceSchedule.isMaintenance).length,
+        // Calculate work activity stats
+        const now = new Date();
+        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        
+        const thisWeekActivities = workActivities.filter((activity: any) => 
+          new Date(activity.date) >= weekAgo
+        );
+
+        const totalHours = workActivities.reduce((sum: number, activity: any) => 
+          sum + (activity.totalHours || 0), 0
+        );
+
+        const billableHours = workActivities.reduce((sum: number, activity: any) => 
+          sum + (activity.billableHours || 0), 0
+        );
+
+        // Get recent activities (last 5)
+        const recentActivities = workActivities
+          .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
+          .slice(0, 5)
+          .map((activity: any) => ({
+            id: activity.id,
+            date: activity.date,
+            workType: activity.workType,
+            clientName: activity.clientName || 'No Client',
+            totalHours: activity.totalHours,
+            status: activity.status,
+          }));
+
+        setWorkStats({
+          totalActivities: workActivities.length,
+          thisWeekActivities: thisWeekActivities.length,
+          totalHours,
+          billableHours,
+          recentActivities,
         });
+
+        setQuickStats({
+          activeClients: clientsData.clients?.filter((c: any) => c.activeStatus === 'active').length || 0,
+          activeEmployees: employeesData?.filter((e: any) => e.activeStatus === 'active').length || 0,
+          pendingActivities: workActivities.filter((a: any) => a.status === 'planned').length,
+        });
+
       } catch (err) {
         setError('Failed to load dashboard data. Make sure the backend server is running.');
         console.error('Dashboard fetch error:', err);
@@ -86,46 +158,100 @@ const Dashboard: React.FC = () => {
           {error}
         </Alert>
         <Typography variant="body1">
-          This is normal if you haven't started the backend server yet. The app includes mock data for demonstration.
+          This is normal if you haven't started the backend server yet.
         </Typography>
       </Container>
     );
   }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'planned': return 'info';
+      case 'in_progress': return 'primary';
+      case 'completed': return 'success';
+      case 'invoiced': return 'secondary';
+      default: return 'default';
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString([], {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
     });
-  };
-
-  const getEventTypeColor = (eventType: CalendarEvent['eventType']) => {
-    switch (eventType) {
-      case 'maintenance': return 'success';
-      case 'ad_hoc': return 'error';
-      case 'design': return 'secondary';
-      case 'office_work': return 'default';
-      case 'errands': return 'warning';
-      case 'helper_schedule': return 'info';
-      case 'todo': return 'primary';
-      case 'personal': return 'default';
-      default: return 'default';
-    }
   };
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Welcome back, Andrea! 🌿
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary" gutterBottom>
-        Here's your landscaping business overview
-      </Typography>
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h4" gutterBottom>
+          Work Activity Management 📋
+        </Typography>
+        <Typography variant="subtitle1" color="text.secondary">
+          Transform your work notes into structured data for better business insights
+        </Typography>
+      </Box>
 
-      {/* Stats Cards */}
+      {/* Primary Action Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box display="flex" alignItems="center" mb={2}>
+                <FileUpload sx={{ fontSize: 40, mr: 2 }} />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Import Work Notes
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Upload PDF work notes and automatically extract structured activity data
+                  </Typography>
+                </Box>
+              </Box>
+              <Button 
+                variant="contained" 
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+                startIcon={<CloudUpload />}
+                onClick={() => navigate('/work-notes-import')}
+                fullWidth
+              >
+                Import PDF Notes
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Add sx={{ fontSize: 40, mr: 2 }} />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Log Work Activity
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Manually record work activities with detailed time tracking and billing
+                  </Typography>
+                </Box>
+              </Box>
+              <Button 
+                variant="contained" 
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+                startIcon={<Assignment />}
+                onClick={() => navigate('/work-activities')}
+                fullWidth
+              >
+                Log Activity
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Stats Overview */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
@@ -133,13 +259,13 @@ const Dashboard: React.FC = () => {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
-                    Active Helpers
+                    Total Activities
                   </Typography>
                   <Typography variant="h4">
-                    {stats.activeHelpers}
+                    {workStats.totalActivities}
                   </Typography>
                 </Box>
-                <People color="primary" sx={{ fontSize: 40 }} />
+                <Assignment color="primary" sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>
@@ -151,13 +277,13 @@ const Dashboard: React.FC = () => {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
-                    Active Clients
+                    This Week
                   </Typography>
                   <Typography variant="h4">
-                    {stats.activeClients}
+                    {workStats.thisWeekActivities}
                   </Typography>
                 </Box>
-                <Business color="primary" sx={{ fontSize: 40 }} />
+                <Today color="primary" sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>
@@ -169,13 +295,13 @@ const Dashboard: React.FC = () => {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
-                    Upcoming Events
+                    Total Hours
                   </Typography>
                   <Typography variant="h4">
-                    {stats.upcomingEvents}
+                    {workStats.totalHours.toFixed(1)}
                   </Typography>
                 </Box>
-                <Event color="primary" sx={{ fontSize: 40 }} />
+                <AccessTime color="primary" sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>
@@ -187,106 +313,170 @@ const Dashboard: React.FC = () => {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
-                    Maintenance Clients
+                    Billable Hours
                   </Typography>
                   <Typography variant="h4">
-                    {stats.maintenanceClients}
+                    {workStats.billableHours.toFixed(1)}
                   </Typography>
                 </Box>
-                <Schedule color="primary" sx={{ fontSize: 40 }} />
+                <AttachMoney color="primary" sx={{ fontSize: 40 }} />
               </Box>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
+      {/* Content Grid */}
       <Grid container spacing={3}>
-        {/* Helpers Overview */}
-        <Grid item xs={12} md={4}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Your Helpers
-              </Typography>
-              <List dense>
-                {helpers.map((helper) => (
-                  <ListItem key={helper.id} sx={{ px: 0 }}>
-                    <ListItemText
-                      primary={helper.name}
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {helper.workdays.join(', ')} • {helper.capabilityTier}
-                          </Typography>
-                          <Box sx={{ mt: 0.5 }}>
-                            {helper.skills.slice(0, 3).map((skill) => (
-                              <Chip
-                                key={skill}
-                                label={skill}
-                                size="small"
-                                sx={{ mr: 0.5, mb: 0.5, fontSize: '0.7rem' }}
-                              />
-                            ))}
-                          </Box>
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Upcoming Schedule - All-day events (helper schedules/todos) are filtered out */}
+        {/* Recent Activities */}
         <Grid item xs={12} md={8}>
           <Card>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Upcoming Schedule (Next 7 Days)
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Client visits and scheduled work only (all-day events filtered out)
-              </Typography>
-              <List>
-                {events.slice(0, 5).map((event) => (
-                  <ListItem key={event.id} sx={{ px: 0 }}>
-                    <ListItemText
-                      primary={
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <Typography variant="body1">{event.title}</Typography>
-                          <Chip
-                            label={event.eventType.replace('_', ' ')}
-                            size="small"
-                            color={getEventTypeColor(event.eventType)}
-                          />
-                        </Box>
-                      }
-                      secondary={
-                        <Box>
-                          <Typography variant="body2" color="text.secondary">
-                            {formatDate(event.start)}
-                          </Typography>
-                          {event.location && (
-                            <Typography variant="body2" color="text.secondary">
-                              📍 {event.location}
-                            </Typography>
-                          )}
-                        </Box>
-                      }
-                    />
-                  </ListItem>
-                ))}
-              </List>
+              <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+                <Typography variant="h6">
+                  Recent Work Activities
+                </Typography>
+                <Button 
+                  size="small" 
+                  endIcon={<ArrowForward />}
+                  onClick={() => navigate('/work-activities')}
+                >
+                  View All
+                </Button>
+              </Box>
+              
+              {workStats.recentActivities.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <Assignment sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No work activities yet
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Start by importing your PDF work notes or manually logging activities
+                  </Typography>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<Add />}
+                    onClick={() => navigate('/work-activities')}
+                  >
+                    Log First Activity
+                  </Button>
+                </Box>
+              ) : (
+                <List>
+                  {workStats.recentActivities.map((activity, index) => (
+                    <React.Fragment key={activity.id}>
+                      <ListItem>
+                        <ListItemIcon>
+                          <Assignment color="primary" />
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box display="flex" alignItems="center" gap={1}>
+                              <Typography variant="subtitle2">
+                                {activity.workType.replace('_', ' ').toUpperCase()}
+                              </Typography>
+                              <Chip 
+                                label={activity.status.replace('_', ' ').toUpperCase()} 
+                                size="small"
+                                color={getStatusColor(activity.status) as any}
+                              />
+                            </Box>
+                          }
+                          secondary={
+                            <Box>
+                              <Typography variant="body2" color="text.secondary">
+                                {activity.clientName} • {formatDate(activity.date)} • {activity.totalHours}h
+                              </Typography>
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                      {index < workStats.recentActivities.length - 1 && <Divider />}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
             </CardContent>
           </Card>
         </Grid>
-      </Grid>
 
-      {/* Calendar Template Generator */}
-      <Box sx={{ mt: 4 }}>
-        <CalendarTemplateGenerator />
-      </Box>
+        {/* Quick Stats & Actions */}
+        <Grid item xs={12} md={4}>
+          <Grid container spacing={2}>
+            {/* Quick Stats */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Quick Stats
+                  </Typography>
+                  <Box sx={{ mb: 2 }}>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Box display="flex" alignItems="center">
+                        <Business sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">Active Clients</Typography>
+                      </Box>
+                      <Typography variant="h6">{quickStats.activeClients}</Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Box display="flex" alignItems="center">
+                        <People sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">Active Employees</Typography>
+                      </Box>
+                      <Typography variant="h6">{quickStats.activeEmployees}</Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" justifyContent="space-between">
+                      <Box display="flex" alignItems="center">
+                        <Schedule sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">Pending Activities</Typography>
+                      </Box>
+                      <Typography variant="h6">{quickStats.pendingActivities}</Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Quick Actions */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Quick Actions
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<Business />}
+                      onClick={() => navigate('/clients')}
+                      fullWidth
+                    >
+                      Manage Clients
+                    </Button>
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<People />}
+                      onClick={() => navigate('/employees')}
+                      fullWidth
+                    >
+                      Manage Employees
+                    </Button>
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<Analytics />}
+                      onClick={() => navigate('/debug')}
+                      fullWidth
+                    >
+                      View Reports
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </Grid>
+      </Grid>
     </Container>
   );
 };

@@ -228,3 +228,47 @@ This is a prototype built for Andrea's landscaping business. Feel free to adapt 
 - Mobile app version
 - Advanced reporting and analytics
 - Integration with invoicing systems 
+
+## 📝 Database Management
+
+### Seed/Reset Database from Google Sheets
+
+The application includes functionality to reset the database and import fresh data from Google Sheets:
+
+#### Via Web Interface (Recommended)
+1. Navigate to **Reports** in the main navigation
+2. Scroll to the **Database Management** section
+3. Click **Seed/Reset from Sheets** button
+4. Confirm the operation in the dialog
+
+#### Via API Endpoint
+```bash
+# Reset database and import fresh data
+curl -X POST http://localhost:3001/api/migration/seed-reset \
+  -H "Content-Type: application/json" \
+  -d '{"confirm": "RESET_AND_SEED"}'
+
+# Check migration status
+curl http://localhost:3001/api/migration/status
+```
+
+#### Available Migration Endpoints
+- `GET /api/migration/status` - Check current database status
+- `POST /api/migration/seed-reset` - Clear database and import fresh data
+- `POST /api/migration/migrate` - Import data without clearing (append mode)
+- `POST /api/migration/employees` - Import only employees
+- `POST /api/migration/clients` - Import only clients
+- `POST /api/migration/clear` - Clear all data (requires confirmation)
+
+### Google Sheets Setup
+
+Ensure your `.env` file contains:
+```env
+GOOGLE_SHEETS_ID=your_google_sheets_id
+GOOGLE_SERVICE_ACCOUNT_KEY_FILE=path/to/service-account-key.json
+```
+
+Expected sheet structure:
+- **Employees** sheet: Employee data with columns for ID, Name, Workdays, etc.
+- **Clients** sheet: Client data with maintenance schedules and preferences
+- **Settings** sheet: Business configuration settings 

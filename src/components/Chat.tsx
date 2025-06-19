@@ -165,21 +165,22 @@ const Chat: React.FC = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: `Hi Andrea! I'm your AI scheduling assistant for your landscaping business. I can help you optimize schedules, handle urgent requests, balance workloads, and manage your team efficiently.
+      text: `Hi! I'm your AI assistant for Garden Care CRM. I can help you analyze work activities, optimize schedules, and get insights from your business data.
 
 **What I can help with:**
-• Schedule optimization considering geography and helper capabilities
-• Emergency rescheduling and urgent requests
-• Workload balancing across your team
-• Travel efficiency analysis and route suggestions
-• Maintenance schedule management
+• Work activity analysis and reporting
+• Schedule optimization and planning
+• Client and project management insights
+• Time tracking and billing analysis
+• Team workload balancing
 
 **Try asking me:**
-• "Where can I fit a 4-hour maintenance visit next week?"
-• "Sarah called in sick today - help me reschedule"
-• "I have an urgent install request - when's the earliest I can schedule it?"
+• "Show me this week's work activity summary"
+• "Which clients had the most billable hours this month?"
+• "Help me schedule a new maintenance job"
+• "What's our team utilization looking like?"
 
-I understand your business context including helper availability, client zones, and travel constraints. What would you like help with today?`,
+I understand your business data including work activities, client information, and team schedules. What would you like to analyze today?`,
       isUser: false,
       timestamp: new Date(),
     },
@@ -306,7 +307,7 @@ I understand your business context including helper availability, client zones, 
             textAlign: 'center',
           }}
         >
-          AI Scheduling Assistant
+          AI Business Assistant
         </Typography>
       </Box>
 
