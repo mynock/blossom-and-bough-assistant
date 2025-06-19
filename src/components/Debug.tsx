@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -51,9 +51,10 @@ const Debug: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showFullContent, setShowFullContent] = useState(false);
 
-  const fetchDebugData = async () => {
+  const fetchDebugData = useCallback(async () => {
     setLoading(true);
     setError(null);
+    
     try {
       const params = new URLSearchParams();
       if (showFullContent) {
@@ -73,11 +74,11 @@ const Debug: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showFullContent]);
 
   useEffect(() => {
     fetchDebugData();
-  }, [showFullContent]);
+  }, [fetchDebugData]);
 
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>

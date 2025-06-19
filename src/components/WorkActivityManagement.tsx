@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -125,14 +125,11 @@ const WorkActivityManagement: React.FC = () => {
 
   const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number }>>([]);
 
-  useEffect(() => {
-    fetchWorkActivities();
-    fetchClients();
-    fetchProjects();
-    fetchEmployees();
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
   }, []);
 
-  const fetchWorkActivities = async () => {
+  const fetchWorkActivities = useCallback(async () => {
     try {
       const response = await fetch('/api/work-activities');
       const data = await response.json();
@@ -142,7 +139,14 @@ const WorkActivityManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    fetchWorkActivities();
+    fetchClients();
+    fetchProjects();
+    fetchEmployees();
+  }, [fetchWorkActivities]);
 
   const fetchClients = async () => {
     try {
@@ -172,10 +176,6 @@ const WorkActivityManagement: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch employees:', error);
     }
-  };
-
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
   };
 
   const handleEdit = (activity: WorkActivity) => {
@@ -305,14 +305,6 @@ const WorkActivityManagement: React.FC = () => {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString();
-  };
-
-  const formatTime = (timeString?: string) => {
-    if (!timeString) return '-';
-    return new Date(`2000-01-01T${timeString}`).toLocaleTimeString([], { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
   };
 
   if (loading) return <Typography>Loading work activities...</Typography>;

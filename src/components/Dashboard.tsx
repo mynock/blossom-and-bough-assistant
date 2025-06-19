@@ -14,7 +14,7 @@ import {
   Alert,
 } from '@mui/material';
 import { People, Event, Business, Schedule } from '@mui/icons-material';
-import { helpersApi, clientsApi, calendarApi, Helper, Client, CalendarEvent } from '../services/api';
+import { helpersApi, clientsApi, calendarApi, Helper, CalendarEvent } from '../services/api';
 import CalendarTemplateGenerator from './CalendarTemplateGenerator';
 
 interface DashboardStats {
@@ -32,7 +32,6 @@ const Dashboard: React.FC = () => {
     maintenanceClients: 0,
   });
   const [helpers, setHelpers] = useState<Helper[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +47,6 @@ const Dashboard: React.FC = () => {
         ]);
 
         setHelpers(helpersData.helpers);
-        setClients(clientsData.clients);
         setEvents(eventsData.events);
 
         setStats({

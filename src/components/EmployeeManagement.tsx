@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -75,11 +75,11 @@ const EmployeeManagement: React.FC = () => {
 
   const [selectedWorkdays, setSelectedWorkdays] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchEmployees();
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
   }, []);
 
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       const response = await fetch('/api/employees');
       const data = await response.json();
@@ -89,11 +89,11 @@ const EmployeeManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
-  };
+  useEffect(() => {
+    fetchEmployees();
+  }, [fetchEmployees]);
 
   const handleEdit = (employee: Employee) => {
     setSelectedEmployee(employee);

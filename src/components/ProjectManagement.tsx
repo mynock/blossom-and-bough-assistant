@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -73,12 +73,11 @@ const ProjectManagement: React.FC = () => {
     clientId: undefined,
   });
 
-  useEffect(() => {
-    fetchProjects();
-    fetchClients();
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
   }, []);
 
-  const fetchProjects = async () => {
+  const fetchProjects = useCallback(async () => {
     try {
       const response = await fetch('/api/projects');
       const data = await response.json();
@@ -88,7 +87,12 @@ const ProjectManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
+
+  useEffect(() => {
+    fetchProjects();
+    fetchClients();
+  }, [fetchProjects]);
 
   const fetchClients = async () => {
     try {
@@ -98,10 +102,6 @@ const ProjectManagement: React.FC = () => {
     } catch (error) {
       console.error('Failed to fetch clients:', error);
     }
-  };
-
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
   };
 
   const handleEdit = (project: Project) => {

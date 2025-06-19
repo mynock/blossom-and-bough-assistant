@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Paper,
@@ -74,11 +74,11 @@ const ClientManagement: React.FC = () => {
     activeStatus: 'active',
   });
 
-  useEffect(() => {
-    fetchClients();
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
+    setSnackbar({ open: true, message, severity });
   }, []);
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     try {
       const response = await fetch('/api/clients');
       const data = await response.json();
@@ -88,11 +88,11 @@ const ClientManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
 
-  const showSnackbar = (message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
-  };
+  useEffect(() => {
+    fetchClients();
+  }, [fetchClients]);
 
   const handleEdit = (client: Client) => {
     setSelectedClient(client);
