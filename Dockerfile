@@ -24,6 +24,9 @@ RUN cd server && npm run build
 # Create data directory for SQLite database
 RUN mkdir -p /app/server/data
 
+# Run database migration during build (when devDependencies are available)
+RUN cd server && npm run db:push
+
 # Remove devDependencies after build
 RUN npm prune --production
 RUN cd server && npm prune --production
@@ -34,5 +37,5 @@ WORKDIR /app/server
 # Expose port
 EXPOSE $PORT
 
-# Start the server
+# Start the server (just the server, no migration)
 CMD ["npm", "run", "start:prod"]
