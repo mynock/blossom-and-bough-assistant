@@ -114,4 +114,89 @@ router.post('/clients', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/migration/seed-reset
+ * Clear database and import fresh data from Google Sheets
+ */
+router.post('/seed-reset', async (req, res) => {
+  try {
+    const { confirm } = req.body;
+    
+    if (confirm !== 'RESET_AND_SEED') {
+      return res.status(400).json({ 
+        error: 'Confirmation required. Send { "confirm": "RESET_AND_SEED" } to proceed.',
+        message: 'This will DELETE ALL existing data and replace it with fresh data from Google Sheets.'
+      });
+    }
+
+    console.log('🔄 Starting database seed/reset operation...');
+    
+    // Step 1: Clear all existing data
+    console.log('🗑️  Clearing existing data...');
+    await migrationService.clearAllData();
+    
+    // Step 2: Import fresh data from Google Sheets
+    console.log('📥 Importing fresh data from Google Sheets...');
+    const result = await migrationService.migrateAllData();
+    
+    if (result.success) {
+      res.json({
+        message: 'Database successfully reset and seeded with fresh data from Google Sheets',
+        operation: 'seed-reset',
+        ...result,
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      res.status(400).json({
+        message: 'Database reset completed but data import had errors',
+        operation: 'seed-reset',
+        ...result,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error('Error during seed/reset operation:', error);
+    res.status(500).json({ 
+      error: 'Seed/reset operation failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      message: 'Database may be in an inconsistent state. Check logs and consider manual recovery.'
+    });
+  }
+});
+
+/**
+ * GET /api/migration/test-sheets
+ * Test Google Sheets connectivity and show raw data
+ */
+router.get('/test-sheets', async (req, res) => {
+  try {
+    const { GoogleSheetsService } = await import('../services/GoogleSheetsService');
+    const sheetsService = new GoogleSheetsService();
+    
+    console.log('🧪 Testing Google Sheets connectivity...');
+    
+    const [employees, clients] = await Promise.all([
+      sheetsService.getHelpers(),
+      sheetsService.getClients()
+    ]);
+    
+    res.json({
+      message: 'Google Sheets test completed',
+      employees: employees.slice(0, 2), // Show first 2 employees
+      clients: clients.slice(0, 2), // Show first 2 clients
+      counts: {
+        employees: employees.length,
+        clients: clients.length
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error testing Google Sheets:', error);
+    res.status(500).json({ 
+      error: 'Google Sheets test failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default router; 
