@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import path from 'path';
+import session from 'express-session';
+import passport from 'passport';
 
 // Explicit type imports to help Railway's TypeScript compiler
 import type { CorsOptions } from 'cors';
@@ -14,23 +16,50 @@ import { GoogleSheetsService } from './services/GoogleSheetsService';
 import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
+import { AuthService } from './services/AuthService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
 import migrationRouter from './routes/migration';
 import clientsRouter from './routes/clients';
 import projectsRouter from './routes/projects';
+import authRouter from './routes/auth';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
+import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'http://localhost:3000'
+    : 'http://localhost:3000',
+  credentials: true
+}));
+
+// Session configuration
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  resave: false,
+  saveUninitialized: true, // Changed to true for debugging
+  name: 'garden-care-session', // Custom session name
+  cookie: {
+    secure: false, // Always false for localhost
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    sameSite: 'lax' // Lax for localhost development
+  }
+}));
+
+// Initialize Passport
+app.use(passport.initialize());
+app.use(passport.session());
+
 app.use(morgan('combined'));
 app.use(express.json());
 
@@ -39,6 +68,7 @@ const googleSheetsService = new GoogleSheetsService();
 const googleCalendarService = new GoogleCalendarService();
 const anthropicService = new AnthropicService();
 const travelTimeService = new TravelTimeService();
+const authService = new AuthService();
 const schedulingService = new SchedulingService(
   googleSheetsService,
   googleCalendarService,
@@ -46,31 +76,24 @@ const schedulingService = new SchedulingService(
   travelTimeService
 );
 
+// Mount authentication routes (before other routes)
+app.use('/api/auth', authRouter);
+
 // Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Mount work activities routes
-app.use('/api/work-activities', workActivitiesRouter);
-
-// Mount employees routes
-app.use('/api/employees', employeesRouter);
-
-// Mount clients routes
-app.use('/api/clients', clientsRouter);
-
-// Mount projects routes
-app.use('/api/projects', projectsRouter);
-
-// Mount work notes import routes
-app.use('/api/work-notes', createWorkNotesImportRouter(anthropicService));
-
-// Mount migration routes
-app.use('/api/migration', migrationRouter);
+// Protected API routes - require authentication
+app.use('/api/work-activities', requireAuth, workActivitiesRouter);
+app.use('/api/employees', requireAuth, employeesRouter);
+app.use('/api/clients', requireAuth, clientsRouter);
+app.use('/api/projects', requireAuth, projectsRouter);
+app.use('/api/work-notes', requireAuth, createWorkNotesImportRouter(anthropicService));
+app.use('/api/migration', requireAuth, migrationRouter);
 
 // Get all helpers
-app.get('/api/helpers', async (req, res) => {
+app.get('/api/helpers', requireAuth, async (req, res) => {
   try {
     const helpers = await schedulingService.getHelpers();
     res.json({ helpers });
@@ -81,7 +104,7 @@ app.get('/api/helpers', async (req, res) => {
 });
 
 // Get calendar events
-app.get('/api/calendar', async (req, res) => {
+app.get('/api/calendar', requireAuth, async (req, res) => {
   try {
     const daysAhead = parseInt(req.query.days as string) || 7;
     const events = await schedulingService.getCalendarEvents(daysAhead);
@@ -104,7 +127,7 @@ app.get('/api/projects', async (req, res) => {
 });
 
 // Chat endpoint for AI scheduling assistance
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', requireAuth, async (req, res) => {
   const startTime = Date.now();
   console.log('\n🎯 === CHAT ENDPOINT START ===');
   
@@ -169,8 +192,8 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// Debug endpoints
-app.get('/api/debug/health', (req, res) => {
+// Debug endpoints - protected
+app.get('/api/debug/health', requireAuth, (req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -180,7 +203,7 @@ app.get('/api/debug/health', (req, res) => {
 });
 
 // Debug endpoint for system prompt analysis
-app.get('/api/debug/system-prompt', async (req, res) => {
+app.get('/api/debug/system-prompt', requireAuth, async (req, res) => {
   try {
     const { fullContent } = req.query;
     const context = await schedulingService.getSchedulingContext();
@@ -224,7 +247,7 @@ app.get('/api/debug/system-prompt', async (req, res) => {
 });
 
 // Debug endpoint for API response analysis
-app.post('/api/debug/api-response', async (req, res) => {
+app.post('/api/debug/api-response', requireAuth, async (req, res) => {
   try {
     const { query } = req.body;
     
@@ -271,7 +294,7 @@ app.post('/api/debug/api-response', async (req, res) => {
 });
 
 // Calculate travel time between two addresses
-app.post('/api/travel-time', async (req, res) => {
+app.post('/api/travel-time', requireAuth, async (req, res) => {
   try {
     const { origin, destination } = req.body as TravelTimeRequest;
     
@@ -288,7 +311,7 @@ app.post('/api/travel-time', async (req, res) => {
 });
 
 // Get scheduling context (all data needed for AI)
-app.get('/api/context', async (req, res) => {
+app.get('/api/context', requireAuth, async (req, res) => {
   try {
     const context = await schedulingService.getSchedulingContext();
     res.json(context);
@@ -299,7 +322,7 @@ app.get('/api/context', async (req, res) => {
 });
 
 // Schedule optimization
-app.post('/api/schedule-optimization', async (req, res) => {
+app.post('/api/schedule-optimization', requireAuth, async (req, res) => {
   try {
     const { requestType, constraints, preferences } = req.body;
     
@@ -320,7 +343,7 @@ app.post('/api/schedule-optimization', async (req, res) => {
 });
 
 // Business settings
-app.get('/api/settings', async (req, res) => {
+app.get('/api/settings', requireAuth, async (req, res) => {
   try {
     const settings = await googleSheetsService.getBusinessSettings();
     res.json(settings);

@@ -272,3 +272,62 @@ Expected sheet structure:
 - **Employees** sheet: Employee data with columns for ID, Name, Workdays, etc.
 - **Clients** sheet: Client data with maintenance schedules and preferences
 - **Settings** sheet: Business configuration settings 
+
+## 🔐 Authentication & Security
+
+The application now includes Google SSO (Single Sign-On) authentication with an email allowlist for access control.
+
+### Setting Up Google OAuth
+
+1. **Create Google OAuth Application**:
+   - Go to [Google Cloud Console](https://console.cloud.google.com/)
+   - Create a new project or select existing one
+   - Enable the Google+ API
+   - Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client ID"
+   - Set application type to "Web application"
+   - Add authorized redirect URIs:
+     - `http://localhost:3001/api/auth/google/callback` (development)
+     - `https://yourdomain.com/api/auth/google/callback` (production)
+
+2. **Configure Environment Variables**:
+   ```bash
+   # Google OAuth Configuration
+   GOOGLE_OAUTH_CLIENT_ID=your_client_id.apps.googleusercontent.com
+   GOOGLE_OAUTH_CLIENT_SECRET=your_client_secret
+   GOOGLE_OAUTH_CALLBACK_URL=http://localhost:3001/api/auth/google/callback
+   
+   # Authentication Configuration
+   SESSION_SECRET=your_secure_random_session_secret
+   AUTH_ALLOWLIST=user1@example.com,user2@example.com,admin@yourcompany.com
+   ```
+
+3. **User Access Control**:
+   - Only emails listed in `AUTH_ALLOWLIST` can log in
+   - Separate multiple emails with commas
+   - Email addresses are case-insensitive
+   - Unauthorized users will see an access denied message
+
+### Authentication Flow
+
+1. **Login**: Users click "Sign in with Google" → redirected to Google OAuth
+2. **Authorization**: Google verifies user identity and permissions
+3. **Callback**: User redirected back with authorization code
+4. **Validation**: Server validates user email against allowlist
+5. **Session**: Authenticated users get a secure session cookie
+6. **Access**: All API endpoints require authentication except `/api/auth/*`
+
+### API Endpoints
+
+- `GET /api/auth/google` - Initiate Google OAuth login
+- `GET /api/auth/google/callback` - Handle OAuth callback
+- `GET /api/auth/status` - Check authentication status
+- `GET /api/auth/me` - Get current user info
+- `POST /api/auth/logout` - Logout current user
+
+### Frontend Integration
+
+The React app includes:
+- **Login Page**: Clean Google SSO interface
+- **Auth Context**: Manages user state across the app
+- **Protected Routes**: Automatically redirects unauthenticated users
+- **User Menu**: Shows user avatar, name, and logout option in navigation 
