@@ -11,6 +11,7 @@
     "restartPolicyMaxRetries": 10
   }
 }
+<<<<<<< HEAD
 =======
     "startCommand": "npm run db:push && echo 'Database migration complete, starting server...' && npm run start:prod",
 =======
@@ -21,3 +22,5 @@
   }
 } 
 >>>>>>> 91dc62c (Update railway.json)
+=======
+>>>>>>> 793915f (Update railway.json)
