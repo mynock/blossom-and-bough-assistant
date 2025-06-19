@@ -4,9 +4,9 @@
   "description": "Backend server for Andrea's scheduling assistant",
   "main": "dist/server.js",
   "scripts": {
-    "start": "npm run build && node dist/server.js",
-    "start:prod": "node dist/server.js",
-    "dev": "nodemon src/server.ts",
+    "start": "NODE_NO_WARNINGS=1 npm run build && node dist/server.js",
+    "start:prod": "NODE_NO_WARNINGS=1 node dist/server.js",
+    "dev": "NODE_NO_WARNINGS=1 nodemon src/server.ts",
     "build": "tsc",
     "type-check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",

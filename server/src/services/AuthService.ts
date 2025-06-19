@@ -47,11 +47,18 @@ export class AuthService {
       return;
     }
 
+    const callbackURL = process.env.GOOGLE_OAUTH_CALLBACK_URL || '/api/auth/google/callback';
+    
+    console.log('🔧 [OAUTH] Configuring Google OAuth Strategy:');
+    console.log('🔧 [OAUTH] Client ID:', process.env.GOOGLE_OAUTH_CLIENT_ID?.substring(0, 20) + '...');
+    console.log('🔧 [OAUTH] Callback URL:', callbackURL);
+    console.log('🔧 [OAUTH] Environment:', process.env.NODE_ENV);
+
     // Configure Google OAuth strategy
     passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_OAUTH_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET!,
-      callbackURL: process.env.GOOGLE_OAUTH_CALLBACK_URL || '/api/auth/google/callback'
+      callbackURL: callbackURL
     }, async (accessToken, refreshToken, profile, done) => {
       try {
         console.log('🔵 [OAUTH] Google strategy callback triggered');

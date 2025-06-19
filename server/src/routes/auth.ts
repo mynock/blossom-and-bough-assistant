@@ -12,6 +12,10 @@ router.get('/google', (req, res, next) => {
   console.log('🔵 [AUTH] Initiating Google OAuth login');
   console.log('🔵 [AUTH] Session ID:', req.sessionID);
   console.log('🔵 [AUTH] Session data:', JSON.stringify(req.session, null, 2));
+  console.log('🔵 [AUTH] Environment variables:');
+  console.log('🔵 [AUTH]   NODE_ENV:', process.env.NODE_ENV);
+  console.log('🔵 [AUTH]   GOOGLE_OAUTH_CLIENT_ID:', process.env.GOOGLE_OAUTH_CLIENT_ID?.substring(0, 20) + '...');
+  console.log('🔵 [AUTH]   GOOGLE_OAUTH_CALLBACK_URL:', process.env.GOOGLE_OAUTH_CALLBACK_URL);
   
   // Check if OAuth is configured
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
@@ -23,6 +27,16 @@ router.get('/google', (req, res, next) => {
   }
   
   console.log('🔵 [AUTH] Redirecting to Google OAuth...');
+  
+  // Intercept the redirect to log the URL
+  const originalRedirect = res.redirect.bind(res);
+  res.redirect = ((url: string | number, status?: string | number) => {
+    if (typeof url === 'string') {
+      console.log('🔵 [AUTH] Generated OAuth URL:', url);
+    }
+    return originalRedirect(url as any, status as any);
+  }) as any;
+  
   passport.authenticate('google', {
     scope: ['profile', 'email']
   })(req, res, next);
@@ -36,7 +50,6 @@ router.get('/google/callback', (req, res, next) => {
   console.log('🟡 [AUTH] Google OAuth callback received');
   console.log('🟡 [AUTH] Query params:', req.query);
   console.log('🟡 [AUTH] Session ID:', req.sessionID);
-  console.log('🟡 [AUTH] Session before auth:', JSON.stringify(req.session, null, 2));
   
   // Check if OAuth is configured
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
@@ -67,6 +80,7 @@ router.get('/google/callback', (req, res, next) => {
       const errorRedirect = isDevelopment ? `http://localhost:3000/login?error=${errorType}` : `/login?error=${errorType}`;
       return res.redirect(errorRedirect);
     }
+    console.log('🟡 [AUTH] No error in passport authenticate, proceeding to next...');
     next();
   });
 }, (req, res) => {
