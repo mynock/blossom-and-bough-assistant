@@ -109,15 +109,15 @@ const CalendarTemplateGenerator: React.FC = () => {
   }, []);
 
   const handleClientChange = (clientId: string) => {
-    const client = clients.find(c => c.id === clientId);
+    const client = clients.find(c => c.id === parseInt(clientId));
     if (client) {
       setOptions(prev => ({
         ...prev,
         clientId,
         clientName: client.name,
         location: client.address,
-        zone: client.zone,
-        priority: client.priority,
+        zone: client.geoZone,
+        priority: client.priorityLevel || 'Medium',
         // Note: Gate codes and special requirements need to be entered manually
         // as they're not available in the current frontend Client interface
         gateCode: '',
@@ -256,7 +256,7 @@ LOCATION: ${options.location}`;
               >
                 {clients.map((client) => (
                   <MenuItem key={client.id} value={client.id}>
-                    {client.name} ({client.id}) - {client.zone}
+                    {client.name} ({client.clientId}) - {client.geoZone}
                   </MenuItem>
                 ))}
               </Select>

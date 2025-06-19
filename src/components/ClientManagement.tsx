@@ -82,7 +82,7 @@ const ClientManagement: React.FC = () => {
     try {
       const response = await fetch('/api/clients');
       const data = await response.json();
-      setClients(data);
+      setClients(data.clients);
     } catch (error) {
       showSnackbar('Failed to fetch clients', 'error');
     } finally {

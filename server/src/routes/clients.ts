@@ -8,7 +8,7 @@ const clientService = new ClientService();
 router.get('/', async (req, res) => {
   try {
     const clients = await clientService.getAllClients();
-    res.json(clients); // Return array directly, not wrapped in object
+    res.json({ clients }); // Wrap in object for consistency with other endpoints
   } catch (error) {
     console.error('Error fetching clients:', error);
     res.status(500).json({ error: 'Failed to fetch clients' });

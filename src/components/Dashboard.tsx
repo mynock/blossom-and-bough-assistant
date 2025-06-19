@@ -51,9 +51,9 @@ const Dashboard: React.FC = () => {
 
         setStats({
           activeHelpers: helpersData.helpers.filter(h => h.status === 'active').length,
-          activeClients: clientsData.clients.filter(c => c.status === 'active').length,
+          activeClients: clientsData.clients.filter(c => c.activeStatus === 'active').length,
           upcomingEvents: eventsData.events.length,
-          maintenanceClients: clientsData.clients.filter(c => c.maintenanceSchedule.isMaintenance).length,
+          maintenanceClients: clientsData.clients.filter(c => c.isRecurringMaintenance).length,
         });
       } catch (err) {
         setError('Failed to load dashboard data. Make sure the backend server is running.');

@@ -31,6 +31,7 @@ import {
   Add as AddIcon,
   Work as WorkIcon,
 } from '@mui/icons-material';
+import { Client } from '../services/api';
 
 interface Project {
   id: number;
@@ -41,11 +42,6 @@ interface Project {
   createdAt: string;
   updatedAt: string;
   clientName: string;
-}
-
-interface Client {
-  id: number;
-  name: string;
 }
 
 const PROJECT_STATUSES = [
@@ -98,7 +94,7 @@ const ProjectManagement: React.FC = () => {
     try {
       const response = await fetch('/api/clients');
       const data = await response.json();
-      setClients(data);
+      setClients(data.clients);
     } catch (error) {
       console.error('Failed to fetch clients:', error);
     }

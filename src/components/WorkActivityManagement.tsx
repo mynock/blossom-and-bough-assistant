@@ -39,6 +39,7 @@ import {
   Person as PersonIcon,
   Remove as RemoveIcon,
 } from '@mui/icons-material';
+import { Client } from '../services/api';
 
 interface WorkActivity {
   id: number;
@@ -63,11 +64,6 @@ interface WorkActivity {
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
   chargesList: Array<any>;
   totalCharges: number;
-}
-
-interface Client {
-  id: number;
-  name: string;
 }
 
 interface Project {
@@ -152,7 +148,7 @@ const WorkActivityManagement: React.FC = () => {
     try {
       const response = await fetch('/api/clients');
       const data = await response.json();
-      setClients(data);
+      setClients(data.clients);
     } catch (error) {
       console.error('Failed to fetch clients:', error);
     }
