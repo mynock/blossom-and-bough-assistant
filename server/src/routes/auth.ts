@@ -8,25 +8,39 @@ const router = Router();
  * GET /api/auth/google
  * Initiate Google OAuth login
  */
-router.get('/google', requireGuest, passport.authenticate('google', {
-  scope: ['profile', 'email']
-}));
+router.get('/google', requireGuest, (req, res, next) => {
+  // Check if OAuth is configured
+  if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+    return res.status(500).json({
+      error: 'Authentication not configured',
+      message: 'Google OAuth credentials are not configured. Please set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET environment variables.'
+    });
+  }
+  
+  passport.authenticate('google', {
+    scope: ['profile', 'email']
+  })(req, res, next);
+});
 
 /**
  * GET /api/auth/google/callback
  * Handle Google OAuth callback
  */
-router.get('/google/callback', 
+router.get('/google/callback', (req, res, next) => {
+  // Check if OAuth is configured
+  if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+    return res.redirect('/login?error=oauth_not_configured');
+  }
+  
   passport.authenticate('google', { 
     failureRedirect: '/login?error=auth_failed',
     failureMessage: true
-  }),
-  (req, res) => {
-    // Successful authentication
-    console.log(`✅ User logged in: ${req.user?.email}`);
-    res.redirect('/');
-  }
-);
+  })(req, res, next);
+}, (req, res) => {
+  // Successful authentication
+  console.log(`✅ User logged in: ${req.user?.email}`);
+  res.redirect('/');
+});
 
 /**
  * POST /api/auth/logout

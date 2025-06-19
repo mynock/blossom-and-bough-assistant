@@ -14,6 +14,13 @@ declare global {
  * Middleware to check if user is authenticated
  */
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
+  // Check if OAuth is configured
+  if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+    // If OAuth is not configured, allow access with a warning
+    console.log('⚠️  Authentication bypassed - OAuth not configured');
+    return next();
+  }
+
   if (req.isAuthenticated && req.isAuthenticated()) {
     return next();
   }

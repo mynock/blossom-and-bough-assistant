@@ -40,6 +40,13 @@ export class AuthService {
   }
 
   private initializePassport(): void {
+    // Check if OAuth credentials are configured
+    if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
+      console.log('🔐 Google OAuth credentials not configured - authentication disabled');
+      console.log('   Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to enable authentication');
+      return;
+    }
+
     // Configure Google OAuth strategy
     passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_OAUTH_CLIENT_ID!,
@@ -82,6 +89,8 @@ export class AuthService {
     passport.deserializeUser((user: any, done) => {
       done(null, user);
     });
+
+    console.log('✅ Google OAuth authentication initialized');
   }
 
   public isEmailAllowed(email: string): boolean {
