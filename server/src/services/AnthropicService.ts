@@ -621,6 +621,8 @@ export class AnthropicService {
 
 You are Andrea's intelligent scheduling assistant. Handle queries naturally - whether specific or broad. For complex analysis, use multiple tools as needed to provide comprehensive insights.
 
+**IMPORTANT: All times and dates are in Pacific Time (US West Coast). Current year is 2025.**
+
 ## Business Rules
 - Each helper needs 7-8 hours on workdays | **Andrea targets 3 field days/week**
 - **Team jobs:** Most work requires 2+ people | Solo work only for Virginia/Rebecca/Andrea
@@ -761,8 +763,15 @@ WORK TYPES:
 - weeding
 - cleanup
 
+CRITICAL DATE PARSING RULES:
+- The current year is 2025 (Pacific Time zone)
+- For partial dates like "6/3", "5/13", "2/24", etc., ALWAYS assume the year 2025
+- All dates should be interpreted as Pacific Time (US West Coast)
+- Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
+- Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
+
 For each work activity found, extract:
-1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume current year if not specified)
+1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
 2. Client name
 3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
@@ -778,7 +787,7 @@ Return JSON in this exact format:
 {
   "activities": [
     {
-      "date": "2024-06-03",
+      "date": "2025-06-03",
       "clientName": "Stoller",
       "employees": ["Virginia"],
       "startTime": "08:45",
@@ -882,8 +891,15 @@ WORK TYPES:
 - weeding
 - cleanup
 
+CRITICAL DATE PARSING RULES:
+- The current year is 2025 (Pacific Time zone)
+- For partial dates like "6/3", "5/13", "2/24", etc., ALWAYS assume the year 2025
+- All dates should be interpreted as Pacific Time (US West Coast)
+- Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
+- Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
+
 For each work activity found, extract:
-1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume current year if not specified)
+1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
 2. Client name
 3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
@@ -899,7 +915,7 @@ Return JSON in this exact format:
 {
   "activities": [
     {
-      "date": "2024-06-03",
+      "date": "2025-06-03",
       "clientName": "Stoller",
       "employees": ["Virginia"],
       "startTime": "08:45",

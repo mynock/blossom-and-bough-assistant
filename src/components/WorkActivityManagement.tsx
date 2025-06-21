@@ -28,6 +28,7 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
+  Autocomplete,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -128,6 +129,9 @@ const WorkActivityManagement: React.FC = () => {
 
   const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number }>>([]);
   
+  // State for employee selection dropdown
+  const [employeeToAdd, setEmployeeToAdd] = useState<number | ''>('');
+  
   // Editor states for WYSIWYG
   const [notesEditorState, setNotesEditorState] = useState(() => EditorState.createEmpty());
   const [tasksEditorState, setTasksEditorState] = useState(() => EditorState.createEmpty());
@@ -191,6 +195,8 @@ const WorkActivityManagement: React.FC = () => {
       // Reset editor states
       setNotesEditorState(EditorState.createEmpty());
       setTasksEditorState(EditorState.createEmpty());
+      // Reset employee dropdown
+      setEmployeeToAdd('');
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
@@ -236,6 +242,8 @@ const WorkActivityManagement: React.FC = () => {
     // Initialize editor states with existing content
     setNotesEditorState(htmlToEditorState(activity.notes || ''));
     setTasksEditorState(htmlToEditorState(activity.tasks || ''));
+    // Reset employee dropdown
+    setEmployeeToAdd('');
     setIsCreating(false);
     setEditDialogOpen(true);
   };
@@ -255,6 +263,8 @@ const WorkActivityManagement: React.FC = () => {
     // Reset editor states
     setNotesEditorState(EditorState.createEmpty());
     setTasksEditorState(EditorState.createEmpty());
+    // Reset employee dropdown
+    setEmployeeToAdd('');
     setIsCreating(true);
     setEditDialogOpen(true);
   };
@@ -319,20 +329,28 @@ const WorkActivityManagement: React.FC = () => {
 
   const handleInputChange = (field: keyof WorkActivity, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    
+    // Add date validation warning (using Pacific Time)
+    if (field === 'date' && value) {
+      // Create dates in Pacific Time to avoid timezone issues
+      const selectedDate = new Date(value + 'T00:00:00-08:00'); // Force Pacific Time
+      const currentDatePT = new Date().toLocaleString('en-US', {timeZone: 'America/Los_Angeles'});
+      const currentYear = new Date(currentDatePT).getFullYear();
+      const selectedYear = selectedDate.getFullYear();
+      
+      if (selectedYear < currentYear) {
+        showSnackbar(`Warning: Selected date is from ${selectedYear}. Did you mean ${currentYear}?`, 'error');
+      }
+    }
   };
 
   const handleAddEmployee = () => {
-    if (employees.length > 0) {
-      const firstAvailableEmployee = employees.find(emp => 
-        !selectedEmployees.some(sel => sel.employeeId === emp.id)
-      );
-      
-      if (firstAvailableEmployee) {
-        setSelectedEmployees(prev => [...prev, { 
-          employeeId: firstAvailableEmployee.id, 
-          hours: formData.totalHours || 8 
-        }]);
-      }
+    if (employeeToAdd && !selectedEmployees.some(sel => sel.employeeId === employeeToAdd)) {
+      setSelectedEmployees(prev => [...prev, { 
+        employeeId: employeeToAdd as number, 
+        hours: formData.totalHours || 8 
+      }]);
+      setEmployeeToAdd(''); // Reset the dropdown
     }
   };
 
@@ -358,7 +376,16 @@ const WorkActivityManagement: React.FC = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
+    // Parse the date string as a local date to avoid timezone conversion
+    // dateString is in YYYY-MM-DD format from the database
+    const [year, month, day] = dateString.split('-').map(Number);
+    const date = new Date(year, month - 1, day); // month is 0-indexed
+    return date.toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles', // Force Pacific Time
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric'
+    });
   };
 
   if (loading) return <Typography>Loading work activities...</Typography>;
@@ -419,7 +446,7 @@ const WorkActivityManagement: React.FC = () => {
                     {activity.employeesList.map((emp) => (
                       <Chip 
                         key={emp.employeeId}
-                        label={`${emp.employeeName || 'Unknown'} (${emp.hours}h)`}
+                        label={`${emp.employeeName || 'Unknown'} (${emp.hours.toFixed(2)}h)`}
                         size="small"
                         icon={<PersonIcon />}
                       />
@@ -430,10 +457,10 @@ const WorkActivityManagement: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <TimeIcon fontSize="small" />
                     <Typography variant="body2">
-                      {activity.totalHours}h
+                      {activity.totalHours.toFixed(2)}h
                       {activity.billableHours && activity.billableHours !== activity.totalHours && (
                         <Typography component="span" variant="caption" color="text.secondary">
-                          {' '}({activity.billableHours}h billable)
+                          {' '}({activity.billableHours.toFixed(2)}h billable)
                         </Typography>
                       )}
                     </Typography>
@@ -467,30 +494,32 @@ const WorkActivityManagement: React.FC = () => {
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={3} sx={{ mt: 1 }}>
-            {/* Basic Information Row */}
+            {/* Basic Information Section */}
             <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom>
-                Basic Information
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 1 }}>
+                📋 Basic Information
               </Typography>
             </Grid>
             
             <Grid item xs={12} sm={4}>
               <TextField
-                label="Date"
+                label="Date *"
                 type="date"
                 fullWidth
                 value={formData.date || ''}
                 onChange={(e) => handleInputChange('date', e.target.value)}
                 required
+                InputLabelProps={{ shrink: true }}
               />
             </Grid>
             
             <Grid item xs={12} sm={4}>
-              <FormControl fullWidth>
-                <InputLabel>Work Type</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel>Work Type *</InputLabel>
                 <Select
                   value={formData.workType || 'maintenance'}
                   onChange={(e) => handleInputChange('workType', e.target.value)}
+                  label="Work Type *"
                 >
                   {WORK_TYPES.map((type) => (
                     <MenuItem key={type} value={type}>
@@ -502,11 +531,12 @@ const WorkActivityManagement: React.FC = () => {
             </Grid>
             
             <Grid item xs={12} sm={4}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel>Status *</InputLabel>
                 <Select
                   value={formData.status || 'planned'}
                   onChange={(e) => handleInputChange('status', e.target.value)}
+                  label="Status *"
                 >
                   {WORK_STATUSES.map((status) => (
                     <MenuItem key={status} value={status}>
@@ -517,59 +547,75 @@ const WorkActivityManagement: React.FC = () => {
               </FormControl>
             </Grid>
 
-            {/* Client & Project Row */}
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Client</InputLabel>
-                <Select
-                  value={formData.clientId || ''}
-                  onChange={(e) => handleInputChange('clientId', e.target.value)}
-                >
-                  <MenuItem value="">No Client</MenuItem>
-                  {clients.map((client) => (
-                    <MenuItem key={client.id} value={client.id}>
-                      {client.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            {/* Client & Project Section */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                🏢 Client & Project
+              </Typography>
             </Grid>
             
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Project</InputLabel>
-                <Select
-                  value={formData.projectId || ''}
-                  onChange={(e) => handleInputChange('projectId', e.target.value)}
-                >
-                  <MenuItem value="">No Project</MenuItem>
-                  {projects
-                    .filter(project => !formData.clientId || project.clientId === formData.clientId)
-                    .map((project) => (
-                    <MenuItem key={project.id} value={project.id}>
-                      {project.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <Autocomplete
+                value={formData.clientId ? clients.find(c => c.id === formData.clientId) || null : null}
+                onChange={(event, newValue) => {
+                  const newClientId = newValue ? newValue.id : null;
+                  handleInputChange('clientId', newClientId);
+                  
+                  // Clear project if it doesn't belong to the new client
+                  if (formData.projectId && newClientId) {
+                    const currentProject = projects.find(p => p.id === formData.projectId);
+                    if (currentProject && currentProject.clientId !== newClientId) {
+                      handleInputChange('projectId', null);
+                    }
+                  } else if (!newClientId) {
+                    // Clear project if no client is selected
+                    handleInputChange('projectId', null);
+                  }
+                }}
+                options={clients}
+                getOptionLabel={(option) => option.name || ''}
+                renderInput={(params) => (
+                  <TextField {...params} label="Client (Optional)" fullWidth />
+                )}
+                clearText="Clear Selection"
+                noOptionsText="No clients found"
+              />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
+              <Autocomplete
+                value={formData.projectId ? projects.find(p => p.id === formData.projectId) || null : null}
+                onChange={(event, newValue) => {
+                  handleInputChange('projectId', newValue ? newValue.id : null);
+                }}
+                options={projects.filter(project => !formData.clientId || project.clientId === formData.clientId)}
+                getOptionLabel={(option) => option.name || ''}
+                renderInput={(params) => (
+                  <TextField {...params} label="Project (Optional)" fullWidth />
+                )}
+                clearText="Clear Selection"
+                noOptionsText={formData.clientId ? "No projects found for this client" : "Select a client first"}
+                disabled={!formData.clientId}
+              />
             </Grid>
 
-            {/* Time & Rate Information */}
+            {/* Time & Billing Section */}
             <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
-                Time & Billing
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                ⏱️ Time & Billing
               </Typography>
             </Grid>
             
             <Grid item xs={12} sm={3}>
               <TextField
-                label="Total Hours"
+                label="Total Hours *"
                 type="number"
                 fullWidth
                 value={formData.totalHours || ''}
                 onChange={(e) => handleInputChange('totalHours', parseFloat(e.target.value))}
-                inputProps={{ min: 0, step: 0.5 }}
+                inputProps={{ min: 0, step: 0.25 }}
                 required
+                helperText="Total time worked"
               />
             </Grid>
             
@@ -580,36 +626,45 @@ const WorkActivityManagement: React.FC = () => {
                 fullWidth
                 value={formData.billableHours || ''}
                 onChange={(e) => handleInputChange('billableHours', parseFloat(e.target.value))}
-                inputProps={{ min: 0, step: 0.5 }}
+                inputProps={{ min: 0, step: 0.25 }}
+                helperText="Hours to bill client"
               />
             </Grid>
             
             <Grid item xs={12} sm={3}>
               <TextField
-                label="Hourly Rate ($)"
+                label="Hourly Rate"
                 type="number"
                 fullWidth
                 value={formData.hourlyRate || ''}
                 onChange={(e) => handleInputChange('hourlyRate', parseFloat(e.target.value))}
                 inputProps={{ min: 0, step: 0.5 }}
+                InputProps={{
+                  startAdornment: <Typography sx={{ mr: 1, color: 'text.secondary' }}>$</Typography>
+                }}
+                helperText="Rate per hour"
               />
             </Grid>
             
             <Grid item xs={12} sm={3}>
               <TextField
-                label="Break Time (min)"
+                label="Break Time"
                 type="number"
                 fullWidth
                 value={formData.breakTimeMinutes || 0}
                 onChange={(e) => handleInputChange('breakTimeMinutes', parseInt(e.target.value))}
                 inputProps={{ min: 0 }}
+                InputProps={{
+                  endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+                }}
+                helperText="Break duration"
               />
             </Grid>
 
-            {/* Schedule Details */}
+            {/* Schedule Details Section */}
             <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
-                Schedule Details
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                📅 Schedule Details
               </Typography>
             </Grid>
             
@@ -620,6 +675,8 @@ const WorkActivityManagement: React.FC = () => {
                 fullWidth
                 value={formData.startTime || ''}
                 onChange={(e) => handleInputChange('startTime', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="When work started"
               />
             </Grid>
             
@@ -630,86 +687,128 @@ const WorkActivityManagement: React.FC = () => {
                 fullWidth
                 value={formData.endTime || ''}
                 onChange={(e) => handleInputChange('endTime', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                helperText="When work ended"
               />
             </Grid>
             
             <Grid item xs={12} sm={4}>
               <TextField
-                label="Travel Time (min)"
+                label="Travel Time"
                 type="number"
                 fullWidth
                 value={formData.travelTimeMinutes || 0}
                 onChange={(e) => handleInputChange('travelTimeMinutes', parseInt(e.target.value))}
                 inputProps={{ min: 0 }}
+                InputProps={{
+                  endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+                }}
+                helperText="Travel to/from job"
               />
             </Grid>
 
-            {/* Employee Assignment */}
+            {/* Employee Assignment Section */}
             <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
-                Assigned Employees
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                👥 Assigned Employees
               </Typography>
-              <Button
-                variant="outlined"
-                startIcon={<AddIcon />}
-                onClick={handleAddEmployee}
-                sx={{ mb: 2 }}
-                disabled={selectedEmployees.length >= employees.length}
-              >
-                Add Employee
-              </Button>
               
-              <List>
-                {selectedEmployees.map((selectedEmp) => {
-                  const employee = employees.find(emp => emp.id === selectedEmp.employeeId);
-                  return (
-                    <ListItem key={selectedEmp.employeeId}>
-                      <ListItemText
-                        primary={employee?.name || 'Unknown Employee'}
-                        secondary={`${selectedEmp.hours} hours`}
-                      />
-                      <ListItemSecondaryAction>
-                        <TextField
-                          type="number"
-                          value={selectedEmp.hours}
-                          onChange={(e) => handleEmployeeHoursChange(selectedEmp.employeeId, parseFloat(e.target.value))}
-                          size="small"
-                          sx={{ width: 80, mr: 1 }}
-                          inputProps={{ min: 0, step: 0.5 }}
+              <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-end' }}>
+                <FormControl sx={{ minWidth: 250 }}>
+                  <InputLabel>Select Employee to Add</InputLabel>
+                  <Select
+                    value={employeeToAdd}
+                    onChange={(e) => setEmployeeToAdd(e.target.value as number)}
+                    label="Select Employee to Add"
+                  >
+                    {employees
+                      .filter(emp => !selectedEmployees.some(sel => sel.employeeId === emp.id))
+                      .map((employee) => (
+                        <MenuItem key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </MenuItem>
+                      ))}
+                  </Select>
+                </FormControl>
+                
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddEmployee}
+                  disabled={!employeeToAdd}
+                  sx={{ height: 56 }}
+                >
+                  Add Employee
+                </Button>
+              </Box>
+              
+              {selectedEmployees.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 2 }}>
+                  No employees assigned yet. Please add at least one employee.
+                </Typography>
+              ) : (
+                <List sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                  {selectedEmployees.map((selectedEmp) => {
+                    const employee = employees.find(emp => emp.id === selectedEmp.employeeId);
+                    return (
+                      <ListItem key={selectedEmp.employeeId} divider>
+                        <ListItemText
+                          primary={employee?.name || 'Unknown Employee'}
+                          secondary={`${selectedEmp.hours.toFixed(2)} hours assigned`}
                         />
-                        <IconButton 
-                          onClick={() => handleRemoveEmployee(selectedEmp.employeeId)}
-                          size="small"
-                        >
-                          <RemoveIcon />
-                        </IconButton>
-                      </ListItemSecondaryAction>
-                    </ListItem>
-                  );
-                })}
-              </List>
+                        <ListItemSecondaryAction>
+                          <TextField
+                            label="Hours"
+                            type="number"
+                            value={selectedEmp.hours}
+                            onChange={(e) => handleEmployeeHoursChange(selectedEmp.employeeId, parseFloat(e.target.value))}
+                            size="small"
+                            sx={{ width: 100, mr: 1 }}
+                            inputProps={{ min: 0, step: 0.25 }}
+                          />
+                          <IconButton 
+                            onClick={() => handleRemoveEmployee(selectedEmp.employeeId)}
+                            size="small"
+                            color="error"
+                            title="Remove Employee"
+                          >
+                            <RemoveIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    );
+                  })}
+                </List>
+              )}
             </Grid>
 
-            {/* Notes & Tasks */}
+            {/* Notes & Tasks Section */}
             <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mt: 2 }}>
-                Documentation
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                📝 Documentation
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Add detailed notes about the work performed and any tasks or follow-up items.
               </Typography>
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2" gutterBottom>
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
                 Work Notes
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Describe the work that was performed, any issues encountered, materials used, etc.
               </Typography>
               <Box sx={{ 
                 '& .rdw-editor-wrapper': {
                   border: '1px solid rgba(0, 0, 0, 0.23)',
                   borderRadius: 1,
-                  backgroundColor: '#fff'
+                  backgroundColor: '#fff',
+                  minHeight: '150px'
                 },
                 '& .rdw-editor-toolbar': {
                   borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-                  backgroundColor: '#f5f5f5',
+                  backgroundColor: '#f8f9fa',
                   borderRadius: '4px 4px 0 0',
                   padding: '8px'
                 },
@@ -726,28 +825,32 @@ const WorkActivityManagement: React.FC = () => {
                     setNotesEditorState(state);
                   }}
                   toolbar={{
-                    options: ['inline', 'blockType', 'list', 'textAlign', 'link', 'history'],
+                    options: ['inline', 'list', 'link', 'history'],
                     inline: { options: ['bold', 'italic', 'underline'] },
-                    blockType: { options: ['Normal', 'H1', 'H2', 'H3'] },
                     list: { options: ['unordered', 'ordered'] }
                   }}
+                  placeholder="Describe the work performed..."
                 />
               </Box>
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <Typography variant="subtitle2" gutterBottom>
-                Tasks / To-Do Items
+              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                Tasks & Follow-up
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                List any pending tasks, follow-up items, or next steps required.
               </Typography>
               <Box sx={{ 
                 '& .rdw-editor-wrapper': {
                   border: '1px solid rgba(0, 0, 0, 0.23)',
                   borderRadius: 1,
-                  backgroundColor: '#fff'
+                  backgroundColor: '#fff',
+                  minHeight: '150px'
                 },
                 '& .rdw-editor-toolbar': {
                   borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-                  backgroundColor: '#f5f5f5',
+                  backgroundColor: '#f8f9fa',
                   borderRadius: '4px 4px 0 0',
                   padding: '8px'
                 },
@@ -764,20 +867,31 @@ const WorkActivityManagement: React.FC = () => {
                     setTasksEditorState(state);
                   }}
                   toolbar={{
-                    options: ['inline', 'blockType', 'list', 'textAlign', 'link', 'history'],
+                    options: ['inline', 'list', 'link', 'history'],
                     inline: { options: ['bold', 'italic', 'underline'] },
-                    blockType: { options: ['Normal', 'H1', 'H2', 'H3'] },
                     list: { options: ['unordered', 'ordered'] }
                   }}
+                  placeholder="List tasks, follow-up items, or next steps..."
                 />
               </Box>
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained">
-            {isCreating ? 'Create' : 'Save'}
+        <DialogActions sx={{ px: 3, py: 2, bgcolor: 'grey.50', borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            onClick={() => setEditDialogOpen(false)}
+            variant="outlined"
+            size="large"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleSave} 
+            variant="contained"
+            size="large"
+            sx={{ minWidth: 120 }}
+          >
+            {isCreating ? 'Create Activity' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>

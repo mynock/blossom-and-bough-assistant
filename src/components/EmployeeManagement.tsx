@@ -107,6 +107,7 @@ const EmployeeManagement: React.FC = () => {
     setSelectedEmployee(null);
     setFormData({
       name: '',
+      employeeId: '',
       regularWorkdays: '',
       homeAddress: '',
       minHoursPerDay: 7,
@@ -122,9 +123,48 @@ const EmployeeManagement: React.FC = () => {
 
   const handleSave = async () => {
     try {
+      // Validate required fields
+      if (!formData.name?.trim()) {
+        showSnackbar('Name is required', 'error');
+        return;
+      }
+      
+      if (!formData.employeeId?.trim()) {
+        showSnackbar('Employee ID is required', 'error');
+        return;
+      }
+      
+      if (selectedWorkdays.length === 0) {
+        showSnackbar('At least one workday must be selected', 'error');
+        return;
+      }
+      
+      if (!formData.homeAddress?.trim()) {
+        showSnackbar('Home address is required', 'error');
+        return;
+      }
+      
+      if (!formData.minHoursPerDay || formData.minHoursPerDay < 1) {
+        showSnackbar('Valid minimum hours per day is required', 'error');
+        return;
+      }
+      
+      if (!formData.maxHoursPerDay || formData.maxHoursPerDay < 1) {
+        showSnackbar('Valid maximum hours per day is required', 'error');
+        return;
+      }
+      
+      if (!formData.capabilityLevel || formData.capabilityLevel < 1) {
+        showSnackbar('Capability level is required', 'error');
+        return;
+      }
+
       const dataToSave = {
         ...formData,
         regularWorkdays: selectedWorkdays.join(' '),
+        name: formData.name.trim(),
+        employeeId: formData.employeeId.trim(),
+        homeAddress: formData.homeAddress.trim(),
       };
 
       const url = isCreating ? '/api/employees' : `/api/employees/${selectedEmployee?.id}`;
@@ -146,10 +186,12 @@ const EmployeeManagement: React.FC = () => {
         setEditDialogOpen(false);
         fetchEmployees();
       } else {
-        throw new Error('Failed to save employee');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save employee');
       }
     } catch (error) {
-      showSnackbar('Failed to save employee', 'error');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      showSnackbar(`Failed to save employee: ${errorMessage}`, 'error');
     }
   };
 
@@ -280,31 +322,47 @@ const EmployeeManagement: React.FC = () => {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Name"
+                label="Name *"
                 fullWidth
                 value={formData.name || ''}
                 onChange={(e) => handleInputChange('name', e.target.value)}
+                required
+                error={!formData.name?.trim()}
+                helperText={!formData.name?.trim() ? 'Name is required' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Employee ID"
+                label="Employee ID *"
                 fullWidth
                 value={formData.employeeId || ''}
                 onChange={(e) => handleInputChange('employeeId', e.target.value)}
                 disabled={!isCreating}
+                required
+                error={!formData.employeeId?.trim()}
+                helperText={!formData.employeeId?.trim() ? 'Employee ID is required' : (!isCreating ? 'Cannot be changed after creation' : '')}
               />
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Home Address"
+                label="Home Address *"
                 fullWidth
                 value={formData.homeAddress || ''}
                 onChange={(e) => handleInputChange('homeAddress', e.target.value)}
+                required
+                error={!formData.homeAddress?.trim()}
+                helperText={!formData.homeAddress?.trim() ? 'Home address is required' : ''}
               />
             </Grid>
             <Grid item xs={12}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>Regular Workdays</Typography>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                Regular Workdays *
+                {selectedWorkdays.length === 0 && (
+                  <Typography component="span" color="error" sx={{ ml: 1, fontSize: '0.75rem' }}>
+                    (At least one day must be selected)
+                  </Typography>
+                )}
+              </Typography>
               <FormGroup row>
                 {WEEKDAYS.map((day) => (
                   <FormControlLabel
@@ -322,30 +380,35 @@ const EmployeeManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Min Hours Per Day"
+                label="Min Hours Per Day *"
                 type="number"
                 fullWidth
                 value={formData.minHoursPerDay || ''}
                 onChange={(e) => handleInputChange('minHoursPerDay', parseInt(e.target.value))}
                 inputProps={{ min: 1, max: 12 }}
+                required
+                error={!formData.minHoursPerDay || formData.minHoursPerDay < 1}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Max Hours Per Day"
+                label="Max Hours Per Day *"
                 type="number"
                 fullWidth
                 value={formData.maxHoursPerDay || ''}
                 onChange={(e) => handleInputChange('maxHoursPerDay', parseInt(e.target.value))}
                 inputProps={{ min: 1, max: 12 }}
+                required
+                error={!formData.maxHoursPerDay || formData.maxHoursPerDay < 1}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Capability Level</InputLabel>
+              <FormControl fullWidth required>
+                <InputLabel>Capability Level *</InputLabel>
                 <Select
                   value={formData.capabilityLevel || 3}
                   onChange={(e) => handleInputChange('capabilityLevel', e.target.value)}
+                  label="Capability Level *"
                 >
                   <MenuItem value={1}>1 - Beginner</MenuItem>
                   <MenuItem value={2}>2 - Beginner+</MenuItem>
