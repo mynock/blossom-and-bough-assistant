@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { ClientService } from '../services/ClientService';
+import { WorkActivityService } from '../services/WorkActivityService';
 
 const router = Router();
 const clientService = new ClientService();
+const workActivityService = new WorkActivityService();
 
 // GET /api/clients - Get all clients
 router.get('/', async (req, res) => {
@@ -32,6 +34,47 @@ router.get('/:id', async (req, res) => {
   } catch (error) {
     console.error('Error fetching client:', error);
     res.status(500).json({ error: 'Failed to fetch client' });
+  }
+});
+
+// GET /api/clients/:id/work-activities - Get work activities for a client
+router.get('/:id/work-activities', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid client ID' });
+    }
+
+    const activities = await workActivityService.getWorkActivitiesByClientId(id);
+    
+    // Calculate summary statistics
+    const summary = {
+      totalActivities: activities.length,
+      totalHours: activities.reduce((sum, a) => sum + a.totalHours, 0),
+      totalBillableHours: activities.reduce((sum, a) => sum + (a.billableHours || 0), 0),
+      totalCharges: activities.reduce((sum, a) => sum + a.totalCharges, 0),
+      statusBreakdown: activities.reduce((acc, a) => {
+        acc[a.status] = (acc[a.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      workTypeBreakdown: activities.reduce((acc, a) => {
+        acc[a.workType] = (acc[a.workType] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      lastActivityDate: activities.length > 0 ? activities[0].date : null,
+      yearToDateHours: activities
+        .filter(a => {
+          const activityYear = new Date(a.date).getFullYear();
+          const currentYear = new Date().getFullYear();
+          return activityYear === currentYear;
+        })
+        .reduce((sum, a) => sum + a.totalHours, 0)
+    };
+    
+    res.json({ activities, summary });
+  } catch (error) {
+    console.error('Error fetching client work activities:', error);
+    res.status(500).json({ error: 'Failed to fetch client work activities' });
   }
 });
 

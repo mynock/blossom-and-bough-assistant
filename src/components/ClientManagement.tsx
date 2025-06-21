@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -32,6 +33,7 @@ import {
   Delete as DeleteIcon,
   Add as AddIcon,
   Person as PersonIcon,
+  Visibility as ViewIcon,
 } from '@mui/icons-material';
 
 interface Client {
@@ -57,6 +59,7 @@ interface Client {
 }
 
 const ClientManagement: React.FC = () => {
+  const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -210,7 +213,15 @@ const ClientManagement: React.FC = () => {
             {clients.map((client) => (
               <TableRow key={client.id}>
                 <TableCell>{client.clientId}</TableCell>
-                <TableCell>{client.name}</TableCell>
+                <TableCell>
+                  <Button 
+                    variant="text" 
+                    onClick={() => navigate(`/clients/${client.id}`)}
+                    sx={{ textAlign: 'left', justifyContent: 'flex-start', textTransform: 'none' }}
+                  >
+                    {client.name}
+                  </Button>
+                </TableCell>
                 <TableCell>{client.address}</TableCell>
                 <TableCell>{client.geoZone}</TableCell>
                 <TableCell>
@@ -235,6 +246,9 @@ const ClientManagement: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>
+                  <IconButton onClick={() => navigate(`/clients/${client.id}`)} size="small" color="primary">
+                    <ViewIcon />
+                  </IconButton>
                   <IconButton onClick={() => handleEdit(client)} size="small">
                     <EditIcon />
                   </IconButton>

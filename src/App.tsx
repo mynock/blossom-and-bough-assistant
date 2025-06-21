@@ -9,6 +9,7 @@ import Chat from './components/Chat';
 import Schedule from './components/Schedule';
 import Debug from './components/Debug';
 import ClientManagement from './components/ClientManagement';
+import ClientDetail from './components/ClientDetail';
 import EmployeeManagement from './components/EmployeeManagement';
 import ProjectManagement from './components/ProjectManagement';
 import WorkActivityManagement from './components/WorkActivityManagement';
@@ -59,6 +60,7 @@ function App() {
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/schedule" element={<Schedule />} />
                       <Route path="/clients" element={<ClientManagement />} />
+                      <Route path="/clients/:id" element={<ClientDetail />} />
                       <Route path="/employees" element={<EmployeeManagement />} />
                       <Route path="/projects" element={<ProjectManagement />} />
                       <Route path="/work-activities" element={<WorkActivityManagement />} />

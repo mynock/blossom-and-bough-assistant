@@ -332,4 +332,55 @@ export class WorkActivityService extends DatabaseService {
 
     return activitiesWithDetails;
   }
+
+  /**
+   * Get all work activities for a specific client
+   */
+  async getWorkActivitiesByClientId(clientId: number): Promise<WorkActivityWithDetails[]> {
+    const activities = await this.db
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
+      .from(workActivities)
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
+      .where(eq(workActivities.clientId, clientId))
+      .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
+
+    // Get employees and charges for each activity
+    const activitiesWithDetails: WorkActivityWithDetails[] = [];
+    
+    for (const activity of activities) {
+      const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+      const chargesList = await this.getWorkActivityCharges(activity.id);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+      activitiesWithDetails.push({
+        ...activity,
+        employeesList,
+        chargesList,
+        totalCharges
+      });
+    }
+
+    return activitiesWithDetails;
+  }
 } 
