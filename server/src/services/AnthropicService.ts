@@ -818,7 +818,7 @@ ${workNotesText}`;
     try {
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [
           {
             role: 'user',
@@ -831,14 +831,20 @@ ${workNotesText}`;
         const content = response.content[0];
         if (content && content.type === 'text') {
           // Extract JSON from the response
-          const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+          const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
           if (jsonMatch) {
             try {
               const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
               return result;
             } catch (parseError) {
-              console.error('JSON parsing failed:', parseError);
-              console.error('Raw JSON string:', jsonMatch[0]);
+              console.error('❌ JSON parsing failed:', parseError);
+              console.error('📄 Raw JSON string (first 1000 chars):', jsonMatch[0].substring(0, 1000));
+              
+              // Check if response was truncated
+              const wasTruncated = response.usage?.output_tokens === 8000;
+              if (wasTruncated) {
+                console.warn('⚠️ Response may have been truncated due to token limit');
+              }
               
               // Try to fix common JSON issues
               let fixedJson = jsonMatch[0];
@@ -849,19 +855,75 @@ ${workNotesText}`;
               // Fix unescaped quotes in strings
               fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
               
+              // If JSON appears truncated, try to close it properly
+              if (wasTruncated || !fixedJson.trim().endsWith('}')) {
+                console.log('🔧 Attempting to fix truncated JSON...');
+                
+                // Count open braces and brackets to try to close them
+                let openBraces = 0;
+                let openBrackets = 0;
+                let inString = false;
+                let escaped = false;
+                
+                for (let i = 0; i < fixedJson.length; i++) {
+                  const char = fixedJson[i];
+                  
+                  if (escaped) {
+                    escaped = false;
+                    continue;
+                  }
+                  
+                  if (char === '\\') {
+                    escaped = true;
+                    continue;
+                  }
+                  
+                  if (char === '"') {
+                    inString = !inString;
+                    continue;
+                  }
+                  
+                  if (!inString) {
+                    if (char === '{') openBraces++;
+                    else if (char === '}') openBraces--;
+                    else if (char === '[') openBrackets++;
+                    else if (char === ']') openBrackets--;
+                  }
+                }
+                
+                // Close any unclosed brackets and braces
+                while (openBrackets > 0) {
+                  fixedJson += ']';
+                  openBrackets--;
+                }
+                while (openBraces > 0) {
+                  fixedJson += '}';
+                  openBraces--;
+                }
+                
+                console.log(`🔧 Added ${openBrackets} closing brackets and ${openBraces} closing braces`);
+              }
+              
               try {
                 const result = JSON.parse(fixedJson) as WorkNotesParseResult;
                 console.log('✅ Fixed JSON parsing succeeded');
+                if (wasTruncated) {
+                  result.warnings = result.warnings || [];
+                  result.warnings.push('Response was truncated due to length. Some activities may be incomplete.');
+                }
                 return result;
               } catch (secondParseError) {
-                console.error('Second JSON parsing attempt failed:', secondParseError);
-                console.error('Fixed JSON string:', fixedJson);
+                console.error('❌ Second JSON parsing attempt failed:', secondParseError);
+                console.error('📄 Fixed JSON string (first 1000 chars):', fixedJson.substring(0, 1000));
                 
                 // Return a fallback result
                 return {
                   activities: [],
                   unparsedSections: [content.text],
-                  warnings: ['Failed to parse AI response as JSON. Raw response saved in unparsed sections.']
+                  warnings: [
+                    'Failed to parse AI response as JSON. Raw response saved in unparsed sections.',
+                    wasTruncated ? 'Response was truncated due to length limits.' : ''
+                  ].filter(Boolean)
                 };
               }
             }
@@ -982,7 +1044,7 @@ Please analyze the PDF document and extract all work activities following these 
 
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 4000,
+        max_tokens: 8000,
         messages: [
           {
             role: 'user',
@@ -1013,7 +1075,7 @@ Please analyze the PDF document and extract all work activities following these 
           console.log(`📝 Response preview: ${content.text.substring(0, 200)}...`);
           
           // Extract JSON from the response
-          const jsonMatch = content.text.match(/\{[\s\S]*\}/);
+          const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
           if (jsonMatch) {
             console.log(`🔍 Found JSON block: ${jsonMatch[0].length} characters`);
             try {
@@ -1024,6 +1086,12 @@ Please analyze the PDF document and extract all work activities following these 
               console.error('❌ JSON parsing failed:', parseError);
               console.error('📄 Raw JSON string (first 1000 chars):', jsonMatch[0].substring(0, 1000));
               
+              // Check if response was truncated
+              const wasTruncated = response.usage?.output_tokens === 8000;
+              if (wasTruncated) {
+                console.warn('⚠️ Response may have been truncated due to token limit');
+              }
+              
               // Try to fix common JSON issues
               let fixedJson = jsonMatch[0];
               
@@ -1033,9 +1101,62 @@ Please analyze the PDF document and extract all work activities following these 
               // Fix unescaped quotes in strings
               fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
               
+              // If JSON appears truncated, try to close it properly
+              if (wasTruncated || !fixedJson.trim().endsWith('}')) {
+                console.log('🔧 Attempting to fix truncated JSON...');
+                
+                // Count open braces and brackets to try to close them
+                let openBraces = 0;
+                let openBrackets = 0;
+                let inString = false;
+                let escaped = false;
+                
+                for (let i = 0; i < fixedJson.length; i++) {
+                  const char = fixedJson[i];
+                  
+                  if (escaped) {
+                    escaped = false;
+                    continue;
+                  }
+                  
+                  if (char === '\\') {
+                    escaped = true;
+                    continue;
+                  }
+                  
+                  if (char === '"') {
+                    inString = !inString;
+                    continue;
+                  }
+                  
+                  if (!inString) {
+                    if (char === '{') openBraces++;
+                    else if (char === '}') openBraces--;
+                    else if (char === '[') openBrackets++;
+                    else if (char === ']') openBrackets--;
+                  }
+                }
+                
+                // Close any unclosed brackets and braces
+                while (openBrackets > 0) {
+                  fixedJson += ']';
+                  openBrackets--;
+                }
+                while (openBraces > 0) {
+                  fixedJson += '}';
+                  openBraces--;
+                }
+                
+                console.log(`🔧 Added ${openBrackets} closing brackets and ${openBraces} closing braces`);
+              }
+              
               try {
                 const result = JSON.parse(fixedJson) as WorkNotesParseResult;
                 console.log('✅ Fixed JSON parsing succeeded');
+                if (wasTruncated) {
+                  result.warnings = result.warnings || [];
+                  result.warnings.push('Response was truncated due to length. Some activities may be incomplete.');
+                }
                 return result;
               } catch (secondParseError) {
                 console.error('❌ Second JSON parsing attempt failed:', secondParseError);
@@ -1045,7 +1166,10 @@ Please analyze the PDF document and extract all work activities following these 
                 return {
                   activities: [],
                   unparsedSections: [content.text],
-                  warnings: ['Failed to parse AI response as JSON. Raw response saved in unparsed sections.']
+                  warnings: [
+                    'Failed to parse AI response as JSON. Raw response saved in unparsed sections.',
+                    wasTruncated ? 'Response was truncated due to length limits.' : ''
+                  ].filter(Boolean)
                 };
               }
             }
@@ -1062,4 +1186,387 @@ Please analyze the PDF document and extract all work activities following these 
       throw new Error('Failed to parse work notes from PDF with AI');
     }
   }
-} 
+
+  /**
+   * Parse historical work data from Google Sheets
+   */
+  async parseHistoricalSheetData(
+    clientName: string,
+    headers: string[],
+    dataRows: Array<{ cells: string[]; isEmpty: boolean }>,
+    formatHints?: string,
+    options?: {
+      batchSize?: number;
+      maxBatches?: number;
+      startBatch?: number;
+      onBatchComplete?: (batchIndex: number, activities: ParsedWorkActivity[], totalBatches: number) => Promise<boolean>;
+      onProgress?: (message: string) => void;
+    }
+  ): Promise<ParsedWorkActivity[]> {
+    if (!this.client) {
+      throw new Error('Anthropic API client not initialized');
+    }
+
+    try {
+      const { batchSize = 8, maxBatches, startBatch = 1, onBatchComplete, onProgress } = options || {};
+      
+      onProgress?.(`🤖 Starting batch parsing for ${clientName}...`);
+      
+      // Convert spreadsheet data to natural text format
+      const naturalTextEntries = this.convertToNaturalTextEntries(headers, dataRows);
+      
+      onProgress?.(`📄 Converted ${dataRows.length} spreadsheet rows to ${naturalTextEntries.length} work entries`);
+      onProgress?.(`📏 Sample entry: ${naturalTextEntries[0]?.substring(0, 100)}...`);
+      
+      // Split into batches
+      const allBatches: string[][] = [];
+      for (let i = 0; i < naturalTextEntries.length; i += batchSize) {
+        allBatches.push(naturalTextEntries.slice(i, i + batchSize));
+      }
+      
+      // Apply batch range filtering
+      const startIndex = Math.max(0, startBatch - 1);
+      const endIndex = maxBatches ? Math.min(allBatches.length, startIndex + maxBatches) : allBatches.length;
+      const batches = allBatches.slice(startIndex, endIndex);
+      
+      onProgress?.(`📦 Split into ${allBatches.length} total batches, processing batches ${startIndex + 1}-${endIndex} (${batches.length} batches)`);
+      
+      let allActivities: ParsedWorkActivity[] = [];
+      
+      // Process each batch
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        const batchText = batch.join('\n\n');
+        
+        const absoluteBatchNumber = startIndex + batchIndex + 1;
+        onProgress?.(`\n🔄 Processing batch ${absoluteBatchNumber}/${allBatches.length} (${batch.length} entries)...`);
+        
+        try {
+          const batchActivities = await this.parseNaturalHistoricalTextBatch(
+            clientName, 
+            batchText, 
+            formatHints,
+            batchIndex + 1,
+            batches.length
+          );
+          
+          onProgress?.(`✅ Batch ${batchIndex + 1} complete: Found ${batchActivities.length} activities`);
+          
+          // Show sample activities from this batch
+          if (batchActivities.length > 0) {
+            onProgress?.(`📋 Sample activity: ${batchActivities[0].date} - ${batchActivities[0].tasks.slice(0, 2).join(', ')}`);
+          }
+          
+          allActivities.push(...batchActivities);
+          
+          // Ask for confirmation if callback provided
+          if (onBatchComplete) {
+            const shouldContinue = await onBatchComplete(batchIndex, batchActivities, batches.length);
+            if (!shouldContinue) {
+              onProgress?.(`⏹️  Parsing stopped by user after batch ${batchIndex + 1}`);
+              break;
+            }
+          }
+          
+        } catch (error) {
+          onProgress?.(`❌ Batch ${batchIndex + 1} failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          
+          // Ask if we should continue despite the error
+          if (onBatchComplete) {
+            const shouldContinue = await onBatchComplete(batchIndex, [], batches.length);
+            if (!shouldContinue) {
+              onProgress?.(`⏹️  Parsing stopped after batch error`);
+              break;
+            }
+          }
+        }
+      }
+      
+      onProgress?.(`\n🎉 Parsing complete! Found ${allActivities.length} total activities from ${clientName}`);
+      return allActivities;
+
+    } catch (error) {
+      console.error('Error parsing historical sheet data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Convert spreadsheet rows to individual natural text entries
+   */
+  private convertToNaturalTextEntries(
+    headers: string[], 
+    dataRows: Array<{ cells: string[]; isEmpty: boolean }>
+  ): string[] {
+    const entries: string[] = [];
+    
+    // Find date column index
+    const dateColumnIndex = headers.findIndex(h => 
+      h.toLowerCase().includes('date') || h.toLowerCase() === 'd'
+    );
+    
+    // Common date pattern
+    const datePattern = /^(\d{1,2}\/\d{1,2})(\s|$)/;
+    
+    let currentEntry: string[] = [];
+    
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      if (row.isEmpty) continue;
+      
+      const firstCell = row.cells[0]?.trim() || '';
+      let isNewDate = false;
+      
+      // Check if this row starts with a date
+      if (datePattern.test(firstCell)) {
+        const match = firstCell.match(/^(\d{1,2})\/(\d{1,2})/);
+        if (match) {
+          const month = parseInt(match[1]);
+          const day = parseInt(match[2]);
+          if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+            isNewDate = true;
+          }
+        }
+      }
+      
+      // If we found a new date, save previous entry and start new one
+      if (isNewDate && currentEntry.length > 0) {
+        entries.push(currentEntry.join(' '));
+        currentEntry = [];
+      }
+      
+      // Build natural text for this row
+      const rowText = this.buildRowText(headers, row.cells);
+      if (rowText.trim()) {
+        currentEntry.push(rowText);
+      }
+    }
+    
+    // Don't forget the last entry
+    if (currentEntry.length > 0) {
+      entries.push(currentEntry.join(' '));
+    }
+    
+    return entries;
+  }
+
+  /**
+   * Build natural text for a single row
+   */
+  private buildRowText(headers: string[], cells: string[]): string {
+    const parts: string[] = [];
+    
+    for (let i = 0; i < headers.length && i < cells.length; i++) {
+      const header = headers[i].toLowerCase();
+      const value = cells[i]?.trim();
+      
+      if (!value) continue;
+      
+      // Format based on column type
+      if (header.includes('date') || header === 'd') {
+        parts.push(value);
+      } else if (header.includes('hrs') || header.includes('hours')) {
+        parts.push(`${value} hours`);
+      } else if (header.includes('start')) {
+        parts.push(`Start: ${value}`);
+      } else if (header.includes('end')) {
+        parts.push(`End: ${value}`);
+      } else if (header.includes('task') || header.includes('work') || header.includes('note')) {
+        parts.push(value);
+      } else if (header.includes('crew') || header.includes('emp')) {
+        parts.push(`w ${value}`);
+      } else if (header.includes('plant') || header.includes('charge') || header.includes('cost')) {
+        parts.push(value);
+      } else {
+        // Generic formatting
+        parts.push(value);
+      }
+    }
+    
+    return parts.join(', ');
+  }
+
+  /**
+   * Parse a single batch of natural text entries
+   */
+  private async parseNaturalHistoricalTextBatch(
+    clientName: string, 
+    batchText: string, 
+    formatHints?: string,
+    batchNumber?: number,
+    totalBatches?: number
+  ): Promise<ParsedWorkActivity[]> {
+    if (!this.client) {
+      throw new Error('Anthropic API client not initialized');
+    }
+    
+    const systemPrompt = `You are an expert at parsing landscaping work records. You excel at extracting structured work activities from natural text descriptions.
+
+Your task is to parse historical work data and return ALL activities found as a JSON array. This is batch ${batchNumber || 1} of ${totalBatches || 1}.
+
+Key patterns to recognize:
+- Employee codes: "w R" = with Rebecca, "w M" = with Megan, "w V" = with Virginia, "w A" = with Anne, "solo" or no crew mention = Andrea alone
+- Date formats: "5/21", "4/23" (M/D format, assume recent year)
+- Task markers: [x] = completed, [-] or [ ] = pending
+- Plant/material charges: Look for plant names, costs, vendor references
+- Time: Start/End times or total hours
+- Continuation entries: Text that continues previous dated work
+
+Return complete, detailed work activities with high confidence scores.`;
+
+    const userPrompt = `Parse this batch of historical work data for "${clientName}". 
+
+${formatHints ? `Format notes: ${formatHints}\n\n` : ''}
+
+Work data entries to parse:
+
+${batchText}
+
+Extract ALL work activities from this batch. For each activity, return this exact JSON structure:
+{
+  "date": "YYYY-MM-DD",
+  "clientName": "${clientName}",
+  "employees": ["full name"],
+  "startTime": "HH:MM AM/PM" (if available),
+  "endTime": "HH:MM AM/PM" (if available), 
+  "totalHours": 0.0,
+  "workType": "maintenance",
+  "tasks": ["detailed task descriptions"],
+  "notes": "additional context",
+  "charges": [
+    {
+      "description": "item description",
+      "type": "material",
+      "cost": 0.0
+    }
+  ],
+  "driveTime": 0,
+  "lunchTime": 0,
+  "confidence": 0.9
+}
+
+CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extract ALL activities from this batch - do not truncate.`;
+
+    console.log(`🤖 Calling Claude Sonnet 4 for batch ${batchNumber}...`);
+    
+    const response = await this.client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000, // Smaller batches = less tokens needed
+      temperature: 0.1,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }]
+    });
+
+    // Extract and parse the JSON response
+    const textContent = response.content.find((c: any) => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    const responseText = (textContent as any).text;
+    console.log(`📝 Claude batch ${batchNumber} response: ${responseText.length} characters`);
+    
+    // Extract JSON from response
+    let activities: ParsedWorkActivity[] = [];
+    
+    try {
+      // Look for JSON array in the response
+      const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        activities = JSON.parse(jsonMatch[0]);
+        console.log(`✅ Batch ${batchNumber}: Successfully parsed ${activities.length} activities`);
+      } else {
+        // Try to extract from code blocks
+        const codeBlockMatch = responseText.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+        if (codeBlockMatch) {
+          activities = JSON.parse(codeBlockMatch[1]);
+          console.log(`✅ Batch ${batchNumber}: Parsed ${activities.length} activities from code block`);
+                  } else {
+            console.error(`❌ Batch ${batchNumber}: No JSON found in response:`, responseText.substring(0, 500));
+            throw new Error('No JSON array found in response');
+          }
+        }
+      } catch (parseError) {
+        console.error(`❌ Batch ${batchNumber}: Failed to parse JSON:`, parseError);
+        console.log('Response text (first 500 chars):', responseText.substring(0, 500));
+        throw new Error(`Failed to parse activities from batch ${batchNumber}`);
+      }
+
+      // Validate and normalize the activities
+      activities = activities.map((activity: any) => ({
+        ...activity,
+        clientName: clientName,
+        date: this.normalizeDate(activity.date || ''),
+        employees: this.normalizeEmployeeNames(activity.employees || []),
+        totalHours: parseFloat(activity.totalHours?.toString() || '0') || 0,
+        driveTime: activity.driveTime ? parseInt(activity.driveTime.toString()) : undefined,
+        lunchTime: activity.lunchTime ? parseInt(activity.lunchTime.toString()) : undefined,
+        confidence: activity.confidence || 0.8,
+        charges: Array.isArray(activity.charges) ? activity.charges : [],
+        tasks: Array.isArray(activity.tasks) ? activity.tasks : (activity.tasks ? [activity.tasks] : [])
+      }));
+
+      return activities;
+    }
+
+    /**
+     * Normalize date string to YYYY-MM-DD format
+     */
+    private normalizeDate(dateStr: string): string {
+      if (!dateStr) return '';
+      
+      // Already in correct format
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      
+      // Try to parse various date formats
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        return date.toISOString().split('T')[0];
+      }
+      
+      // Handle M/D format (assume current or previous year)
+      const mdMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (mdMatch) {
+        const currentDate = new Date();
+        const currentYear = currentDate.getFullYear();
+        const currentMonth = currentDate.getMonth() + 1;
+        
+        const month = parseInt(mdMatch[1]);
+        const day = parseInt(mdMatch[2]);
+        
+        // If the month is greater than current month, assume previous year
+        let year = currentYear;
+        if (month > currentMonth) {
+          year = currentYear - 1;
+        }
+        
+        const monthStr = month.toString().padStart(2, '0');
+        const dayStr = day.toString().padStart(2, '0');
+        return `${year}-${monthStr}-${dayStr}`;
+      }
+      
+      return dateStr; // Return as-is if can't parse
+    }
+
+    /**
+     * Normalize employee names from abbreviations
+     */
+    private normalizeEmployeeNames(employees: string[]): string[] {
+      const nameMap: Record<string, string> = {
+        'R': 'Rebecca',
+        'M': 'Megan',
+        'V': 'Virginia',
+        'A': 'Anne',
+        'Andrea': 'Andrea',
+        'solo': 'Andrea',
+        'me': 'Andrea'
+      };
+      
+      return employees.map(emp => {
+        const trimmed = emp.trim();
+        return nameMap[trimmed] || trimmed;
+      });
+    }
+  }

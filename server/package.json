@@ -13,16 +13,20 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "import-data": "ts-node scripts/import-data.ts"
+    "import": "tsx scripts/import-data.ts",
+    "import:historical": "tsx scripts/import-historical-data.ts",
+    "clear-db": "tsx scripts/clear-work-activities.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
+    "@google-cloud/local-auth": "^3.0.1",
     "@types/express-session": "^1.18.2",
     "@types/multer": "^1.4.13",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.16",
     "axios": "^1.5.0",
     "better-sqlite3": "^11.10.0",
+    "commander": "^12.0.0",
     "connect-session-sequelize": "^8.0.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.0",
@@ -47,6 +51,7 @@
     "@types/node": "^20.0.0",
     "nodemon": "^3.0.0",
     "ts-node": "^10.9.0",
+    "tsx": "^4.20.3",
     "typescript": "^5.0.0"
   }
 }
