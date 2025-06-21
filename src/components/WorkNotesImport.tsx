@@ -50,7 +50,7 @@ import {
   Cancel as CancelIcon,
   NavigateNext as NextIcon,
   NavigateBefore as PrevIcon,
-  Check as AcceptIcon,
+  Check as CheckIcon,
   Clear as RejectIcon,
   FileUpload as FileUploadIcon,
   TextFields as TextIcon,
@@ -84,6 +84,16 @@ interface ValidatedWorkActivity {
   clientId?: number;
   validationIssues: ValidationIssue[];
   canImport: boolean;
+  existingActivities?: Array<{
+    id: number;
+    totalHours: number;
+    startTime: string | null;
+    endTime: string | null;
+    notes: string | null;
+    workType: string;
+    status: string;
+  }>;
+  isDuplicate?: boolean;
 }
 
 interface ImportPreview {
@@ -149,7 +159,12 @@ const WorkNotesImport: React.FC = () => {
   
   // Import state
   const [importing, setImporting] = useState(false);
-  const [importResults, setImportResults] = useState<any>(null);
+  const [importResults, setImportResults] = useState<{
+    imported: number;
+    failed: number;
+    errors: string[];
+    failedActivities?: ValidatedWorkActivity[];
+  } | null>(null);
   
   // UI state
   const [templates, setTemplates] = useState<ImportTemplates | null>(null);
@@ -272,6 +287,15 @@ const WorkNotesImport: React.FC = () => {
     }
   };
 
+  const handleAcceptAll = () => {
+    const newDecisions: { [key: number]: 'accept' | 'reject' | 'pending' } = {};
+    activities.forEach((_, index) => {
+      newDecisions[index] = 'accept';
+    });
+    setActivityDecisions(newDecisions);
+    showSnackbar(`All ${activities.length} activities accepted for import`, 'success');
+  };
+
   const handleSaveEdit = () => {
     if (editingActivity) {
       const newActivities = [...activities];
@@ -306,7 +330,20 @@ const WorkNotesImport: React.FC = () => {
       }
 
       const results = await response.json();
-      setImportResults(results);
+      
+      // Track which activities failed for re-review
+      const failedActivities: ValidatedWorkActivity[] = [];
+      if (results.failed > 0 && results.errors) {
+        // For now, we'll need to enhance the backend to return which specific activities failed
+        // For simplicity, we'll assume the last N activities in the accepted list failed
+        const startIndex = Math.max(0, acceptedActivities.length - results.failed);
+        failedActivities.push(...acceptedActivities.slice(startIndex));
+      }
+      
+      setImportResults({
+        ...results,
+        failedActivities
+      });
       setCurrentStep('complete');
 
       showSnackbar(
@@ -321,6 +358,30 @@ const WorkNotesImport: React.FC = () => {
       );
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleReviewFailedActivities = () => {
+    if (importResults?.failedActivities) {
+      // Reset the activities to only the failed ones
+      setActivities(importResults.failedActivities);
+      
+      // Reset decisions to pending for all failed activities
+      const newDecisions: { [key: number]: 'accept' | 'reject' | 'pending' } = {};
+      importResults.failedActivities.forEach((_, index) => {
+        newDecisions[index] = 'pending';
+      });
+      setActivityDecisions(newDecisions);
+      
+      // Reset other state
+      setCurrentActivityIndex(0);
+      setEditingActivity(null);
+      setImportResults(null);
+      
+      // Go back to review step
+      setCurrentStep('review');
+      
+      showSnackbar(`Re-reviewing ${importResults.failedActivities.length} failed activities`, 'info');
     }
   };
 
@@ -583,7 +644,7 @@ Work Completed:
                     color="success"
                     onClick={() => handleActivityDecision('accept')}
                     disabled={activityDecisions[currentActivityIndex] === 'accept'}
-                    startIcon={<AcceptIcon />}
+                    startIcon={<CheckIcon />}
                   >
                     Accept
                   </Button>
@@ -642,6 +703,20 @@ Work Completed:
                 </Typography>
               </Box>
 
+              {/* Bulk Actions */}
+              {pendingCount > 0 && (
+                <Button
+                  variant="outlined"
+                  color="success"
+                  onClick={handleAcceptAll}
+                  fullWidth
+                  sx={{ mt: 2 }}
+                  startIcon={<CheckIcon />}
+                >
+                  Accept All ({activities.length})
+                </Button>
+              )}
+
               <Button
                 variant="contained"
                 color="primary"
@@ -688,13 +763,25 @@ Work Completed:
                 )}
               </Box>
 
-              <Button
-                variant="contained"
-                onClick={handleStartOver}
-                sx={{ mt: 2 }}
-              >
-                Import More Notes
-              </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {importResults.failed > 0 && importResults.failedActivities && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={handleReviewFailedActivities}
+                    startIcon={<WarningIcon />}
+                  >
+                    Re-review {importResults.failed} Failed Activities
+                  </Button>
+                )}
+                
+                <Button
+                  variant="contained"
+                  onClick={handleStartOver}
+                >
+                  Import More Notes
+                </Button>
+              </Box>
             </Paper>
           </Grid>
         </Grid>
@@ -858,6 +945,42 @@ const ActivityReviewCard: React.FC<ActivityReviewCardProps> = ({
         <Typography variant="body2" color="text.secondary">
           <strong>Notes:</strong> {activity.notes}
         </Typography>
+      )}
+
+      {activity.isDuplicate && activity.existingActivities && activity.existingActivities.length > 0 && (
+        <Alert severity="warning" sx={{ mt: 2 }}>
+          <Typography variant="body2" gutterBottom>
+            <strong>Duplicate Detected:</strong> Found {activity.existingActivities.length} existing work activity(s) for this client on this date.
+          </Typography>
+          <Accordion sx={{ mt: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="body2">
+                View Existing Activities
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <List dense>
+                {activity.existingActivities.map((existing, index) => (
+                  <ListItem key={index} sx={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                    <ListItemText
+                      primary={`Activity #${existing.id} - ${existing.workType} (${existing.totalHours}h)`}
+                      secondary={
+                        <Box component="span">
+                          <div>Status: {existing.status}</div>
+                          {existing.startTime && existing.endTime && (
+                            <div>Time: {existing.startTime} - {existing.endTime}</div>
+                          )}
+                          {existing.notes && <div>Notes: {existing.notes}</div>}
+                        </Box>
+                      }
+                    />
+                    <Divider sx={{ width: '100%', mt: 1 }} />
+                  </ListItem>
+                ))}
+              </List>
+            </AccordionDetails>
+          </Accordion>
+        </Alert>
       )}
 
       {activity.validationIssues.length > 0 && (

@@ -29,6 +29,16 @@ export interface ValidatedWorkActivity extends ParsedWorkActivity {
   employeeIds: number[];
   validationIssues: ValidationIssue[];
   canImport: boolean;
+  existingActivities?: Array<{
+    id: number;
+    totalHours: number;
+    startTime: string | null;
+    endTime: string | null;
+    notes: string | null;
+    workType: string;
+    status: string;
+  }>;
+  isDuplicate?: boolean;
 }
 
 export interface ImportPreview {
@@ -162,6 +172,13 @@ export class WorkNotesParserService {
         continue;
       }
 
+      // Skip if duplicate (unless explicitly allowed)
+      if (activity.isDuplicate && activity.existingActivities && activity.existingActivities.length > 0) {
+        results.failed++;
+        results.errors.push(`Skipped ${activity.clientName} on ${activity.date}: duplicate activity exists (ID: ${activity.existingActivities[0].id})`);
+        continue;
+      }
+
       try {
         // Convert to work activity format
         const workActivity: NewWorkActivity = {
@@ -289,7 +306,9 @@ export class WorkNotesParserService {
     clientMatches: ClientMatch[],
     employeeMatches: EmployeeMatch[]
   ): Promise<ValidatedWorkActivity[]> {
-    return activities.map(activity => {
+    const validatedActivities: ValidatedWorkActivity[] = [];
+
+    for (const activity of activities) {
       const validationIssues: ValidationIssue[] = [];
       
       // Find matches for this activity
@@ -351,16 +370,55 @@ export class WorkNotesParserService {
         });
       }
 
+      // Check for existing activities (duplicate detection)
+      let existingActivities: any[] = [];
+      let isDuplicate = false;
+      
+      if (clientMatch?.matchedClient) {
+        try {
+          existingActivities = await this.workActivityService.findExistingWorkActivities(
+            clientMatch.matchedClient.id,
+            activity.date
+          );
+          
+          if (existingActivities.length > 0) {
+            isDuplicate = true;
+            validationIssues.push({
+              type: 'warning',
+              field: 'duplicate',
+              message: `Found ${existingActivities.length} existing work activity(s) for ${activity.clientName} on ${activity.date}`,
+              suggestion: 'Review existing activities before importing'
+            });
+          }
+        } catch (error) {
+          console.error('Error checking for existing activities:', error);
+        }
+      }
+
       const canImport = validationIssues.filter(i => i.type === 'error').length === 0;
 
-      return {
+      const validatedActivity: ValidatedWorkActivity = {
         ...activity,
         clientId: clientMatch?.matchedClient?.id,
         employeeIds: matchedEmployeeIds,
         validationIssues,
-        canImport
+        canImport,
+        existingActivities: existingActivities.map(existing => ({
+          id: existing.id,
+          totalHours: existing.totalHours,
+          startTime: existing.startTime,
+          endTime: existing.endTime,
+          notes: existing.notes,
+          workType: existing.workType,
+          status: existing.status
+        })),
+        isDuplicate
       };
-    });
+
+      validatedActivities.push(validatedActivity);
+    }
+
+    return validatedActivities;
   }
 
   /**

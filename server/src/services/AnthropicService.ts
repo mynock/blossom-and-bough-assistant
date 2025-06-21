@@ -810,6 +810,8 @@ Return JSON in this exact format:
   "warnings": ["Any parsing concerns or ambiguities"]
 }
 
+CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
+
 WORK NOTES TO PARSE:
 ${workNotesText}`;
 
@@ -831,8 +833,38 @@ ${workNotesText}`;
           // Extract JSON from the response
           const jsonMatch = content.text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
-            return result;
+            try {
+              const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
+              return result;
+            } catch (parseError) {
+              console.error('JSON parsing failed:', parseError);
+              console.error('Raw JSON string:', jsonMatch[0]);
+              
+              // Try to fix common JSON issues
+              let fixedJson = jsonMatch[0];
+              
+              // Fix trailing commas in arrays and objects
+              fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
+              
+              // Fix unescaped quotes in strings
+              fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
+              
+              try {
+                const result = JSON.parse(fixedJson) as WorkNotesParseResult;
+                console.log('✅ Fixed JSON parsing succeeded');
+                return result;
+              } catch (secondParseError) {
+                console.error('Second JSON parsing attempt failed:', secondParseError);
+                console.error('Fixed JSON string:', fixedJson);
+                
+                // Return a fallback result
+                return {
+                  activities: [],
+                  unparsedSections: [content.text],
+                  warnings: ['Failed to parse AI response as JSON. Raw response saved in unparsed sections.']
+                };
+              }
+            }
           }
         }
       }
@@ -938,11 +970,15 @@ Return JSON in this exact format:
   "warnings": ["Any parsing concerns or ambiguities"]
 }
 
+CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
+
 Please analyze the PDF document and extract all work activities following these patterns.`;
 
     try {
       // Convert PDF buffer to base64
       const base64Pdf = pdfBuffer.toString('base64');
+
+      console.log(`📄 Sending PDF to Claude for parsing (${base64Pdf.length} chars base64)...`);
 
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -968,14 +1004,54 @@ Please analyze the PDF document and extract all work activities following these 
         ]
       });
 
+      console.log(`📊 Claude response: ${response.usage?.input_tokens} input tokens, ${response.usage?.output_tokens} output tokens`);
+
       if (response.content && response.content.length > 0) {
         const content = response.content[0];
         if (content && content.type === 'text') {
+          console.log(`📝 Raw response length: ${content.text.length} characters`);
+          console.log(`📝 Response preview: ${content.text.substring(0, 200)}...`);
+          
           // Extract JSON from the response
           const jsonMatch = content.text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
-            return result;
+            console.log(`🔍 Found JSON block: ${jsonMatch[0].length} characters`);
+            try {
+              const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
+              console.log(`✅ Successfully parsed ${result.activities.length} activities`);
+              return result;
+            } catch (parseError) {
+              console.error('❌ JSON parsing failed:', parseError);
+              console.error('📄 Raw JSON string (first 1000 chars):', jsonMatch[0].substring(0, 1000));
+              
+              // Try to fix common JSON issues
+              let fixedJson = jsonMatch[0];
+              
+              // Fix trailing commas in arrays and objects
+              fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
+              
+              // Fix unescaped quotes in strings
+              fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
+              
+              try {
+                const result = JSON.parse(fixedJson) as WorkNotesParseResult;
+                console.log('✅ Fixed JSON parsing succeeded');
+                return result;
+              } catch (secondParseError) {
+                console.error('❌ Second JSON parsing attempt failed:', secondParseError);
+                console.error('📄 Fixed JSON string (first 1000 chars):', fixedJson.substring(0, 1000));
+                
+                // Return a fallback result
+                return {
+                  activities: [],
+                  unparsedSections: [content.text],
+                  warnings: ['Failed to parse AI response as JSON. Raw response saved in unparsed sections.']
+                };
+              }
+            }
+          } else {
+            console.error('❌ No JSON block found in response');
+            console.error('📄 Full response:', content.text);
           }
         }
       }
