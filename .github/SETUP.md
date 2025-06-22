@@ -18,11 +18,9 @@ Your repository is already configured with automated testing! Here's what you ha
 - **Duration**: ~5-8 minutes
 - **Use Case**: Pre-merge quality gates
 
-### 3. **Test Suite Matrix** (`test.yml`)
-- **Triggers**: PRs to `main`/`develop`
-- **Purpose**: Multi-version Node.js compatibility
-- **Duration**: ~10 minutes
-- **Use Case**: Release validation
+### ~~3. Test Suite Matrix~~ (Removed)
+- Multi-version Node.js testing not needed
+- Simplified to focus on single Node.js LTS version
 
 ## 🔧 Repository Configuration
 
@@ -89,13 +87,14 @@ Edit `.github/workflows/ci.yml`:
     npm run your-new-test-command
 ```
 
-### Changing Node.js Versions
-Edit the matrix in `test.yml`:
+### Changing Node.js Version
+Edit the workflows to update Node.js version:
 
 ```yaml
-strategy:
-  matrix:
-    node-version: [18.x, 20.x, 22.x]  # Add new versions
+- name: Setup Node.js
+  uses: actions/setup-node@v4
+  with:
+    node-version: '20.x'  # Update version as needed
 ```
 
 ### Adding Environment Variables
@@ -110,9 +109,9 @@ env:
 ## 🔍 Troubleshooting
 
 ### Tests Failing in CI but Passing Locally
-1. Check Node.js version differences
-2. Verify environment variables
-3. Check file paths (case sensitivity on Linux)
+1. Verify environment variables
+2. Check file paths (case sensitivity on Linux)
+3. Ensure Node.js version matches (20.x)
 
 ### Slow Test Execution
 1. Review test timeouts in `jest.config.js`
