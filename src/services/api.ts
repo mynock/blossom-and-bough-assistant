@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE = process.env.REACT_APP_API_URL || '/api';
 
 const apiClient = axios.create({
   baseURL: API_BASE,
@@ -121,6 +121,35 @@ export const travelApi = {
 export const contextApi = {
   getAll: async () => {
     const response = await apiClient.get('/context');
+    return response.data;
+  },
+};
+
+export const notionApi = {
+  createSmartEntry: async (clientName: string): Promise<{
+    success: boolean;
+    page_url: string;
+    carryover_tasks: string[];
+    error?: string;
+  }> => {
+    const response = await apiClient.post('/notion/create-smart-entry', {
+      client_name: clientName,
+    });
+    return response.data;
+  },
+  
+  getClients: async (): Promise<{ clients: Client[] }> => {
+    const response = await apiClient.get('/notion/clients');
+    return response.data;
+  },
+  
+  healthCheck: async (): Promise<{
+    status: string;
+    notion_token_configured: boolean;
+    notion_database_configured: boolean;
+    ready: boolean;
+  }> => {
+    const response = await apiClient.get('/notion/health');
     return response.data;
   },
 }; 

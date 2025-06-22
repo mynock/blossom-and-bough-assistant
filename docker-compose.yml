@@ -58,7 +58,7 @@ services:
     container_name: blossom-frontend
     environment:
       PORT: 3000
-      REACT_APP_API_URL: http://localhost:3001
+      # REACT_APP_API_URL: http://localhost:3000
       # Custom proxy target for Docker networking
       PROXY_TARGET: http://backend:3001
     ports:

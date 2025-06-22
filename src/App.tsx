@@ -17,6 +17,7 @@ import WorkNotesImport from './components/WorkNotesImport';
 import Admin from './components/Admin';
 import Navigation from './components/Navigation';
 import Login from './components/Login';
+import NotionEmbedPage from './components/NotionEmbedPage';
 
 const theme = createTheme({
   palette: {
@@ -53,6 +54,7 @@ function App() {
             <div className="App">
               <Routes>
                 <Route path="/login" element={<Login />} />
+                <Route path="/notion-embed" element={<NotionEmbedPage />} />
                 <Route path="/*" element={
                   <ProtectedRoute>
                     <Navigation />
