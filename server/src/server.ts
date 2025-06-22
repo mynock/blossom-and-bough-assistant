@@ -63,6 +63,8 @@ app.use(cors({
       'http://localhost:3000',
       'http://localhost:3001',
       process.env.FRONTEND_URL || 'http://localhost:3000',
+      // Production domain
+      'https://crm.blossomandbough.com',
       // Notion domains for embedding
       'https://notion.so',
       'https://www.notion.so',
