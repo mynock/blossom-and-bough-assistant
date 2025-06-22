@@ -43,6 +43,7 @@ interface WorkActivityStats {
     date: string;
     workType: string;
     clientName: string;
+    clientId?: number;
     totalHours: number;
     status: string;
   }>;
@@ -112,6 +113,7 @@ const Dashboard: React.FC = () => {
             date: activity.date,
             workType: activity.workType,
             clientName: activity.clientName || 'No Client',
+            clientId: activity.clientId,
             totalHours: activity.totalHours,
             status: activity.status,
           }));
@@ -385,9 +387,32 @@ const Dashboard: React.FC = () => {
                             </Box>
                           }
                           secondary={
-                            <Box>
-                              <Typography variant="body2" color="text.secondary">
-                                {activity.clientName} • {formatDate(activity.date)} • {activity.totalHours}h
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              {activity.clientId && activity.clientName !== 'No Client' ? (
+                                <Button 
+                                  variant="text" 
+                                  onClick={() => navigate(`/clients/${activity.clientId}`)}
+                                  sx={{ 
+                                    minHeight: 'auto',
+                                    p: 0,
+                                    textTransform: 'none',
+                                    fontSize: '0.875rem',
+                                    color: 'text.secondary',
+                                    '&:hover': {
+                                      color: 'primary.main',
+                                      backgroundColor: 'transparent'
+                                    }
+                                  }}
+                                >
+                                  {activity.clientName}
+                                </Button>
+                              ) : (
+                                <Typography component="span" variant="body2" color="text.secondary">
+                                  {activity.clientName}
+                                </Typography>
+                              )}
+                              <Typography component="span" variant="body2" color="text.secondary">
+                                • {formatDate(activity.date)} • {activity.totalHours}h
                               </Typography>
                             </Box>
                           }
