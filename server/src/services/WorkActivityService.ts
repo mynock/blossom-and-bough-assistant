@@ -50,6 +50,7 @@ export class WorkActivityService extends DatabaseService {
         breakTimeMinutes: workActivities.breakTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -100,6 +101,7 @@ export class WorkActivityService extends DatabaseService {
         breakTimeMinutes: workActivities.breakTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -146,6 +148,7 @@ export class WorkActivityService extends DatabaseService {
         breakTimeMinutes: workActivities.breakTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -300,6 +303,7 @@ export class WorkActivityService extends DatabaseService {
         breakTimeMinutes: workActivities.breakTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -354,6 +358,7 @@ export class WorkActivityService extends DatabaseService {
         breakTimeMinutes: workActivities.breakTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -382,5 +387,52 @@ export class WorkActivityService extends DatabaseService {
     }
 
     return activitiesWithDetails;
+  }
+
+  /**
+   * Get a work activity by Notion page ID
+   */
+  async getWorkActivityByNotionPageId(notionPageId: string): Promise<WorkActivityWithDetails | undefined> {
+    const results = await this.db
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
+      .from(workActivities)
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
+      .where(eq(workActivities.notionPageId, notionPageId));
+    
+    if (!results[0]) return undefined;
+
+    const activity = results[0];
+    const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+    const chargesList = await this.getWorkActivityCharges(activity.id);
+    const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+    return {
+      ...activity,
+      employeesList,
+      chargesList,
+      totalCharges
+    };
   }
 } 

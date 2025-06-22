@@ -87,4 +87,16 @@ export class ClientService extends DatabaseService {
       .from(clients)
       .where(eq(clients.activeStatus, 'active'));
   }
+
+  /**
+   * Get a client by name (exact match)
+   */
+  async getClientByName(name: string): Promise<Client | undefined> {
+    const results = await this.db
+      .select()
+      .from(clients)
+      .where(eq(clients.name, name));
+    
+    return results[0];
+  }
 } 

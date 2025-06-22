@@ -69,6 +69,7 @@ export const workActivities = pgTable('work_activities', {
   breakTimeMinutes: integer('break_time_minutes'),
   notes: text('notes'),
   tasks: text('tasks'), // future work items/to-do notes
+  notionPageId: text('notion_page_id').unique(), // Notion page ID for syncing
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });

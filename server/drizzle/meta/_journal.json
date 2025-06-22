@@ -8,6 +8,13 @@
       "when": 1750552117094,
       "tag": "0000_breezy_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1750624580049,
+      "tag": "0001_solid_catseye",
+      "breakpoints": true
     }
   ]
 }

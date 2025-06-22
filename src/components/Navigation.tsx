@@ -76,6 +76,7 @@ const Navigation: React.FC = () => {
   // Management items
   const managementNavItems = [
     { path: '/work-notes-import', label: 'Import Notes', icon: <Upload /> },
+    { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
     { path: '/clients', label: 'Clients', icon: <Business /> },
     { path: '/employees', label: 'Employees', icon: <People /> },
     { path: '/projects', label: 'Projects', icon: <Assignment /> },

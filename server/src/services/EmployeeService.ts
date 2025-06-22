@@ -97,4 +97,16 @@ export class EmployeeService extends DatabaseService {
       .from(employees)
       .where(like(employees.regularWorkdays, `%${workdays}%`));
   }
+
+  /**
+   * Get an employee by name (exact match)
+   */
+  async getEmployeeByName(name: string): Promise<Employee | undefined> {
+    const results = await this.db
+      .select()
+      .from(employees)
+      .where(eq(employees.name, name));
+    
+    return results[0];
+  }
 } 
