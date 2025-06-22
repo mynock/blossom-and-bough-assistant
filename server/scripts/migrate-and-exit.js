@@ -1,8 +1,8 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+const { migrate } = require('drizzle-orm/node-postgres/migrator');
+const { drizzle } = require('drizzle-orm/node-postgres');
+const { Pool } = require('pg');
 
 async function runMigration() {
   console.log('🚀 Starting database migration...');
