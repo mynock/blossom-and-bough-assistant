@@ -1,7 +1,14 @@
 import express from 'express';
-import { AdminService } from '../services/AdminService';
+import { AdminService, WorkActivityImportOptions, ImportProgress } from '../services/AdminService';
 import { requireAuth, getCurrentUser } from '../middleware/auth';
 import { debugLog } from '../utils/logger';
+
+// Store active import sessions for progress tracking
+const activeImports = new Map<string, {
+  progress: ImportProgress[];
+  isComplete: boolean;
+  result?: any;
+}>();
 
 const router = express.Router();
 const adminService = new AdminService();
@@ -255,6 +262,203 @@ router.post('/run-migrations', async (req, res) => {
     res.status(500).json({ 
       success: false, 
       error: 'Failed to run migrations',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Get available clients for work activity import
+ */
+router.get('/import-work-activities/clients', async (req, res) => {
+  try {
+    const user = getCurrentUser(req);
+    debugLog.info('Admin: Get available clients requested', { userId: user?.id });
+    
+    const result = await adminService.getAvailableClients();
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: result.output, 
+        duration: result.duration,
+        clients: result.clients 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to get available clients',
+        details: result.error,
+        duration: result.duration 
+      });
+    }
+  } catch (error) {
+    debugLog.error('Admin: Error getting available clients', { error });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get available clients',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Preview client data before import
+ */
+router.get('/import-work-activities/preview/:clientName', async (req, res) => {
+  try {
+    const user = getCurrentUser(req);
+    const { clientName } = req.params;
+    
+    debugLog.info('Admin: Preview client data requested', { userId: user?.id, clientName });
+    
+    const result = await adminService.previewClientData(clientName);
+    
+    if (result.success) {
+      res.json({ 
+        success: true, 
+        message: result.output, 
+        duration: result.duration,
+        preview: result.preview 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to preview client data',
+        details: result.error,
+        duration: result.duration 
+      });
+    }
+  } catch (error) {
+    debugLog.error('Admin: Error previewing client data', { error });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to preview client data',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Start work activities import
+ */
+router.post('/import-work-activities', async (req, res) => {
+  try {
+    const user = getCurrentUser(req);
+    const options: WorkActivityImportOptions = req.body;
+    
+    debugLog.info('Admin: Work activities import requested', { userId: user?.id, options });
+    
+    // Generate unique session ID for progress tracking
+    const sessionId = `import_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Initialize progress tracking
+    activeImports.set(sessionId, {
+      progress: [],
+      isComplete: false
+    });
+    
+    // Start import in background
+    (async () => {
+      try {
+        const result = await adminService.importWorkActivities(
+          options,
+          (progress: ImportProgress) => {
+            const session = activeImports.get(sessionId);
+            if (session) {
+              session.progress.push(progress);
+            }
+          }
+        );
+        
+        const session = activeImports.get(sessionId);
+        if (session) {
+          session.isComplete = true;
+          session.result = result;
+        }
+        
+        debugLog.info('Admin: Work activities import completed', { 
+          userId: user?.id, 
+          sessionId,
+          success: result.success,
+          duration: result.duration 
+        });
+        
+      } catch (error) {
+        const session = activeImports.get(sessionId);
+        if (session) {
+          session.isComplete = true;
+          session.result = {
+            success: false,
+            message: 'Import failed',
+            duration: 0,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          };
+        }
+        
+        debugLog.error('Admin: Work activities import failed', { 
+          userId: user?.id, 
+          sessionId,
+          error 
+        });
+      }
+    })();
+    
+    // Return session ID for progress tracking
+    res.json({ 
+      success: true, 
+      message: 'Import started',
+      sessionId
+    });
+    
+  } catch (error) {
+    debugLog.error('Admin: Error starting work activities import', { error });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to start import',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * Get import progress
+ */
+router.get('/import-work-activities/progress/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = activeImports.get(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({ 
+        success: false, 
+        error: 'Import session not found' 
+      });
+    }
+    
+    res.json({
+      success: true,
+      progress: session.progress,
+      isComplete: session.isComplete,
+      result: session.result
+    });
+    
+    // Clean up completed sessions after some time
+    if (session.isComplete && session.progress.length > 0) {
+      const lastUpdate = session.progress[session.progress.length - 1];
+      const timeSinceComplete = Date.now() - new Date().getTime();
+      
+      // Remove session after 5 minutes
+      if (timeSinceComplete > 5 * 60 * 1000) {
+        activeImports.delete(sessionId);
+      }
+    }
+    
+  } catch (error) {
+    debugLog.error('Admin: Error getting import progress', { error });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get import progress',
       details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
