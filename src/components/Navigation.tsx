@@ -26,13 +26,11 @@ import {
   People,
   Assignment,
   Schedule,
-  Chat,
   Logout,
   AccountCircle,
   Menu as MenuIcon,
   LocalFlorist,
   Work,
-  Upload,
   Analytics,
   Settings
 } from '@mui/icons-material';
@@ -68,18 +66,18 @@ const Navigation: React.FC = () => {
   // Main navigation items
   const mainNavItems = [
     { path: '/', label: 'Dashboard', icon: <Dashboard /> },
-    { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
     { path: '/work-activities', label: 'Work', icon: <Work /> },
-    { path: '/chat', label: 'AI Assistant', icon: <Chat /> },
-  ];
-
-  // Management items
-  const managementNavItems = [
-    { path: '/work-notes-import', label: 'Import Notes', icon: <Upload /> },
-    { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
     { path: '/clients', label: 'Clients', icon: <Business /> },
     { path: '/employees', label: 'Employees', icon: <People /> },
     { path: '/projects', label: 'Projects', icon: <Assignment /> },
+    { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
+    { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
+    // { path: '/chat', label: 'AI Assistant', icon: <Chat /> }, // Hidden for now
+  ];
+
+  // Management items (now empty, but keeping for future use)
+  const managementNavItems: Array<{ path: string; label: string; icon: React.ReactElement }> = [
+    // { path: '/work-notes-import', label: 'Import Notes', icon: <Upload /> }, // Hidden for now
   ];
 
   // Secondary items

@@ -54,7 +54,8 @@ import {
   Clear as RejectIcon,
   FileUpload as FileUploadIcon,
   TextFields as TextIcon,
-  Description as FileIcon
+  Description as FileIcon,
+  Sync as SyncIcon
 } from '@mui/icons-material';
 
 interface ValidationIssue {
@@ -143,7 +144,10 @@ type ImportStep = 'upload' | 'review' | 'complete';
 const WorkNotesImport: React.FC = () => {
   // Main workflow state
   const [currentStep, setCurrentStep] = useState<ImportStep>('upload');
-  const [importMethod, setImportMethod] = useState<'text' | 'file'>('file');
+  const [importMethod, setImportMethod] = useState<'text' | 'file' | 'notion'>('file');
+  
+  // Notion sync state
+  const [syncingFromNotion, setSyncingFromNotion] = useState(false);
   
   // Upload state
   const [workNotesText, setWorkNotesText] = useState('');
@@ -263,6 +267,46 @@ const WorkNotesImport: React.FC = () => {
       );
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleNotionSync = async () => {
+    setSyncingFromNotion(true);
+    
+    try {
+      const response = await fetch('/api/notion-sync/sync', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        showSnackbar(
+          `Notion sync completed: ${result.stats.created} created, ${result.stats.updated} updated`,
+          'success'
+        );
+        // Optionally redirect to work activities or refresh the page
+        setTimeout(() => {
+          window.location.href = '/work-activities';
+        }, 2000);
+      } else {
+        throw new Error(result.error || 'Failed to sync from Notion');
+      }
+    } catch (error) {
+      console.error('Notion sync error:', error);
+      showSnackbar(
+        error instanceof Error ? error.message : 'Failed to sync from Notion',
+        'error'
+      );
+    } finally {
+      setSyncingFromNotion(false);
     }
   };
 
@@ -446,7 +490,7 @@ const WorkNotesImport: React.FC = () => {
                 Choose Import Method
               </Typography>
               
-              <Stack direction="row" spacing={2} sx={{ mb: 3 }}>
+              <Stack direction="row" spacing={1} sx={{ mb: 3 }}>
                 <Button
                   variant={importMethod === 'file' ? 'contained' : 'outlined'}
                   onClick={() => setImportMethod('file')}
@@ -462,6 +506,14 @@ const WorkNotesImport: React.FC = () => {
                   fullWidth
                 >
                   Enter Text
+                </Button>
+                <Button
+                  variant={importMethod === 'notion' ? 'contained' : 'outlined'}
+                  onClick={() => setImportMethod('notion')}
+                  startIcon={<SyncIcon />}
+                  fullWidth
+                >
+                  Sync from Notion
                 </Button>
               </Stack>
 
@@ -503,7 +555,7 @@ const WorkNotesImport: React.FC = () => {
                     </Card>
                   </label>
                 </Box>
-              ) : (
+              ) : importMethod === 'text' ? (
                 <TextField
                   fullWidth
                   multiline
@@ -524,18 +576,53 @@ Work Completed:
                   variant="outlined"
                   sx={{ mb: 2 }}
                 />
+              ) : (
+                <Card
+                  sx={{
+                    p: 4,
+                    textAlign: 'center',
+                    border: '2px solid',
+                    borderColor: 'primary.main',
+                    bgcolor: 'primary.light',
+                    mb: 2
+                  }}
+                >
+                  <SyncIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+                  <Typography variant="h6" gutterBottom>
+                    Sync from Notion Database
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    Import work activities directly from your configured Notion database.
+                    This will create or update work activities based on Notion pages.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Activities will be imported directly without the review step.
+                  </Typography>
+                </Card>
               )}
 
               <Box sx={{ display: 'flex', gap: 2 }}>
-                <Button
-                  variant="contained"
-                  onClick={handleUpload}
-                  disabled={uploading || (importMethod === 'file' ? !selectedFile : !workNotesText.trim())}
-                  startIcon={uploading ? undefined : <PreviewIcon />}
-                  sx={{ flexGrow: 1 }}
-                >
-                  {uploading ? 'Processing...' : 'Parse Notes'}
-                </Button>
+                {importMethod === 'notion' ? (
+                  <Button
+                    variant="contained"
+                    onClick={handleNotionSync}
+                    disabled={syncingFromNotion}
+                    startIcon={syncingFromNotion ? undefined : <SyncIcon />}
+                    sx={{ flexGrow: 1 }}
+                  >
+                    {syncingFromNotion ? 'Syncing...' : 'Sync from Notion'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    onClick={handleUpload}
+                    disabled={uploading || (importMethod === 'file' ? !selectedFile : !workNotesText.trim())}
+                    startIcon={uploading ? undefined : <PreviewIcon />}
+                    sx={{ flexGrow: 1 }}
+                  >
+                    {uploading ? 'Processing...' : 'Parse Notes'}
+                  </Button>
+                )}
                 
                 <Button
                   variant="outlined"
@@ -546,11 +633,11 @@ Work Completed:
                 </Button>
               </Box>
 
-              {uploading && (
+              {(uploading || syncingFromNotion) && (
                 <Box sx={{ mt: 2 }}>
                   <LinearProgress />
                   <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    AI is analyzing your work notes...
+                    {syncingFromNotion ? 'Syncing from Notion database...' : 'AI is analyzing your work notes...'}
                   </Typography>
                 </Box>
               )}
@@ -571,6 +658,13 @@ Work Completed:
                   />
                 </ListItem>
                 <ListItem>
+                  <ListItemIcon><SyncIcon color="primary" /></ListItemIcon>
+                  <ListItemText 
+                    primary="Sync directly from Notion"
+                    secondary="Import work activities from your configured Notion database"
+                  />
+                </ListItem>
+                <ListItem>
                   <ListItemIcon><PreviewIcon color="primary" /></ListItemIcon>
                   <ListItemText 
                     primary="AI parses and structures the data"
@@ -580,7 +674,7 @@ Work Completed:
                 <ListItem>
                   <ListItemIcon><EditIcon color="primary" /></ListItemIcon>
                   <ListItemText 
-                    primary="Review and edit each activity"
+                    primary="Review and edit each activity (for file/text)"
                     secondary="Cycle through activities one-by-one to verify and correct"
                   />
                 </ListItem>

@@ -642,6 +642,68 @@ const Admin: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Notion Integration */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader 
+          title="Notion Integration" 
+          subheader="Manage Notion database integration and sync work activities"
+        />
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="secondary"
+                onClick={() => window.open(process.env.REACT_APP_NOTION_DATABASE_URL || '#', '_blank')}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">Work Activities Database</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Open Notion database in new tab
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="info"
+                onClick={() => window.open('/notion-embed', '_blank')}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">Notion Quick Entry</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Embeddable page for field use
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="primary"
+                onClick={() => window.open('/notion-sync', '_blank')}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">Notion Sync</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Sync Notion pages to CRM
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
       {/* Clear Operations */}
       <Card sx={{ mb: 3 }}>
         <CardHeader 

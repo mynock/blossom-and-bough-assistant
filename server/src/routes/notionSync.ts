@@ -54,4 +54,25 @@ router.get('/status', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/notion-sync/stats
+ * Get statistics about Notion imports
+ */
+router.get('/stats', async (req, res) => {
+  try {
+    const stats = await notionSyncService.getImportStats();
+    
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    debugLog.error('Error getting import stats:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error getting import statistics'
+    });
+  }
+});
+
 export default router; 

@@ -29,6 +29,7 @@ import {
   AccessTime,
   AttachMoney,
   ArrowForward,
+  Sync,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS } from '../config/api';
@@ -199,7 +200,7 @@ const Dashboard: React.FC = () => {
 
       {/* Primary Action Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={4}>
           <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>
@@ -209,7 +210,7 @@ const Dashboard: React.FC = () => {
                     Import Work Notes
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Upload PDF work notes and automatically extract structured activity data
+                    Upload PDF work notes and extract structured activity data
                   </Typography>
                 </Box>
               </Box>
@@ -226,7 +227,34 @@ const Dashboard: React.FC = () => {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12} md={4}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #0d7377 0%, #2a9d8f 100%)', color: 'white' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Sync sx={{ fontSize: 40, mr: 2 }} />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Sync from Notion
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    Import work activities directly from your configured Notion database
+                  </Typography>
+                </Box>
+              </Box>
+              <Button 
+                variant="contained" 
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+                startIcon={<Sync />}
+                onClick={() => navigate('/notion-sync')}
+                fullWidth
+              >
+                Sync from Notion
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
           <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>

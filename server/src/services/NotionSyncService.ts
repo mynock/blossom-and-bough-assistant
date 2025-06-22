@@ -408,4 +408,40 @@ export class NotionSyncService {
     const prop = properties[propertyName];
     return prop?.date?.start || null;
   }
+
+  /**
+   * Get statistics about work activities imported from Notion
+   */
+  async getImportStats(): Promise<{
+    totalWorkActivities: number;
+    notionImported: number;
+    percentage: number;
+  }> {
+    try {
+      // Get all work activities
+      const allActivities = await this.workActivityService.getAllWorkActivities();
+      const totalWorkActivities = allActivities.length;
+
+      // Count activities with Notion page IDs
+      const notionImported = allActivities.filter(activity => 
+        activity.notionPageId && activity.notionPageId.trim() !== ''
+      ).length;
+
+      // Calculate percentage
+      const percentage = totalWorkActivities > 0 
+        ? Math.round((notionImported / totalWorkActivities) * 100) 
+        : 0;
+
+      debugLog.info(`Import stats: ${notionImported}/${totalWorkActivities} (${percentage}%) from Notion`);
+
+      return {
+        totalWorkActivities,
+        notionImported,
+        percentage
+      };
+    } catch (error) {
+      debugLog.error('Error getting import stats:', error);
+      throw error;
+    }
+  }
 } 
