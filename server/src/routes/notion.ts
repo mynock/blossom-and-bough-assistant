@@ -8,6 +8,11 @@ const notionService = new NotionService();
 // POST /api/notion/create-smart-entry
 router.post('/create-smart-entry', async (req: Request, res: Response) => {
   try {
+    // Set cache busting headers for API responses
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     const { client_name } = req.body as CreateSmartEntryRequest;
     
     if (!client_name) {
@@ -40,6 +45,11 @@ router.post('/create-smart-entry', async (req: Request, res: Response) => {
 // GET /api/notion/clients - Get client list for Notion integration (public endpoint)
 router.get('/clients', async (req: Request, res: Response) => {
   try {
+    // Set cache busting headers for API responses
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
     // Import here to avoid circular dependencies
     const { ClientService } = await import('../services/ClientService');
     const clientService = new ClientService();

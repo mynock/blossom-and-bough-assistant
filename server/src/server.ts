@@ -428,7 +428,7 @@ app.post('/api/calendar/template', async (req, res) => {
   }
 });
 
-// Special handling for embed routes - set headers to allow embedding
+// Special handling for embed routes - set headers to allow embedding and prevent caching
 app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
   res.removeHeader('X-Frame-Options');
@@ -443,6 +443,13 @@ app.use('/notion-embed', (req, res, next) => {
     "font-src 'self'; " +
     "frame-ancestors 'self' https://*.notion.so https://notion.so;"
   );
+  
+  // Cache busting headers to prevent Notion from caching the embed
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Last-Modified', new Date().toUTCString());
+  res.setHeader('ETag', `"${Date.now()}"`);
   
   next();
 });
