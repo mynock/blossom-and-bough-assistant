@@ -3,12 +3,11 @@ import {
   Box, 
   Button, 
   Typography, 
-  Alert, 
   CircularProgress, 
   Autocomplete,
   TextField
 } from '@mui/material';
-import { notionApi, clientsApi, Client } from '../services/api';
+import { notionApi, Client } from '../services/api';
 
 interface CreateEntryResponse {
   success: boolean;
@@ -24,6 +23,7 @@ const NotionQuickEntry: React.FunctionComponent = () => {
   const [clientInputValue, setClientInputValue] = useState<string>('');
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState<boolean>(true);
+  const [showForm, setShowForm] = useState<boolean>(true);
 
   // Fetch all clients on component mount
   useEffect(() => {
@@ -47,6 +47,7 @@ const NotionQuickEntry: React.FunctionComponent = () => {
     
     if (!clientName) return;
     
+    setShowForm(false);
     setLoading(true);
     setResult(null);
 
@@ -66,6 +67,14 @@ const NotionQuickEntry: React.FunctionComponent = () => {
     }
   };
 
+  const resetForm = () => {
+    setShowForm(true);
+    setLoading(false);
+    setResult(null);
+    setSelectedClient(null);
+    setClientInputValue('');
+  };
+
   return (
     <Box
       sx={{
@@ -76,122 +85,149 @@ const NotionQuickEntry: React.FunctionComponent = () => {
         backgroundColor: 'white',
         borderRadius: 2,
         boxShadow: 1,
+        minHeight: '200px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
       }}
     >
-      <Typography 
-        variant="h5" 
-        component="h2" 
-        sx={{ 
-          marginBottom: 3, 
-          color: '#2e7d32',
-          textAlign: 'center',
-          fontWeight: 600
-        }}
-      >
-        🌱 Quick Work Entry
-      </Typography>
+      {showForm && (
+        <>
+          <Typography 
+            variant="h5" 
+            component="h2" 
+            sx={{ 
+              marginBottom: 3, 
+              color: '#2e7d32',
+              textAlign: 'center',
+              fontWeight: 600
+            }}
+          >
+            🌱 Quick Work Entry
+          </Typography>
 
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Autocomplete
-          freeSolo
-          options={clients}
-          getOptionLabel={(option) => 
-            typeof option === 'string' ? option : option.name
-          }
-          value={selectedClient}
-          inputValue={clientInputValue}
-          onChange={(event, newValue) => {
-            if (typeof newValue === 'string') {
-              // User typed a custom value
-              setSelectedClient(null);
-              setClientInputValue(newValue);
-            } else {
-              // User selected from dropdown
-              setSelectedClient(newValue);
-              setClientInputValue(newValue ? newValue.name : '');
-            }
-          }}
-          onInputChange={(event, newInputValue) => {
-            setClientInputValue(newInputValue);
-            // Clear selected client if input doesn't match exactly
-            if (selectedClient && selectedClient.name !== newInputValue) {
-              setSelectedClient(null);
-            }
-          }}
-          loading={loadingClients}
-          disabled={loading}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              label="Select or Enter Client Name"
-              variant="outlined"
-              helperText="Choose from existing clients or type a new client name"
-              InputProps={{
-                ...params.InputProps,
-                endAdornment: (
-                  <>
-                    {loadingClients ? <CircularProgress color="inherit" size={20} /> : null}
-                    {params.InputProps.endAdornment}
-                  </>
-                ),
-              }}
-            />
-          )}
-          filterOptions={(options, { inputValue }) =>
-            options.filter((option) =>
-              option.name.toLowerCase().includes(inputValue.toLowerCase())
-            )
-          }
-        />
-
-        <Button
-          onClick={createEntry}
-          disabled={loading || (!selectedClient && !clientInputValue.trim())}
-          variant="contained"
-          size="large"
-          sx={{
-            backgroundColor: loading ? '#ccc' : '#2e7d32',
-            color: 'white',
-            '&:hover': {
-              backgroundColor: loading ? '#ccc' : '#1b5e20',
-            },
-            '&:disabled': {
-              backgroundColor: '#ccc',
-              color: 'white',
-            },
-            textTransform: 'none',
-            fontSize: '16px',
-            padding: '12px 24px',
-          }}
-          startIcon={loading ? <CircularProgress size={20} color="inherit" /> : null}
-        >
-          {loading ? 'Creating Entry...' : 'Create Work Entry'}
-        </Button>
-      </Box>
-
-      {result && (
-        <Box sx={{ marginTop: 3 }}>
-          {result.success ? (
-            <Alert 
-              severity="success" 
-              sx={{ 
-                '& .MuiAlert-message': { 
-                  width: '100%' 
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Autocomplete
+              freeSolo
+              options={clients}
+              getOptionLabel={(option) => 
+                typeof option === 'string' ? option : option.name
+              }
+              value={selectedClient}
+              inputValue={clientInputValue}
+              onChange={(event, newValue) => {
+                if (typeof newValue === 'string') {
+                  // User typed a custom value
+                  setSelectedClient(null);
+                  setClientInputValue(newValue);
+                } else {
+                  // User selected from dropdown
+                  setSelectedClient(newValue);
+                  setClientInputValue(newValue ? newValue.name : '');
                 }
               }}
+              onInputChange={(event, newInputValue) => {
+                setClientInputValue(newInputValue);
+                // Clear selected client if input doesn't match exactly
+                if (selectedClient && selectedClient.name !== newInputValue) {
+                  setSelectedClient(null);
+                }
+              }}
+              loading={loadingClients}
+              disabled={loading}
+              renderInput={(params) => (
+                <TextField
+                  {...params}
+                  label="Select or Enter Client Name"
+                  variant="outlined"
+                  helperText="Choose from existing clients or type a new client name"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter' && (selectedClient || clientInputValue.trim())) {
+                      createEntry();
+                    }
+                  }}
+                  InputProps={{
+                    ...params.InputProps,
+                    endAdornment: (
+                      <>
+                        {loadingClients ? <CircularProgress color="inherit" size={20} /> : null}
+                        {params.InputProps.endAdornment}
+                      </>
+                    ),
+                  }}
+                />
+              )}
+              filterOptions={(options, { inputValue }) =>
+                options.filter((option) =>
+                  option.name.toLowerCase().includes(inputValue.toLowerCase())
+                )
+              }
+            />
+
+            <Button
+              onClick={createEntry}
+              disabled={loading || (!selectedClient && !clientInputValue.trim())}
+              variant="contained"
+              size="large"
+              sx={{
+                backgroundColor: '#2e7d32',
+                color: 'white',
+                '&:hover': {
+                  backgroundColor: '#1b5e20',
+                },
+                '&:disabled': {
+                  backgroundColor: '#ccc',
+                  color: 'white',
+                },
+                textTransform: 'none',
+                fontSize: '16px',
+                padding: '12px 24px',
+              }}
             >
-              <Box>
-                <Typography variant="body2" sx={{ marginBottom: 1 }}>
-                  ✅ Created entry for {selectedClient ? selectedClient.name : clientInputValue} successfully
-                </Typography>
-                <Typography variant="body2" sx={{ marginBottom: 2 }}>
-                  📋 Carried over {result.carryover_tasks.length} task{result.carryover_tasks.length !== 1 ? 's' : ''}
-                </Typography>
+              Create Work Entry
+            </Button>
+          </Box>
+        </>
+      )}
+
+      {loading && (
+        <Box 
+          sx={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: 'center', 
+            gap: 2,
+            textAlign: 'center'
+          }}
+        >
+          <CircularProgress size={48} sx={{ color: '#2e7d32' }} />
+          <Typography variant="h6" sx={{ color: '#2e7d32' }}>
+            Creating entry for {selectedClient ? selectedClient.name : clientInputValue}...
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#666' }}>
+            Checking for tasks to carry over
+          </Typography>
+        </Box>
+      )}
+
+      {result && !loading && (
+        <Box sx={{ textAlign: 'center' }}>
+          {result.success ? (
+            <Box>
+              <Typography variant="h6" sx={{ color: '#2e7d32', marginBottom: 2 }}>
+                ✅ Entry Created!
+              </Typography>
+              <Typography variant="body1" sx={{ marginBottom: 1 }}>
+                {selectedClient ? selectedClient.name : clientInputValue}
+              </Typography>
+              <Typography variant="body2" sx={{ marginBottom: 3, color: '#666' }}>
+                📋 {result.carryover_tasks.length} task{result.carryover_tasks.length !== 1 ? 's' : ''} carried over
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Button
                   href={result.page_url}
                   target="_parent"
                   variant="contained"
-                  size="small"
                   sx={{
                     backgroundColor: '#0969da',
                     color: 'white',
@@ -204,14 +240,47 @@ const NotionQuickEntry: React.FunctionComponent = () => {
                 >
                   → Open Work Entry
                 </Button>
+                <Button
+                  onClick={resetForm}
+                  variant="outlined"
+                  sx={{
+                    color: '#2e7d32',
+                    borderColor: '#2e7d32',
+                    '&:hover': {
+                      backgroundColor: '#f1f8e9',
+                      borderColor: '#2e7d32',
+                    },
+                    textTransform: 'none',
+                    fontSize: '14px',
+                  }}
+                >
+                  Create Another Entry
+                </Button>
               </Box>
-            </Alert>
+            </Box>
           ) : (
-            <Alert severity="error">
-              <Typography variant="body2">
-                ❌ Error: {result.error}
+            <Box>
+              <Typography variant="h6" sx={{ color: '#d32f2f', marginBottom: 2 }}>
+                ❌ Error
               </Typography>
-            </Alert>
+              <Typography variant="body2" sx={{ marginBottom: 3 }}>
+                {result.error}
+              </Typography>
+              <Button
+                onClick={resetForm}
+                variant="contained"
+                sx={{
+                  backgroundColor: '#2e7d32',
+                  color: 'white',
+                  '&:hover': {
+                    backgroundColor: '#1b5e20',
+                  },
+                  textTransform: 'none',
+                }}
+              >
+                Try Again
+              </Button>
+            </Box>
           )}
         </Box>
       )}
