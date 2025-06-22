@@ -440,8 +440,8 @@ export class GoogleSheetsService {
           isMaintenance: true,
           intervalWeeks: 4,
           hoursPerVisit: 4,
-          lastVisit: '2024-01-01',
-          nextTarget: '2024-01-29',
+                lastVisit: '2025-01-01',
+      nextTarget: '2025-01-29',
         },
         preferences: {
           preferredDays: ['Tuesday', 'Wednesday', 'Thursday'],

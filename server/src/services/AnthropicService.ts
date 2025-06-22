@@ -1400,13 +1400,14 @@ Please analyze the PDF document and extract all work activities following these 
       throw new Error('Anthropic API client not initialized');
     }
     
+    const currentYear = new Date().getFullYear();
     const systemPrompt = `You are an expert at parsing landscaping work records. You excel at extracting structured work activities from natural text descriptions.
 
 Your task is to parse historical work data and return ALL activities found as a JSON array. This is batch ${batchNumber || 1} of ${totalBatches || 1}.
 
 Key patterns to recognize:
 - Employee codes: "w R" = with Rebecca, "w M" = with Megan, "w V" = with Virginia, "w A" = with Anne, "solo" or no crew mention = Andrea alone
-- Date formats: "5/21", "4/23" (M/D format, assume recent year)
+- Date formats: "5/21", "4/23" (M/D format) - IMPORTANT: For dates without year, assume ${currentYear} unless the month is far in the future (then use ${currentYear - 1})
 - Task markers: [x] = completed, [-] or [ ] = pending
 - Plant/material charges: Look for plant names, costs, vendor references
 - Time: Start/End times or total hours
@@ -1444,6 +1445,11 @@ Extract ALL work activities from this batch. For each activity, return this exac
   "lunchTime": 0,
   "confidence": 0.9
 }
+
+CRITICAL DATE FORMATTING: 
+- For dates like "5/21" or "4/23", convert to "${currentYear}-05-21" or "${currentYear}-04-23" format
+- Only use ${currentYear - 1} if the month seems far in the future relative to current date
+- Always return dates in YYYY-MM-DD format with proper zero-padding
 
 CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extract ALL activities from this batch - do not truncate.`;
 
@@ -1526,7 +1532,7 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
         return date.toISOString().split('T')[0];
       }
       
-      // Handle M/D format (assume current or previous year)
+      // Handle M/D format (assume current year unless month is in future)
       const mdMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
       if (mdMatch) {
         const currentDate = new Date();
@@ -1536,9 +1542,11 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
         const month = parseInt(mdMatch[1]);
         const day = parseInt(mdMatch[2]);
         
-        // If the month is greater than current month, assume previous year
+        // Use current year by default
+        // Only use previous year if the month is significantly in the future
+        // (more than 3 months ahead, which likely indicates it's from last year)
         let year = currentYear;
-        if (month > currentMonth) {
+        if (month > currentMonth + 3) {
           year = currentYear - 1;
         }
         
