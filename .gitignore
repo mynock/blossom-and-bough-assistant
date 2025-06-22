@@ -119,3 +119,11 @@ __pycache__/
 *.sqlite3
 server/data/*.db
 server/database.db
+
+# Test artifacts
+jest-coverage/
+test-results/
+.jest-cache/
+
+# GitHub Actions artifacts
+.github/workflows/artifacts/
