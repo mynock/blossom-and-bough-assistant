@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -33,6 +34,7 @@ import {
   Delete as DeleteIcon,
   Add as AddIcon,
   Work as WorkIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 
 interface Employee {
@@ -54,6 +56,7 @@ interface Employee {
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const EmployeeManagement: React.FC = () => {
+  const navigate = useNavigate();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -119,6 +122,10 @@ const EmployeeManagement: React.FC = () => {
     setSelectedWorkdays([]);
     setIsCreating(true);
     setEditDialogOpen(true);
+  };
+
+  const handleView = (employee: Employee) => {
+    navigate(`/employees/${employee.id}`);
   };
 
   const handleSave = async () => {
@@ -300,6 +307,9 @@ const EmployeeManagement: React.FC = () => {
                   />
                 </TableCell>
                 <TableCell>
+                  <IconButton onClick={() => handleView(employee)} size="small" color="primary">
+                    <VisibilityIcon />
+                  </IconButton>
                   <IconButton onClick={() => handleEdit(employee)} size="small">
                     <EditIcon />
                   </IconButton>

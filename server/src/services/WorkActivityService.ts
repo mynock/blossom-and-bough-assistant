@@ -390,6 +390,60 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
+   * Get all work activities for a specific employee
+   */
+  async getWorkActivitiesByEmployeeId(employeeId: number): Promise<WorkActivityWithDetails[]> {
+    // Use a join query to get activities where the employee participated
+    const activities = await this.db
+      .select({
+        id: workActivities.id,
+        workType: workActivities.workType,
+        date: workActivities.date,
+        status: workActivities.status,
+        startTime: workActivities.startTime,
+        endTime: workActivities.endTime,
+        billableHours: workActivities.billableHours,
+        totalHours: workActivities.totalHours,
+        hourlyRate: workActivities.hourlyRate,
+        projectId: workActivities.projectId,
+        clientId: workActivities.clientId,
+        travelTimeMinutes: workActivities.travelTimeMinutes,
+        breakTimeMinutes: workActivities.breakTimeMinutes,
+        notes: workActivities.notes,
+        tasks: workActivities.tasks,
+        notionPageId: workActivities.notionPageId,
+        createdAt: workActivities.createdAt,
+        updatedAt: workActivities.updatedAt,
+        clientName: clients.name,
+        projectName: projects.name
+      })
+      .from(workActivities)
+      .innerJoin(workActivityEmployees, eq(workActivities.id, workActivityEmployees.workActivityId))
+      .leftJoin(clients, eq(workActivities.clientId, clients.id))
+      .leftJoin(projects, eq(workActivities.projectId, projects.id))
+      .where(eq(workActivityEmployees.employeeId, employeeId))
+      .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
+
+    // Get employees and charges for each activity
+    const activitiesWithDetails: WorkActivityWithDetails[] = [];
+    
+    for (const activity of activities) {
+      const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
+      const chargesList = await this.getWorkActivityCharges(activity.id);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+
+      activitiesWithDetails.push({
+        ...activity,
+        employeesList,
+        chargesList,
+        totalCharges
+      });
+    }
+
+    return activitiesWithDetails;
+  }
+
+  /**
    * Get a work activity by Notion page ID
    */
   async getWorkActivityByNotionPageId(notionPageId: string): Promise<WorkActivityWithDetails | undefined> {

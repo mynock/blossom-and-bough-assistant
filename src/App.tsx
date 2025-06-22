@@ -11,6 +11,7 @@ import Debug from './components/Debug';
 import ClientManagement from './components/ClientManagement';
 import ClientDetail from './components/ClientDetail';
 import EmployeeManagement from './components/EmployeeManagement';
+import EmployeeDetail from './components/EmployeeDetail';
 import ProjectManagement from './components/ProjectManagement';
 import WorkActivityManagement from './components/WorkActivityManagement';
 import WorkNotesImport from './components/WorkNotesImport';
@@ -66,6 +67,7 @@ function App() {
                       <Route path="/clients" element={<ClientManagement />} />
                       <Route path="/clients/:id" element={<ClientDetail />} />
                       <Route path="/employees" element={<EmployeeManagement />} />
+                      <Route path="/employees/:id" element={<EmployeeDetail />} />
                       <Route path="/projects" element={<ProjectManagement />} />
                       <Route path="/work-activities" element={<WorkActivityManagement />} />
                       <Route path="/work-notes-import" element={<WorkNotesImport />} />
