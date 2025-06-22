@@ -20,13 +20,13 @@ async function runMigration() {
     console.log('✅ Migrations completed successfully!');
   } catch (error) {
     console.error('❌ Migration failed:', error);
-    process.exit(1);
-  } finally {
-    console.log('🔄 Closing database connection...');
     await pool.end();
-    console.log('✨ Migration process complete - exiting cleanly');
-    process.exit(0);
+    process.exit(1);
   }
+  
+  console.log('🔄 Closing database connection...');
+  await pool.end();
+  console.log('✨ Migration process complete - ready for server start');
 }
 
 runMigration(); 
