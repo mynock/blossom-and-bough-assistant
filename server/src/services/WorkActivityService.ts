@@ -239,7 +239,7 @@ export class WorkActivityService extends DatabaseService {
     // Delete the work activity
     const result = await this.db.delete(workActivities).where(eq(workActivities.id, id));
     
-    return result.changes > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

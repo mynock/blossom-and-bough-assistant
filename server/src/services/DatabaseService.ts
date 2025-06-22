@@ -18,10 +18,11 @@ export class DatabaseService {
   }
 
   /**
-   * Utility method to format timestamps for SQLite storage
+   * Utility method to get timestamp for database storage
+   * PostgreSQL accepts Date objects directly
    */
-  protected formatTimestamp(date: Date): string {
-    return date.toISOString();
+  protected formatTimestamp(date: Date): Date {
+    return date;
   }
 
   /**

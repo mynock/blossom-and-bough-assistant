@@ -65,7 +65,7 @@ export class ClientService extends DatabaseService {
    */
   async deleteClient(id: number): Promise<boolean> {
     const result = await this.db.delete(clients).where(eq(clients.id, id));
-    return result.changes > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

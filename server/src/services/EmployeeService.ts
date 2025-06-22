@@ -65,7 +65,7 @@ export class EmployeeService extends DatabaseService {
    */
   async deleteEmployee(id: number): Promise<boolean> {
     const result = await this.db.delete(employees).where(eq(employees.id, id));
-    return result.changes > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: blossom-postgres
+    environment:
+      POSTGRES_DB: blossom_and_bough
+      POSTGRES_USER: blossom_user
+      POSTGRES_PASSWORD: blossom_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blossom_user -d blossom_and_bough"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - blossom-network
+
+  # Backend API Server
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: blossom-backend
+    env_file:
+      - .env
+    environment:
+      # Override specific values for Docker environment
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://blossom_user:blossom_password@postgres:5432/blossom_and_bough
+      GOOGLE_OAUTH_CALLBACK_URL: http://localhost:3001/api/auth/google/callback
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server:/app/server
+      - /app/server/node_modules  # Use anonymous volume for node_modules to prevent platform conflicts
+      - ./google-account-key.json:/app/google-account-key.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - blossom-network
+    command: npm run dev
+
+  # Frontend React App
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: blossom-frontend
+    environment:
+      PORT: 3000
+      REACT_APP_API_URL: http://localhost:3001
+      # Custom proxy target for Docker networking
+      PROXY_TARGET: http://backend:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./package.json:/app/package.json
+      - /app/node_modules  # Use anonymous volume for node_modules to prevent platform conflicts
+    depends_on:
+      - backend
+    networks:
+      - blossom-network
+    command: npm start
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  blossom-network:
+    driver: bridge 

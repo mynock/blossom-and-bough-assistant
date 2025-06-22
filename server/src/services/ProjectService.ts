@@ -89,7 +89,7 @@ export class ProjectService extends DatabaseService {
    */
   async deleteProject(id: number): Promise<boolean> {
     const result = await this.db.delete(projects).where(eq(projects.id, id));
-    return result.changes > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   /**

@@ -1,14 +1,14 @@
-import { sqliteTable, text, integer, real, blob } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, real, boolean, timestamp, serial } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // Clients table
-export const clients = sqliteTable('clients', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const clients = pgTable('clients', {
+  id: serial('id').primaryKey(),
   clientId: text('client_id').unique().notNull(),
   name: text('name').notNull(),
   address: text('address').notNull(),
   geoZone: text('geo_zone').notNull(),
-  isRecurringMaintenance: integer('is_recurring_maintenance', { mode: 'boolean' }).notNull().default(false),
+  isRecurringMaintenance: boolean('is_recurring_maintenance').notNull().default(false),
   maintenanceIntervalWeeks: integer('maintenance_interval_weeks'),
   maintenanceHoursPerVisit: text('maintenance_hours_per_visit'),
   maintenanceRate: text('maintenance_rate'),
@@ -20,13 +20,13 @@ export const clients = sqliteTable('clients', {
   preferredTime: text('preferred_time'),
   specialNotes: text('special_notes'),
   activeStatus: text('active_status').notNull().default('active'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Employees table
-export const employees = sqliteTable('employees', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const employees = pgTable('employees', {
+  id: serial('id').primaryKey(),
   employeeId: text('employee_id').unique().notNull(),
   name: text('name').notNull(),
   regularWorkdays: text('regular_workdays').notNull(),
@@ -37,24 +37,24 @@ export const employees = sqliteTable('employees', {
   hourlyRate: real('hourly_rate'),
   notes: text('notes'),
   activeStatus: text('active_status').notNull().default('active'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Projects table
-export const projects = sqliteTable('projects', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const projects = pgTable('projects', {
+  id: serial('id').primaryKey(),
   clientId: integer('client_id').notNull().references(() => clients.id),
   status: text('status').notNull(),
   name: text('name').notNull(),
   description: text('description'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Work Activities table
-export const workActivities = sqliteTable('work_activities', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const workActivities = pgTable('work_activities', {
+  id: serial('id').primaryKey(),
   workType: text('work_type').notNull(), // maintenance, install, errand, office work, etc.
   date: text('date').notNull(), // ISO date string
   status: text('status').notNull(), // planned, in_progress, completed, invoiced
@@ -69,44 +69,44 @@ export const workActivities = sqliteTable('work_activities', {
   breakTimeMinutes: integer('break_time_minutes'),
   notes: text('notes'),
   tasks: text('tasks'), // future work items/to-do notes
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Work Activity Employees junction table
-export const workActivityEmployees = sqliteTable('work_activity_employees', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const workActivityEmployees = pgTable('work_activity_employees', {
+  id: serial('id').primaryKey(),
   workActivityId: integer('work_activity_id').notNull().references(() => workActivities.id),
   employeeId: integer('employee_id').notNull().references(() => employees.id),
   hours: real('hours').notNull(),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Other Charges table
-export const otherCharges = sqliteTable('other_charges', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const otherCharges = pgTable('other_charges', {
+  id: serial('id').primaryKey(),
   workActivityId: integer('work_activity_id').notNull().references(() => workActivities.id),
   chargeType: text('charge_type').notNull(), // material, service, debris, delivery, etc.
   description: text('description').notNull(), // e.g., "1 debris bag", "3 astrantia", "mulch delivery"
   quantity: real('quantity'),
   unitRate: real('unit_rate'),
   totalCost: real('total_cost').notNull(),
-  billable: integer('billable', { mode: 'boolean' }).notNull().default(true),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  billable: boolean('billable').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Client Notes table
-export const clientNotes = sqliteTable('client_notes', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const clientNotes = pgTable('client_notes', {
+  id: serial('id').primaryKey(),
   clientId: integer('client_id').notNull().references(() => clients.id),
   noteType: text('note_type').notNull(), // meeting, property_info, client_preferences, etc.
   title: text('title').notNull(), // e.g., "Rod & Yahya convo 3/12"
   content: text('content').notNull(),
   date: text('date'), // ISO date string
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`)
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 // Export types for use in the application
