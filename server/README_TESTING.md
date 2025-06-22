@@ -52,20 +52,18 @@ This document outlines the comprehensive unit testing suite created for the sche
   - Employee-activity relationships
 
 #### 4. **SchedulingService** (`SchedulingService.test.ts`)
-- **Why Critical**: Core scheduling logic, availability checking, conflict detection
-- **Test Coverage**:
-  - Helper availability calculations
+- **Why Critical**: Core helper and client data access for CRM workflows
+- **Test Coverage** (Basic CRM Focus):
+  - Helper data retrieval
   - Maintenance schedule management
-  - Conflict detection (time overlaps, hour limits)
   - Client filtering and search
+  - Travel time calculations
   - Business logic validation
-  - Edge cases (no workdays, empty calendars)
 - **Key Business Rules Tested**:
-  - Workday availability calculations
-  - Existing booking integration
-  - Daily hour limit enforcement
   - Maintenance schedule logic
   - Multi-criteria client filtering
+  - Helper and client data integrity
+- **Note**: Advanced scheduling features (availability, conflict detection) temporarily removed to focus on CRM workflows
 
 ## Test Architecture
 
@@ -134,9 +132,9 @@ Each test suite follows consistent structure:
 
 ### Test Categories:
 - **CRUD Operations**: ~40 tests across all services
-- **Business Logic Validation**: ~25 tests for domain rules
-- **Error Handling**: ~20 tests for error scenarios  
-- **Edge Cases**: ~15 tests for boundary conditions
+- **Business Logic Validation**: ~20 tests for domain rules
+- **Error Handling**: ~15 tests for error scenarios  
+- **Edge Cases**: ~8 tests for boundary conditions
 - **Relationship Testing**: ~12 tests for entity relationships
 
 ### Key Business Rules Validated:
@@ -168,10 +166,10 @@ npm test ClientService.test.ts
 ## Recommended Next Steps
 
 ### 🔥 **Immediate (High Priority)**
-1. **Fix Linter Issues**: Address TypeScript strict mode warnings
-2. **Add ProjectService Tests**: Complete the core service testing
-3. **Database Integration Tests**: Test with real database connections
-4. **Validate Test Mocks**: Ensure mocks accurately represent real service behavior
+1. **Add ProjectService Tests**: Complete the core CRM service testing
+2. **Database Integration Tests**: Test with real database connections for CRM operations
+3. **Validate Test Mocks**: Ensure mocks accurately represent real service behavior
+4. **CRM Workflow Tests**: Add end-to-end CRM workflow testing
 
 ### 📈 **Short Term (2-4 weeks)**
 1. **Integration Tests**: Add tests that combine multiple services
@@ -180,10 +178,11 @@ npm test ClientService.test.ts
 4. **Performance Benchmarks**: Establish baseline performance metrics
 
 ### 🎯 **Medium Term (1-2 months)**
-1. **External Service Integration Tests**: Test with real Google Calendar/Sheets/Notion APIs
-2. **End-to-End Tests**: Complete user workflow testing
-3. **Load Testing**: Test under realistic usage scenarios
-4. **Automated Testing Pipeline**: CI/CD integration with test reporting
+1. **Advanced Scheduling Tests**: Re-add availability checking, conflict detection tests
+2. **External Service Integration Tests**: Test with real Google Calendar/Sheets/Notion APIs
+3. **End-to-End Tests**: Complete user workflow testing
+4. **Load Testing**: Test under realistic usage scenarios
+5. **Automated Testing Pipeline**: CI/CD integration with test reporting
 
 ### 🚀 **Long Term (3+ months)**
 1. **Advanced Testing**: Property-based testing, fuzzing
@@ -194,10 +193,11 @@ npm test ClientService.test.ts
 ## Success Metrics
 
 ### Current Achievement:
-- ✅ **100+ Unit Tests** covering core functionality
-- ✅ **4 Critical Services** comprehensively tested
-- ✅ **Business Logic Validation** for all major constraints
+- ✅ **80+ Unit Tests** covering core CRM functionality
+- ✅ **4 Critical Services** tested (3 comprehensive, 1 basic CRM features)
+- ✅ **Business Logic Validation** for all major CRM constraints
 - ✅ **Automated Test Runner** with coverage reporting
+- ✅ **Clean Test Suite** focused on immediate CRM workflow needs
 
 ### Target Metrics:
 - **Test Coverage**: >90% for core services
