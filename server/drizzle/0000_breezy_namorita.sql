@@ -1,4 +1,4 @@
-CREATE TABLE "client_notes" (
+CREATE TABLE IF NOT EXISTS "client_notes" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"client_id" integer NOT NULL,
 	"note_type" text NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE "client_notes" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "clients" (
+CREATE TABLE IF NOT EXISTS "clients" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"client_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -32,7 +32,7 @@ CREATE TABLE "clients" (
 	CONSTRAINT "clients_client_id_unique" UNIQUE("client_id")
 );
 --> statement-breakpoint
-CREATE TABLE "employees" (
+CREATE TABLE IF NOT EXISTS "employees" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"employee_id" text NOT NULL,
 	"name" text NOT NULL,
@@ -49,7 +49,7 @@ CREATE TABLE "employees" (
 	CONSTRAINT "employees_employee_id_unique" UNIQUE("employee_id")
 );
 --> statement-breakpoint
-CREATE TABLE "other_charges" (
+CREATE TABLE IF NOT EXISTS "other_charges" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"work_activity_id" integer NOT NULL,
 	"charge_type" text NOT NULL,
@@ -62,7 +62,7 @@ CREATE TABLE "other_charges" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "projects" (
+CREATE TABLE IF NOT EXISTS "projects" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"client_id" integer NOT NULL,
 	"status" text NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE "projects" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "work_activities" (
+CREATE TABLE IF NOT EXISTS "work_activities" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"work_type" text NOT NULL,
 	"date" text NOT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE "work_activities" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "work_activity_employees" (
+CREATE TABLE IF NOT EXISTS "work_activity_employees" (
 	"id" serial PRIMARY KEY NOT NULL,
 	"work_activity_id" integer NOT NULL,
 	"employee_id" integer NOT NULL,
@@ -101,10 +101,72 @@ CREATE TABLE "work_activity_employees" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "client_notes" ADD CONSTRAINT "client_notes_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "other_charges" ADD CONSTRAINT "other_charges_work_activity_id_work_activities_id_fk" FOREIGN KEY ("work_activity_id") REFERENCES "public"."work_activities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "projects" ADD CONSTRAINT "projects_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "work_activities" ADD CONSTRAINT "work_activities_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "work_activities" ADD CONSTRAINT "work_activities_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "work_activity_employees" ADD CONSTRAINT "work_activity_employees_work_activity_id_work_activities_id_fk" FOREIGN KEY ("work_activity_id") REFERENCES "public"."work_activities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "work_activity_employees" ADD CONSTRAINT "work_activity_employees_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE no action ON UPDATE no action;
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'client_notes_client_id_clients_id_fk'
+    ) THEN
+        ALTER TABLE "client_notes" ADD CONSTRAINT "client_notes_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'other_charges_work_activity_id_work_activities_id_fk'
+    ) THEN
+        ALTER TABLE "other_charges" ADD CONSTRAINT "other_charges_work_activity_id_work_activities_id_fk" FOREIGN KEY ("work_activity_id") REFERENCES "public"."work_activities"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'projects_client_id_clients_id_fk'
+    ) THEN
+        ALTER TABLE "projects" ADD CONSTRAINT "projects_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'work_activities_project_id_projects_id_fk'
+    ) THEN
+        ALTER TABLE "work_activities" ADD CONSTRAINT "work_activities_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'work_activities_client_id_clients_id_fk'
+    ) THEN
+        ALTER TABLE "work_activities" ADD CONSTRAINT "work_activities_client_id_clients_id_fk" FOREIGN KEY ("client_id") REFERENCES "public"."clients"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'work_activity_employees_work_activity_id_work_activities_id_fk'
+    ) THEN
+        ALTER TABLE "work_activity_employees" ADD CONSTRAINT "work_activity_employees_work_activity_id_work_activities_id_fk" FOREIGN KEY ("work_activity_id") REFERENCES "public"."work_activities"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
+--> statement-breakpoint
+DO $$ 
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE constraint_name = 'work_activity_employees_employee_id_employees_id_fk'
+    ) THEN
+        ALTER TABLE "work_activity_employees" ADD CONSTRAINT "work_activity_employees_employee_id_employees_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."employees"("id") ON DELETE no action ON UPDATE no action;
+    END IF;
+END $$;
