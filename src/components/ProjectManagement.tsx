@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -53,6 +54,7 @@ const PROJECT_STATUSES = [
 ];
 
 const ProjectManagement: React.FC = () => {
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -222,7 +224,27 @@ const ProjectManagement: React.FC = () => {
                     {project.name}
                   </Typography>
                 </TableCell>
-                <TableCell>{project.clientName}</TableCell>
+                <TableCell>
+                  {project.clientId ? (
+                    <Button 
+                      variant="text" 
+                      onClick={() => navigate(`/clients/${project.clientId}`)}
+                      sx={{ 
+                        textAlign: 'left', 
+                        justifyContent: 'flex-start', 
+                        textTransform: 'none',
+                        minHeight: 'auto',
+                        p: 0
+                      }}
+                    >
+                      {project.clientName}
+                    </Button>
+                  ) : (
+                    <Typography variant="body2">
+                      {project.clientName || 'No Client'}
+                    </Typography>
+                  )}
+                </TableCell>
                 <TableCell>
                   <Chip
                     label={project.status.replace('_', ' ').toUpperCase()}

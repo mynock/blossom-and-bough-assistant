@@ -34,7 +34,7 @@ import {
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Editor } from 'react-draft-wysiwyg';
 import { EditorState, convertToRaw, ContentState } from 'draft-js';
 import draftToHtml from 'draftjs-to-html';
@@ -100,6 +100,7 @@ const WORK_STATUSES = [
 
 const WorkActivityManagement: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [workActivities, setWorkActivities] = useState<WorkActivity[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -408,9 +409,26 @@ const WorkActivityManagement: React.FC = () => {
       sortable: true,
       render: (activity) => (
         <Box>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {activity.clientName || 'No Client'}
-          </Typography>
+          {activity.clientName && activity.clientId ? (
+            <Button 
+              variant="text" 
+              onClick={() => navigate(`/clients/${activity.clientId}`)}
+              sx={{ 
+                textAlign: 'left', 
+                justifyContent: 'flex-start', 
+                textTransform: 'none',
+                fontWeight: 600,
+                minHeight: 'auto',
+                p: 0
+              }}
+            >
+              {activity.clientName}
+            </Button>
+          ) : (
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {activity.clientName || 'No Client'}
+            </Typography>
+          )}
           {activity.projectName && (
             <Typography variant="caption" color="text.secondary">
               {activity.projectName}
