@@ -6,11 +6,17 @@ on:
   push:
     paths:
       - 'server/**'
-      - '.github/workflows/quick-test.yml'
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/**'
+
+env:
+  CI: true
 
 jobs:
   quick-test:
-    name: Quick Backend Tests
+    name: Quick Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -22,12 +28,21 @@ jobs:
       with:
         node-version: '20.x'
         
-    - name: Install dependencies
+    - name: Install frontend dependencies
+      run: npm ci
+        
+    - name: Run frontend tests
+      run: npm test -- --watchAll=false --passWithNoTests
+        
+    - name: Build frontend
+      run: npm run build
+        
+    - name: Install backend dependencies
       run: |
         cd server
         npm ci
         
-    - name: Run tests
+    - name: Run backend tests
       run: |
         cd server
         npm test

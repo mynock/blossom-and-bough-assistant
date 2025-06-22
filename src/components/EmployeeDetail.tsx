@@ -15,7 +15,6 @@ import {
   TableRow,
   Card,
   CardContent,
-  Divider,
   CircularProgress,
   Alert,
   Accordion,
@@ -28,13 +27,11 @@ import {
   DialogActions,
   TextField,
   FormControlLabel,
-  Switch,
   MenuItem,
   Select,
   FormControl,
   InputLabel,
   Snackbar,
-  IconButton,
   FormGroup,
   Checkbox,
   Tabs,
@@ -49,13 +46,7 @@ import {
   AttachMoney as MoneyIcon,
   ExpandMore as ExpandMoreIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
-  LocationOn as LocationIcon,
-  Star as StarIcon,
-  CalendarToday as CalendarIcon,
-  Timeline as TimelineIcon,
   TrendingUp as TrendingUpIcon,
-  Assignment as AssignmentIcon,
 } from '@mui/icons-material';
 
 interface Employee {
@@ -114,26 +105,6 @@ interface EmployeeSummary {
 }
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const WORK_TYPES = [
-  'maintenance',
-  'installation',
-  'repair',
-  'consultation',
-  'design',
-  'cleanup',
-  'office_work',
-  'travel',
-  'other'
-];
-
-const WORK_STATUSES = [
-  'planned',
-  'in_progress',
-  'completed',
-  'invoiced',
-  'cancelled'
-];
 
 interface TabPanelProps {
   children?: React.ReactNode;

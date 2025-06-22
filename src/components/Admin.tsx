@@ -126,9 +126,9 @@ const Admin: React.FC = () => {
     force: false
   });
   const [isImporting, setIsImporting] = useState(false);
-  const [importSessionId, setImportSessionId] = useState<string | null>(null);
+  const [, setImportSessionId] = useState<string | null>(null);
   const [importProgress, setImportProgress] = useState<ImportProgress[]>([]);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [, setImportResult] = useState<ImportResult | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showProgressDetails, setShowProgressDetails] = useState(false);
 
