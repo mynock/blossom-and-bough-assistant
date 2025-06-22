@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import path from 'path';
+import { createGoogleAuth, hasGoogleCredentials, getGoogleAuthConfig } from '../utils/googleAuth';
 
 export interface SheetExtraction {
   clientName: string;
@@ -35,34 +36,24 @@ export class GoogleSheetsHistoricalDataService {
 
   private async initializeAuth() {
     try {
-      // Check if Google Sheets credentials are available
+      // Check if Google Sheets ID is configured
       const historicalSheetId = process.env.GOOGLE_SHEETS_HISTORICAL_ID || process.env.GOOGLE_SHEETS_ID;
       
-      if (!historicalSheetId || !process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
-        throw new Error('Google Sheets credentials not configured for historical data');
+      if (!historicalSheetId) {
+        throw new Error('Google Sheets ID not configured for historical data (GOOGLE_SHEETS_HISTORICAL_ID or GOOGLE_SHEETS_ID)');
       }
 
-      // Resolve the key file path
-      const rootDir = path.resolve(__dirname, '../../');
-      let keyFilePath = path.resolve(rootDir, process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
-      
-      if (!require('fs').existsSync(keyFilePath)) {
-        const filename = path.basename(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
-        keyFilePath = path.resolve(rootDir, filename);
+      // Check if any Google credentials are available
+      if (!hasGoogleCredentials()) {
+        const config = getGoogleAuthConfig();
+        console.log('📝 Auth config:', config);
+        throw new Error('Google Sheets credentials not configured for historical data. Please set either GOOGLE_SERVICE_ACCOUNT_KEY or GOOGLE_SERVICE_ACCOUNT_KEY_FILE environment variable.');
       }
-      
+
       console.log('🔑 Loading Google Sheets credentials for historical data...');
 
-      if (!require('fs').existsSync(keyFilePath)) {
-        throw new Error(`Google Sheets key file not found at: ${keyFilePath}`);
-      }
-
-      // Initialize Google Sheets API
-      this.auth = new google.auth.GoogleAuth({
-        keyFile: keyFilePath,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-      });
-
+      // Initialize Google Sheets API using shared auth utility
+      this.auth = createGoogleAuth(['https://www.googleapis.com/auth/spreadsheets.readonly']);
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
       console.log('✅ Google Sheets API initialized for historical data');
     } catch (error) {

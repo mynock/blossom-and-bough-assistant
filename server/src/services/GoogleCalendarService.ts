@@ -1,5 +1,6 @@
 import { google } from 'googleapis';
 import { CalendarEvent } from '../types';
+import { createGoogleAuth, hasGoogleCredentials, getGoogleAuthConfig } from '../utils/googleAuth';
 
 export class GoogleCalendarService {
   private auth: any = null;
@@ -11,14 +12,22 @@ export class GoogleCalendarService {
 
   private async initializeAuth() {
     try {
-      this.auth = new google.auth.GoogleAuth({
-        keyFile: process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE,
-        scopes: ['https://www.googleapis.com/auth/calendar.readonly'],
-      });
+      // Check if any Google credentials are available
+      if (!hasGoogleCredentials()) {
+        console.log('📅 Google credentials not configured for Calendar, calendar features disabled');
+        const config = getGoogleAuthConfig();
+        console.log('📝 Auth config:', config);
+        return;
+      }
 
+      console.log('🔑 Initializing Google Calendar with shared auth...');
+
+      // Initialize Google Calendar API using shared auth utility
+      this.auth = createGoogleAuth(['https://www.googleapis.com/auth/calendar.readonly']);
       this.calendar = google.calendar({ version: 'v3', auth: this.auth });
+      console.log('✅ Google Calendar API initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Google Calendar auth:', error);
+      console.error('❌ Failed to initialize Google Calendar auth:', error);
     }
   }
 

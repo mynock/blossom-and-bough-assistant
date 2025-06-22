@@ -464,4 +464,36 @@ router.get('/import-work-activities/progress/:sessionId', async (req, res) => {
   }
 });
 
+/**
+ * Get Google authentication configuration status
+ */
+router.get('/google-auth-config', async (req, res) => {
+  try {
+    const user = getCurrentUser(req);
+    debugLog.info('Admin: Google auth config requested', { userId: user?.id });
+    
+    const { getGoogleAuthConfig } = await import('../utils/googleAuth');
+    const config = getGoogleAuthConfig();
+    
+    res.json({ 
+      success: true, 
+      config: {
+        hasEnvKey: config.hasEnvKey,
+        hasKeyFile: config.hasKeyFile,
+        keyFileExists: config.keyFileExists,
+        keyFilePath: config.keyFilePath,
+        // Don't expose the actual credentials
+        authMethod: config.hasEnvKey ? 'environment_variable' : config.hasKeyFile ? 'key_file' : 'none'
+      }
+    });
+  } catch (error) {
+    debugLog.error('Admin: Error getting Google auth config', { error });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to get Google auth configuration',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 export default router; 

@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import { Helper, Client, Project } from '../types';
 import path from 'path';
+import { createGoogleAuth, hasGoogleCredentials, getGoogleAuthConfig } from '../utils/googleAuth';
 
 export interface BusinessSettings {
   maxTravelBetweenJobsMinutes: number;
@@ -30,37 +31,22 @@ export class GoogleSheetsService {
 
   private async initializeAuth() {
     try {
-      // Check if Google Sheets credentials are available
-      if (!process.env.GOOGLE_SHEETS_ID || !process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE) {
-        console.log('📝 Google Sheets credentials not configured, using mock data');
+      // Check if Google Sheets ID is configured
+      if (!process.env.GOOGLE_SHEETS_ID) {
+        console.log('📝 GOOGLE_SHEETS_ID not configured, using mock data');
         return;
       }
 
-      // Resolve the key file path relative to the root directory (where .env is located)
-      // The .env file is in the root directory, and the path in env is relative to root
-      const rootDir = path.resolve(__dirname, '../../');
-      let keyFilePath = path.resolve(rootDir, process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
-      
-      // If the file doesn't exist at the specified path, try looking in the root directory
-      if (!require('fs').existsSync(keyFilePath)) {
-        const filename = path.basename(process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE);
-        keyFilePath = path.resolve(rootDir, filename);
-      }
-      
-      console.log('🔑 Attempting to load Google Sheets credentials from:', keyFilePath);
-
-      // Check if the key file exists
-      if (!require('fs').existsSync(keyFilePath)) {
-        console.log('📝 Google Sheets key file not found, using mock data. Expected path:', keyFilePath);
+      // Check if any Google credentials are available
+      if (!hasGoogleCredentials()) {
+        console.log('📝 Google credentials not configured, using mock data');
+        const config = getGoogleAuthConfig();
+        console.log('📝 Auth config:', config);
         return;
       }
 
-      // Initialize Google Sheets API
-      this.auth = new google.auth.GoogleAuth({
-        keyFile: keyFilePath,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-      });
-
+      // Initialize Google Sheets API using shared auth utility
+      this.auth = createGoogleAuth(['https://www.googleapis.com/auth/spreadsheets.readonly']);
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
       console.log('✅ Google Sheets API initialized successfully');
     } catch (error) {
