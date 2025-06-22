@@ -2,14 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
-  Paper,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Button,
   Dialog,
   DialogTitle,
@@ -19,7 +12,6 @@ import {
   FormControlLabel,
   Switch,
   Chip,
-  IconButton,
   Alert,
   Snackbar,
   Grid,
@@ -35,6 +27,7 @@ import {
   Person as PersonIcon,
   Visibility as ViewIcon,
 } from '@mui/icons-material';
+import FilterableTable, { FilterConfig, ColumnConfig } from './FilterableTable';
 
 interface Client {
   id: number;
@@ -178,89 +171,183 @@ const ClientManagement: React.FC = () => {
     }
   };
 
+  // Configure table columns
+  const columns: ColumnConfig<Client>[] = [
+    {
+      key: 'clientId',
+      label: 'Client ID',
+      sortable: true,
+    },
+    {
+      key: 'name',
+      label: 'Name',
+      sortable: true,
+      render: (client) => (
+        <Button 
+          variant="text" 
+          onClick={() => navigate(`/clients/${client.id}`)}
+          sx={{ textAlign: 'left', justifyContent: 'flex-start', textTransform: 'none' }}
+        >
+          {client.name}
+        </Button>
+      ),
+    },
+    {
+      key: 'address',
+      label: 'Address',
+      sortable: true,
+    },
+    {
+      key: 'geoZone',
+      label: 'Zone',
+      sortable: true,
+    },
+    {
+      key: 'priorityLevel',
+      label: 'Priority',
+      sortable: true,
+      render: (client) => (
+        <Chip
+          label={client.priorityLevel}
+          color={getPriorityColor(client.priorityLevel) as any}
+          size="small"
+        />
+      ),
+    },
+    {
+      key: 'isRecurringMaintenance',
+      label: 'Maintenance',
+      render: (client) => (
+        client.isRecurringMaintenance ? (
+          <Chip label="Recurring" color="primary" size="small" />
+        ) : (
+          <Chip label="One-time" color="default" size="small" />
+        )
+      ),
+    },
+    {
+      key: 'activeStatus',
+      label: 'Status',
+      sortable: true,
+      render: (client) => (
+        <Chip
+          label={client.activeStatus}
+          color={client.activeStatus === 'active' ? 'success' : 'default'}
+          size="small"
+        />
+      ),
+    },
+  ];
+
+  // Configure filters
+  const filters: FilterConfig[] = [
+    {
+      key: 'name',
+      label: 'Client Name',
+      type: 'text',
+    },
+    {
+      key: 'geoZone',
+      label: 'Geographic Zone',
+      type: 'text',
+    },
+    {
+      key: 'priorityLevel',
+      label: 'Priority Level',
+      type: 'multiselect',
+      options: [
+        { value: 'High', label: 'High' },
+        { value: 'Medium', label: 'Medium' },
+        { value: 'Low', label: 'Low' },
+      ],
+    },
+    {
+      key: 'activeStatus',
+      label: 'Status',
+      type: 'select',
+      options: [
+        { value: 'active', label: 'Active' },
+        { value: 'inactive', label: 'Inactive' },
+      ],
+    },
+    {
+      key: 'isRecurringMaintenance',
+      label: 'Maintenance Type',
+      type: 'select',
+      options: [
+        { value: true, label: 'Recurring' },
+        { value: false, label: 'One-time' },
+      ],
+    },
+  ];
+
+  // Handle table actions
+  const handleRowAction = (action: string, client: Client) => {
+    switch (action) {
+      case 'view':
+        navigate(`/clients/${client.id}`);
+        break;
+      case 'edit':
+        handleEdit(client);
+        break;
+      case 'delete':
+        handleDelete(client);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const tableActions = [
+    {
+      key: 'view',
+      label: 'View',
+      icon: <ViewIcon />,
+      color: 'primary' as const,
+    },
+    {
+      key: 'edit',
+      label: 'Edit',
+      icon: <EditIcon />,
+      color: 'default' as const,
+    },
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: <DeleteIcon />,
+      color: 'error' as const,
+    },
+  ];
+
   if (loading) return <Typography>Loading clients...</Typography>;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <PersonIcon /> Client Management
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreate}
-        >
-          Add Client
-        </Button>
-      </Box>
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Client ID</TableCell>
-              <TableCell>Name</TableCell>
-              <TableCell>Address</TableCell>
-              <TableCell>Zone</TableCell>
-              <TableCell>Priority</TableCell>
-              <TableCell>Maintenance</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {clients.map((client) => (
-              <TableRow key={client.id}>
-                <TableCell>{client.clientId}</TableCell>
-                <TableCell>
-                  <Button 
-                    variant="text" 
-                    onClick={() => navigate(`/clients/${client.id}`)}
-                    sx={{ textAlign: 'left', justifyContent: 'flex-start', textTransform: 'none' }}
-                  >
-                    {client.name}
-                  </Button>
-                </TableCell>
-                <TableCell>{client.address}</TableCell>
-                <TableCell>{client.geoZone}</TableCell>
-                <TableCell>
-                  <Chip
-                    label={client.priorityLevel}
-                    color={getPriorityColor(client.priorityLevel) as any}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  {client.isRecurringMaintenance ? (
-                    <Chip label="Recurring" color="primary" size="small" />
-                  ) : (
-                    <Chip label="One-time" color="default" size="small" />
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={client.activeStatus}
-                    color={client.activeStatus === 'active' ? 'success' : 'default'}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <IconButton onClick={() => navigate(`/clients/${client.id}`)} size="small" color="primary">
-                    <ViewIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleEdit(client)} size="small">
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDelete(client)} size="small">
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <FilterableTable
+        data={clients}
+        columns={columns}
+        filters={filters}
+        onRowAction={handleRowAction}
+        actions={tableActions}
+        initialSortBy="name"
+        initialSortOrder="asc"
+        rowKeyField="id"
+        emptyMessage="No clients found"
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <PersonIcon /> Client Management
+          </Box>
+        }
+        headerActions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleCreate}
+          >
+            Add Client
+          </Button>
+        }
+      />
 
       {/* Edit/Create Dialog */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth>

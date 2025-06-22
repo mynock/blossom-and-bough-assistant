@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  Paper,
   Typography,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Button,
   Dialog,
   DialogTitle,
@@ -47,6 +40,7 @@ import { EditorState, convertToRaw, ContentState } from 'draft-js';
 import draftToHtml from 'draftjs-to-html';
 import htmlToDraft from 'html-to-draftjs';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
+import FilterableTable, { FilterConfig, ColumnConfig } from './FilterableTable';
 
 interface WorkActivity {
   id: number;
@@ -388,104 +382,190 @@ const WorkActivityManagement: React.FC = () => {
     });
   };
 
+  // Configure table columns
+  const columns: ColumnConfig<WorkActivity>[] = [
+    {
+      key: 'date',
+      label: 'Date',
+      sortable: true,
+      render: (activity) => formatDate(activity.date),
+    },
+    {
+      key: 'workType',
+      label: 'Type',
+      sortable: true,
+      render: (activity) => (
+        <Chip 
+          label={activity.workType.replace('_', ' ').toUpperCase()} 
+          size="small" 
+          variant="outlined"
+        />
+      ),
+    },
+    {
+      key: 'clientName',
+      label: 'Client/Project',
+      sortable: true,
+      render: (activity) => (
+        <Box>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {activity.clientName || 'No Client'}
+          </Typography>
+          {activity.projectName && (
+            <Typography variant="caption" color="text.secondary">
+              {activity.projectName}
+            </Typography>
+          )}
+        </Box>
+      ),
+    },
+    {
+      key: 'employeesList',
+      label: 'Employees',
+      render: (activity) => (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {activity.employeesList.map((emp) => (
+            <Chip 
+              key={emp.employeeId}
+              label={`${emp.employeeName || 'Unknown'} (${emp.hours.toFixed(2)}h)`}
+              size="small"
+              icon={<PersonIcon />}
+            />
+          ))}
+        </Box>
+      ),
+    },
+    {
+      key: 'totalHours',
+      label: 'Hours',
+      sortable: true,
+      render: (activity) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TimeIcon fontSize="small" />
+          <Typography variant="body2">
+            {activity.totalHours.toFixed(2)}h
+            {activity.billableHours && activity.billableHours !== activity.totalHours && (
+              <Typography component="span" variant="caption" color="text.secondary">
+                {' '}({activity.billableHours.toFixed(2)}h billable)
+              </Typography>
+            )}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      sortable: true,
+      render: (activity) => (
+        <Chip
+          label={activity.status.replace('_', ' ').toUpperCase()}
+          color={getStatusColor(activity.status) as any}
+          size="small"
+        />
+      ),
+    },
+  ];
+
+  // Configure filters
+  const filters: FilterConfig[] = [
+    {
+      key: 'date',
+      label: 'Date Range',
+      type: 'daterange',
+    },
+    {
+      key: 'clientName',
+      label: 'Client',
+      type: 'autocomplete',
+      options: clients.map(client => ({ value: client.name, label: client.name })),
+      getOptionLabel: (option) => option || 'No Client',
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      type: 'multiselect',
+      options: WORK_STATUSES.map(status => ({
+        value: status,
+        label: status.replace('_', ' ').toUpperCase()
+      })),
+    },
+    {
+      key: 'employeesList',
+      label: 'Employees',
+      type: 'autocomplete',
+      options: employees.map(emp => ({ value: { employeeName: emp.name, employeeId: emp.id }, label: emp.name })),
+      getOptionLabel: (option) => option?.employeeName || 'Unknown',
+    },
+    {
+      key: 'workType',
+      label: 'Work Type',
+      type: 'multiselect',
+      options: WORK_TYPES.map(type => ({
+        value: type,
+        label: type.replace('_', ' ').toUpperCase()
+      })),
+    },
+  ];
+
+  // Handle table actions
+  const handleRowAction = (action: string, activity: WorkActivity) => {
+    switch (action) {
+      case 'edit':
+        handleEdit(activity);
+        break;
+      case 'delete':
+        handleDelete(activity);
+        break;
+      default:
+        break;
+    }
+  };
+
+  const tableActions = [
+    {
+      key: 'edit',
+      label: 'Edit',
+      icon: <EditIcon />,
+      color: 'default' as const,
+    },
+    {
+      key: 'delete',
+      label: 'Delete',
+      icon: <DeleteIcon />,
+      color: 'error' as const,
+    },
+  ];
+
   if (loading) return <Typography>Loading work activities...</Typography>;
 
   return (
     <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AssignmentIcon /> Work Activity Management
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreate}
-        >
-          Log Work Activity
-        </Button>
-      </Box>
-
-      <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Date</TableCell>
-              <TableCell>Type</TableCell>
-              <TableCell>Client/Project</TableCell>
-              <TableCell>Employees</TableCell>
-              <TableCell>Hours</TableCell>
-              <TableCell>Status</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {workActivities.map((activity) => (
-              <TableRow key={activity.id}>
-                <TableCell>{formatDate(activity.date)}</TableCell>
-                <TableCell>
-                  <Chip 
-                    label={activity.workType.replace('_', ' ').toUpperCase()} 
-                    size="small" 
-                    variant="outlined"
-                  />
-                </TableCell>
-                <TableCell>
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {activity.clientName || 'No Client'}
-                    </Typography>
-                    {activity.projectName && (
-                      <Typography variant="caption" color="text.secondary">
-                        {activity.projectName}
-                      </Typography>
-                    )}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                    {activity.employeesList.map((emp) => (
-                      <Chip 
-                        key={emp.employeeId}
-                        label={`${emp.employeeName || 'Unknown'} (${emp.hours.toFixed(2)}h)`}
-                        size="small"
-                        icon={<PersonIcon />}
-                      />
-                    ))}
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <TimeIcon fontSize="small" />
-                    <Typography variant="body2">
-                      {activity.totalHours.toFixed(2)}h
-                      {activity.billableHours && activity.billableHours !== activity.totalHours && (
-                        <Typography component="span" variant="caption" color="text.secondary">
-                          {' '}({activity.billableHours.toFixed(2)}h billable)
-                        </Typography>
-                      )}
-                    </Typography>
-                  </Box>
-                </TableCell>
-                <TableCell>
-                  <Chip
-                    label={activity.status.replace('_', ' ').toUpperCase()}
-                    color={getStatusColor(activity.status) as any}
-                    size="small"
-                  />
-                </TableCell>
-                <TableCell>
-                  <IconButton onClick={() => handleEdit(activity)} size="small">
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleDelete(activity)} size="small">
-                    <DeleteIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
+      <FilterableTable
+        data={workActivities}
+        columns={columns}
+        filters={filters}
+        onRowAction={handleRowAction}
+        actions={tableActions}
+        initialSortBy="date"
+        initialSortOrder="desc"
+        rowKeyField="id"
+        emptyMessage="No work activities found"
+        title={
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <AssignmentIcon /> Work Activity Management
+          </Box>
+        }
+        headerActions={
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={handleCreate}
+          >
+            Log Work Activity
+          </Button>
+        }
+      />
 
       {/* Edit/Create Dialog */}
       <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="lg" fullWidth>
