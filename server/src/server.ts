@@ -24,6 +24,7 @@ import migrationRouter from './routes/migration';
 import clientsRouter from './routes/clients';
 import projectsRouter from './routes/projects';
 import authRouter from './routes/auth';
+import adminRouter from './routes/admin';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
 import { requireAuth } from './middleware/auth';
 
@@ -91,6 +92,7 @@ app.use('/api/clients', requireAuth, clientsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/work-notes', requireAuth, createWorkNotesImportRouter(anthropicService));
 app.use('/api/migration', requireAuth, migrationRouter);
+app.use('/api/admin', adminRouter); // Admin routes handle their own auth
 
 // Get all helpers
 app.get('/api/helpers', requireAuth, async (req, res) => {

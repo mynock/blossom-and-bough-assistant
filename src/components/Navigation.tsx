@@ -33,7 +33,8 @@ import {
   LocalFlorist,
   Work,
   Upload,
-  Analytics
+  Analytics,
+  Settings
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -83,6 +84,7 @@ const Navigation: React.FC = () => {
   // Secondary items
   const secondaryNavItems = [
     { path: '/debug', label: 'Reports', icon: <Analytics /> },
+    { path: '/admin', label: 'Admin', icon: <Settings /> },
   ];
 
   const isActiveItem = (path: string) => location.pathname === path;
