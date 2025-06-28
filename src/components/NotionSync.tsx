@@ -18,6 +18,10 @@ import {
   ListItemText,
   Paper,
   LinearProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider,
 } from '@mui/material';
 import {
   Sync,
@@ -25,6 +29,8 @@ import {
   Error,
   Info,
   Assignment,
+  Warning,
+  ExpandMore,
 } from '@mui/icons-material';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -40,12 +46,15 @@ interface SyncStats {
   created: number;
   updated: number;
   errors: number;
+  warnings?: string[];
 }
 
 interface SyncStatus {
   configured: boolean;
   hasNotionToken: boolean;
   hasNotionDatabase: boolean;
+  hasAnthropicKey?: boolean;
+  aiParsingEnabled?: boolean;
   databaseId: string | null;
 }
 
@@ -62,6 +71,7 @@ export const NotionSync: React.FC = () => {
   const [lastSyncStats, setLastSyncStats] = useState<SyncStats | null>(null);
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
+  const [lastSyncWarnings, setLastSyncWarnings] = useState<string[]>([]);
 
   useEffect(() => {
     loadSyncStatus();
@@ -92,11 +102,17 @@ export const NotionSync: React.FC = () => {
     setIsLoading(true);
     setMessage('');
     setError('');
+    setLastSyncWarnings([]);
     
     try {
       const response = await api.post('/notion-sync/sync');
       setLastSyncStats(response.data.stats);
       setMessage(response.data.message);
+      
+      // Handle warnings from AI parsing
+      if (response.data.warnings && response.data.warnings.length > 0) {
+        setLastSyncWarnings(response.data.warnings);
+      }
       
       // Reload status and stats after sync
       await loadSyncStatus();
@@ -124,8 +140,8 @@ export const NotionSync: React.FC = () => {
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Card>
         <CardHeader
-          title="Notion Sync"
-          subheader="Sync work activities between Notion and your CRM"
+          title="Notion Sync with AI Parsing"
+          subheader="Sync work activities between Notion and your CRM using intelligent AI parsing"
           avatar={<Assignment color="primary" />}
         />
         <CardContent>
@@ -135,7 +151,7 @@ export const NotionSync: React.FC = () => {
               Configuration Status
             </Typography>
             <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={4}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Chip
                     icon={syncStatus.hasNotionToken ? <CheckCircle /> : <Error />}
@@ -145,7 +161,7 @@ export const NotionSync: React.FC = () => {
                   />
                 </Box>
               </Grid>
-              <Grid item xs={12} sm={6}>
+              <Grid item xs={12} sm={4}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Chip
                     icon={syncStatus.hasNotionDatabase ? <CheckCircle /> : <Error />}
@@ -155,11 +171,28 @@ export const NotionSync: React.FC = () => {
                   />
                 </Box>
               </Grid>
+              <Grid item xs={12} sm={4}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip
+                    icon={syncStatus.hasAnthropicKey ? <CheckCircle /> : <Error />}
+                    label={`AI Parsing: ${syncStatus.hasAnthropicKey ? 'Enabled' : 'Disabled'}`}
+                    color={syncStatus.hasAnthropicKey ? 'success' : 'error'}
+                    variant="outlined"
+                  />
+                </Box>
+              </Grid>
             </Grid>
             {syncStatus.databaseId && (
               <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                 Database ID: {syncStatus.databaseId}
               </Typography>
+            )}
+            {syncStatus.aiParsingEnabled && (
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2">
+                  <strong>AI Parsing Enabled:</strong> Notion pages will be converted to natural text and parsed by AI for more robust field extraction and data cleaning.
+                </Typography>
+              </Alert>
             )}
           </Box>
 
@@ -199,35 +232,35 @@ export const NotionSync: React.FC = () => {
                       Notion Coverage
                     </Typography>
                   </Paper>
-                                 </Grid>
-               </Grid>
-               
-               {/* Progress bar for visual representation */}
-               <Box sx={{ mt: 3 }}>
-                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                   <Typography variant="body2" color="text.secondary">
-                     Notion Coverage Progress
-                   </Typography>
-                   <Typography variant="body2" color="text.secondary">
-                     {importStats.notionImported} of {importStats.totalWorkActivities} activities
-                   </Typography>
-                 </Box>
-                 <LinearProgress 
-                   variant="determinate" 
-                   value={importStats.percentage} 
-                   sx={{ 
-                     height: 8, 
-                     borderRadius: 4,
-                     bgcolor: 'grey.200',
-                     '& .MuiLinearProgress-bar': {
-                       bgcolor: importStats.percentage > 75 ? 'success.main' : 
-                              importStats.percentage > 50 ? 'warning.main' : 'error.main'
-                     }
-                   }}
-                 />
-               </Box>
-             </Box>
-           )}
+                </Grid>
+              </Grid>
+              
+              {/* Progress bar for visual representation */}
+              <Box sx={{ mt: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Notion Coverage Progress
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {importStats.notionImported} of {importStats.totalWorkActivities} activities
+                  </Typography>
+                </Box>
+                <LinearProgress 
+                  variant="determinate" 
+                  value={importStats.percentage} 
+                  sx={{ 
+                    height: 8, 
+                    borderRadius: 4,
+                    bgcolor: 'grey.200',
+                    '& .MuiLinearProgress-bar': {
+                      bgcolor: importStats.percentage > 75 ? 'success.main' : 
+                             importStats.percentage > 50 ? 'warning.main' : 'error.main'
+                    }
+                  }}
+                />
+              </Box>
+            </Box>
+          )}
 
           {/* Sync Controls */}
           <Box sx={{ mb: 4 }}>
@@ -242,12 +275,12 @@ export const NotionSync: React.FC = () => {
               size="large"
               sx={{ mb: 2 }}
             >
-              {isLoading ? 'Syncing...' : 'Sync Notion Pages'}
+              {isLoading ? 'Syncing with AI...' : 'Sync Notion Pages'}
             </Button>
             
             {!syncStatus.configured && (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                Please configure Notion token and database ID in environment variables to enable sync.
+                Please configure Notion token, database ID, and Anthropic API key in environment variables to enable sync.
               </Alert>
             )}
           </Box>
@@ -263,6 +296,40 @@ export const NotionSync: React.FC = () => {
             <Alert severity="error" sx={{ mb: 3 }} icon={<Error />}>
               {error}
             </Alert>
+          )}
+
+          {/* Warnings from AI Parsing */}
+          {lastSyncWarnings.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Accordion>
+                <AccordionSummary expandIcon={<ExpandMore />}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Warning color="warning" />
+                    <Typography variant="h6">
+                      AI Parsing Warnings ({lastSyncWarnings.length})
+                    </Typography>
+                  </Box>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    The following warnings were generated during AI parsing of Notion pages:
+                  </Typography>
+                  <List dense>
+                    {lastSyncWarnings.map((warning, index) => (
+                      <ListItem key={index} sx={{ pl: 0 }}>
+                        <ListItemIcon>
+                          <Warning color="warning" fontSize="small" />
+                        </ListItemIcon>
+                        <ListItemText 
+                          primary={warning}
+                          primaryTypographyProps={{ variant: 'body2' }}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                </AccordionDetails>
+              </Accordion>
+            </Box>
           )}
 
           {/* Last Sync Stats */}
@@ -311,46 +378,51 @@ export const NotionSync: React.FC = () => {
             <Paper sx={{ p: 3, bgcolor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Info color="primary" />
-                How it Works
+                How AI-Powered Sync Works
               </Typography>
               <List dense>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Syncs Notion pages from your configured database" />
+                  <ListItemText primary="Fetches Notion pages from your configured database" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Creates new work activities for pages not yet imported" />
+                  <ListItemText primary="Converts Notion page content to natural text format" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Updates existing work activities if Notion page was modified" />
+                  <ListItemText primary="Uses AI to intelligently parse and extract work activity data" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Extracts client name, date, work type, tasks, notes, and materials" />
+                  <ListItemText primary="Validates and imports activities using the same logic as work notes import" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Automatically creates client records if they don't exist" />
+                  <ListItemText primary="Handles inconsistent data entry and cleans up field mapping automatically" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
                     <CheckCircle color="primary" fontSize="small" />
                   </ListItemIcon>
-                  <ListItemText primary="Uses Notion page ID to prevent duplicates" />
+                  <ListItemText primary="Provides detailed warnings for parsing issues" />
                 </ListItem>
               </List>
+              <Divider sx={{ my: 2 }} />
+              <Typography variant="body2" color="text.secondary">
+                <strong>Benefits of AI Parsing:</strong> More robust field extraction, better handling of missing data, 
+                automatic data cleaning, and consistent parsing logic across all import methods.
+              </Typography>
             </Paper>
           </Box>
         </CardContent>

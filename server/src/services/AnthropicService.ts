@@ -1,5 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
+import { debugLog } from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface ParsedWorkActivity {
   date: string;
@@ -816,9 +819,30 @@ WORK NOTES TO PARSE:
 ${workNotesText}`;
 
     try {
+      console.log('🔍 === ANTHROPIC API REQUEST START ===');
+      console.log('📝 Full input prompt:');
+      console.log(prompt);
+      console.log('📝 Prompt length:', prompt.length, 'characters');
+      console.log('');
+
+      // Create debug directory if it doesn't exist
+      const debugDir = path.join(process.cwd(), 'debug');
+      if (!fs.existsSync(debugDir)) {
+        fs.mkdirSync(debugDir, { recursive: true });
+      }
+
+      // Create timestamp for debug files
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const debugPrefix = `anthropic-${timestamp}`;
+
+      // Write full prompt to file
+      const promptFile = path.join(debugDir, `${debugPrefix}-prompt.txt`);
+      fs.writeFileSync(promptFile, prompt, 'utf8');
+      console.log(`📁 Prompt saved to: ${promptFile}`);
+
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
+        max_tokens: 12000, // Increased from 8000 to handle longer Notion content
         messages: [
           {
             role: 'user',
@@ -827,27 +851,90 @@ ${workNotesText}`;
         ]
       });
 
+      console.log('📨 === ANTHROPIC API RESPONSE ===');
+      console.log('🔢 Token usage:', response.usage);
+      console.log('📊 Input tokens:', response.usage?.input_tokens);
+      console.log('📊 Output tokens:', response.usage?.output_tokens);
+      console.log('📊 Max tokens limit:', 12000);
+      console.log('⚠️ Hit token limit?', response.usage?.output_tokens === 12000);
+      console.log('');
+
       if (response.content && response.content.length > 0) {
         const content = response.content[0];
         if (content && content.type === 'text') {
-          // Extract JSON from the response
-          const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
-          if (jsonMatch) {
+          // Write full response to file
+          const responseFile = path.join(debugDir, `${debugPrefix}-response.txt`);
+          fs.writeFileSync(responseFile, content.text, 'utf8');
+          console.log(`📁 Full response saved to: ${responseFile}`);
+
+          console.log('📄 Full response text:');
+          console.log(content.text);
+          console.log('📄 Response length:', content.text.length, 'characters');
+          console.log('');
+
+          // Extract JSON from the response - try multiple approaches
+          let jsonString: string | null = null;
+          
+          // First, try to find JSON in code blocks
+          const codeBlockMatch = content.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+          if (codeBlockMatch) {
+            jsonString = codeBlockMatch[1].trim();
+            console.log('📦 Found JSON in code block');
+          } else {
+            // Fallback: look for JSON by counting braces
+            const firstBrace = content.text.indexOf('{');
+            if (firstBrace !== -1) {
+              let braceCount = 0;
+              let jsonEnd = -1;
+              
+              for (let i = firstBrace; i < content.text.length; i++) {
+                if (content.text[i] === '{') braceCount++;
+                else if (content.text[i] === '}') {
+                  braceCount--;
+                  if (braceCount === 0) {
+                    jsonEnd = i;
+                    break;
+                  }
+                }
+              }
+              
+              if (jsonEnd !== -1) {
+                jsonString = content.text.substring(firstBrace, jsonEnd + 1).trim();
+                console.log('🔢 Found JSON by counting braces');
+              }
+            }
+          }
+          
+          if (jsonString) {
+            // Write extracted JSON to file
+            const jsonFile = path.join(debugDir, `${debugPrefix}-extracted.json`);
+            fs.writeFileSync(jsonFile, jsonString, 'utf8');
+            console.log(`📁 Extracted JSON saved to: ${jsonFile}`);
+
+            console.log('🔍 Extracted JSON match:');
+            console.log('📄 JSON length:', jsonString.length, 'characters');
+            console.log('📄 JSON content (first 500 chars):', jsonString.substring(0, 500));
+            console.log('');
+
             try {
-              const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
+              const result = JSON.parse(jsonString) as WorkNotesParseResult;
+              console.log('✅ JSON parsing succeeded');
+              console.log('📊 Activities found:', result.activities?.length || 0);
+              console.log('⚠️ Warnings:', result.warnings?.length || 0);
+              console.log('🔍 === ANTHROPIC API REQUEST END ===');
               return result;
             } catch (parseError) {
               console.error('❌ JSON parsing failed:', parseError);
-              console.error('📄 Raw JSON string (first 1000 chars):', jsonMatch[0].substring(0, 1000));
+              console.error('📄 Raw JSON string (first 1000 chars):', jsonString.substring(0, 1000));
               
               // Check if response was truncated
-              const wasTruncated = response.usage?.output_tokens === 8000;
+              const wasTruncated = response.usage?.output_tokens === 12000; // Updated to new limit
               if (wasTruncated) {
                 console.warn('⚠️ Response may have been truncated due to token limit');
               }
               
               // Try to fix common JSON issues
-              let fixedJson = jsonMatch[0];
+              let fixedJson = jsonString;
               
               // Fix trailing commas in arrays and objects
               fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
@@ -859,65 +946,73 @@ ${workNotesText}`;
               if (wasTruncated || !fixedJson.trim().endsWith('}')) {
                 console.log('🔧 Attempting to fix truncated JSON...');
                 
-                // Count open braces and brackets to try to close them
-                let openBraces = 0;
-                let openBrackets = 0;
-                let inString = false;
-                let escaped = false;
-                
-                for (let i = 0; i < fixedJson.length; i++) {
-                  const char = fixedJson[i];
+                // Find the last complete task entry and truncate there
+                const lastCompleteTaskMatch = fixedJson.lastIndexOf('",\n        "');
+                if (lastCompleteTaskMatch > -1) {
+                  // Truncate at the last complete task
+                  fixedJson = fixedJson.substring(0, lastCompleteTaskMatch + 1);
+                  // Close the tasks array, object, and main structure
+                  fixedJson += '\n      ],\n      "notes": "",\n      "charges": [],\n      "driveTime": null,\n      "lunchTime": null,\n      "confidence": 0.8\n    }\n  ],\n  "unparsedSections": [],\n  "warnings": ["Response was truncated due to length. Some task details may be incomplete."]\n}';
+                } else {
+                  // Fallback: close basic structure
+                  const openBraces = (fixedJson.match(/\{/g) || []).length;
+                  const closeBraces = (fixedJson.match(/\}/g) || []).length;
+                  const openBrackets = (fixedJson.match(/\[/g) || []).length;
+                  const closeBrackets = (fixedJson.match(/\]/g) || []).length;
                   
-                  if (escaped) {
-                    escaped = false;
-                    continue;
+                  // Close any unclosed arrays and objects
+                  for (let i = 0; i < (openBrackets - closeBrackets); i++) {
+                    fixedJson += ']';
                   }
-                  
-                  if (char === '\\') {
-                    escaped = true;
-                    continue;
-                  }
-                  
-                  if (char === '"') {
-                    inString = !inString;
-                    continue;
-                  }
-                  
-                  if (!inString) {
-                    if (char === '{') openBraces++;
-                    else if (char === '}') openBraces--;
-                    else if (char === '[') openBrackets++;
-                    else if (char === ']') openBrackets--;
+                  for (let i = 0; i < (openBraces - closeBraces); i++) {
+                    fixedJson += '}';
                   }
                 }
                 
-                // Close any unclosed brackets and braces
-                while (openBrackets > 0) {
-                  fixedJson += ']';
-                  openBrackets--;
-                }
-                while (openBraces > 0) {
-                  fixedJson += '}';
-                  openBraces--;
-                }
-                
-                console.log(`🔧 Added ${openBrackets} closing brackets and ${openBraces} closing braces`);
+                console.log(`🔧 Applied truncation recovery to JSON`);
               }
+              
+              // Write fixed JSON to file
+              const fixedJsonFile = path.join(debugDir, `${debugPrefix}-fixed.json`);
+              fs.writeFileSync(fixedJsonFile, fixedJson, 'utf8');
+              console.log(`📁 Fixed JSON saved to: ${fixedJsonFile}`);
+              
+              console.log('🔧 Fixed JSON (first 500 chars):', fixedJson.substring(0, 500));
               
               try {
                 const result = JSON.parse(fixedJson) as WorkNotesParseResult;
                 console.log('✅ Fixed JSON parsing succeeded');
+                console.log('📊 Activities found:', result.activities?.length || 0);
                 if (wasTruncated) {
                   result.warnings = result.warnings || [];
                   result.warnings.push('Response was truncated due to length. Some activities may be incomplete.');
                 }
+                console.log('🔍 === ANTHROPIC API REQUEST END ===');
                 return result;
               } catch (secondParseError) {
                 console.error('❌ Second JSON parsing attempt failed:', secondParseError);
                 console.error('📄 Fixed JSON string (first 1000 chars):', fixedJson.substring(0, 1000));
                 
+                // Write error info to file
+                const errorFile = path.join(debugDir, `${debugPrefix}-error.txt`);
+                const errorInfo = `
+ORIGINAL PARSE ERROR:
+${parseError}
+
+SECOND PARSE ERROR:
+${secondParseError}
+
+ORIGINAL JSON (first 2000 chars):
+${jsonString.substring(0, 2000)}
+
+FIXED JSON (first 2000 chars):
+${fixedJson.substring(0, 2000)}
+                `.trim();
+                fs.writeFileSync(errorFile, errorInfo, 'utf8');
+                console.log(`📁 Error details saved to: ${errorFile}`);
+                
                 // Return a fallback result
-                return {
+                const fallbackResult = {
                   activities: [],
                   unparsedSections: [content.text],
                   warnings: [
@@ -925,15 +1020,33 @@ ${workNotesText}`;
                     wasTruncated ? 'Response was truncated due to length limits.' : ''
                   ].filter(Boolean)
                 };
+                
+                console.log('⚠️ Returning fallback result due to JSON parsing failures');
+                console.log('🔍 === ANTHROPIC API REQUEST END ===');
+                return fallbackResult;
               }
             }
+          } else {
+            console.error('❌ No JSON match found in response');
+            console.log('📄 Response text preview:', content.text.substring(0, 200));
+            
+            // Write response to file for debugging
+            const noJsonFile = path.join(debugDir, `${debugPrefix}-no-json.txt`);
+            fs.writeFileSync(noJsonFile, content.text, 'utf8');
+            console.log(`📁 Response with no JSON saved to: ${noJsonFile}`);
           }
+        } else {
+          console.error('❌ Invalid response content type');
         }
+      } else {
+        console.error('❌ No response content received');
       }
 
+      console.log('🔍 === ANTHROPIC API REQUEST END ===');
       throw new Error('Failed to parse AI response');
     } catch (error) {
-      console.error('Error parsing work notes:', error);
+      console.error('💥 Error in Anthropic API request:', error);
+      console.log('🔍 === ANTHROPIC API REQUEST END (ERROR) ===');
       throw new Error('Failed to parse work notes with AI');
     }
   }
@@ -1487,94 +1600,94 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
         if (codeBlockMatch) {
           activities = JSON.parse(codeBlockMatch[1]);
           console.log(`✅ Batch ${batchNumber}: Parsed ${activities.length} activities from code block`);
-                  } else {
-            console.error(`❌ Batch ${batchNumber}: No JSON found in response:`, responseText.substring(0, 500));
-            throw new Error('No JSON array found in response');
-          }
+                } else {
+          console.error(`❌ Batch ${batchNumber}: No JSON found in response:`, responseText.substring(0, 500));
+          throw new Error('No JSON array found in response');
         }
-      } catch (parseError) {
-        console.error(`❌ Batch ${batchNumber}: Failed to parse JSON:`, parseError);
-        console.log('Response text (first 500 chars):', responseText.substring(0, 500));
-        throw new Error(`Failed to parse activities from batch ${batchNumber}`);
       }
-
-      // Validate and normalize the activities
-      activities = activities.map((activity: any) => ({
-        ...activity,
-        clientName: clientName,
-        date: this.normalizeDate(activity.date || ''),
-        employees: this.normalizeEmployeeNames(activity.employees || []),
-        totalHours: parseFloat(activity.totalHours?.toString() || '0') || 0,
-        driveTime: activity.driveTime ? parseInt(activity.driveTime.toString()) : undefined,
-        lunchTime: activity.lunchTime ? parseInt(activity.lunchTime.toString()) : undefined,
-        confidence: activity.confidence || 0.8,
-        charges: Array.isArray(activity.charges) ? activity.charges : [],
-        tasks: Array.isArray(activity.tasks) ? activity.tasks : (activity.tasks ? [activity.tasks] : [])
-      }));
-
-      return activities;
+    } catch (parseError) {
+      console.error(`❌ Batch ${batchNumber}: Failed to parse JSON:`, parseError);
+      console.log('Response text (first 500 chars):', responseText.substring(0, 500));
+      throw new Error(`Failed to parse activities from batch ${batchNumber}`);
     }
 
-    /**
-     * Normalize date string to YYYY-MM-DD format
-     */
-    private normalizeDate(dateStr: string): string {
-      if (!dateStr) return '';
-      
-      // Already in correct format
-      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        return dateStr;
-      }
-      
-      // Try to parse various date formats
-      const date = new Date(dateStr);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
-      
-      // Handle M/D format (assume current year unless month is in future)
-      const mdMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
-      if (mdMatch) {
-        const currentDate = new Date();
-        const currentYear = currentDate.getFullYear();
-        const currentMonth = currentDate.getMonth() + 1;
-        
-        const month = parseInt(mdMatch[1]);
-        const day = parseInt(mdMatch[2]);
-        
-        // Use current year by default
-        // Only use previous year if the month is significantly in the future
-        // (more than 3 months ahead, which likely indicates it's from last year)
-        let year = currentYear;
-        if (month > currentMonth + 3) {
-          year = currentYear - 1;
-        }
-        
-        const monthStr = month.toString().padStart(2, '0');
-        const dayStr = day.toString().padStart(2, '0');
-        return `${year}-${monthStr}-${dayStr}`;
-      }
-      
-      return dateStr; // Return as-is if can't parse
-    }
+    // Validate and normalize the activities
+    activities = activities.map((activity: any) => ({
+      ...activity,
+      clientName: clientName,
+      date: this.normalizeDate(activity.date || ''),
+      employees: this.normalizeEmployeeNames(activity.employees || []),
+      totalHours: parseFloat(activity.totalHours?.toString() || '0') || 0,
+      driveTime: activity.driveTime ? parseInt(activity.driveTime.toString()) : undefined,
+      lunchTime: activity.lunchTime ? parseInt(activity.lunchTime.toString()) : undefined,
+      confidence: activity.confidence || 0.8,
+      charges: Array.isArray(activity.charges) ? activity.charges : [],
+      tasks: Array.isArray(activity.tasks) ? activity.tasks : (activity.tasks ? [activity.tasks] : [])
+    }));
 
-    /**
-     * Normalize employee names from abbreviations
-     */
-    private normalizeEmployeeNames(employees: string[]): string[] {
-      const nameMap: Record<string, string> = {
-        'R': 'Rebecca',
-        'M': 'Megan',
-        'V': 'Virginia',
-        'A': 'Anne',
-        'Andrea': 'Andrea',
-        'solo': 'Andrea',
-        'me': 'Andrea'
-      };
-      
-      return employees.map(emp => {
-        const trimmed = emp.trim();
-        return nameMap[trimmed] || trimmed;
-      });
-    }
+    return activities;
   }
+
+  /**
+   * Normalize date string to YYYY-MM-DD format
+   */
+  private normalizeDate(dateStr: string): string {
+    if (!dateStr) return '';
+    
+    // Already in correct format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return dateStr;
+    }
+    
+    // Try to parse various date formats
+    const date = new Date(dateStr);
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+    
+    // Handle M/D format (assume current year unless month is in future)
+    const mdMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (mdMatch) {
+      const currentDate = new Date();
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth() + 1;
+      
+      const month = parseInt(mdMatch[1]);
+      const day = parseInt(mdMatch[2]);
+      
+      // Use current year by default
+      // Only use previous year if the month is significantly in the future
+      // (more than 3 months ahead, which likely indicates it's from last year)
+      let year = currentYear;
+      if (month > currentMonth + 3) {
+        year = currentYear - 1;
+      }
+      
+      const monthStr = month.toString().padStart(2, '0');
+      const dayStr = day.toString().padStart(2, '0');
+      return `${year}-${monthStr}-${dayStr}`;
+    }
+    
+    return dateStr; // Return as-is if can't parse
+  }
+
+  /**
+   * Normalize employee names from abbreviations
+   */
+  private normalizeEmployeeNames(employees: string[]): string[] {
+    const nameMap: Record<string, string> = {
+      'R': 'Rebecca',
+      'M': 'Megan',
+      'V': 'Virginia',
+      'A': 'Anne',
+      'Andrea': 'Andrea',
+      'solo': 'Andrea',
+      'me': 'Andrea'
+    };
+    
+    return employees.map(emp => {
+      const trimmed = emp.trim();
+      return nameMap[trimmed] || trimmed;
+    });
+  }
+}
