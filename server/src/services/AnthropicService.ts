@@ -1,8 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
 import { debugLog } from '../utils/logger';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export interface ParsedWorkActivity {
   date: string;
@@ -820,25 +818,8 @@ ${workNotesText}`;
 
     try {
       console.log('🔍 === ANTHROPIC API REQUEST START ===');
-      console.log('📝 Full input prompt:');
-      console.log(prompt);
       console.log('📝 Prompt length:', prompt.length, 'characters');
       console.log('');
-
-      // Create debug directory if it doesn't exist
-      const debugDir = path.join(process.cwd(), 'debug');
-      if (!fs.existsSync(debugDir)) {
-        fs.mkdirSync(debugDir, { recursive: true });
-      }
-
-      // Create timestamp for debug files
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const debugPrefix = `anthropic-${timestamp}`;
-
-      // Write full prompt to file
-      const promptFile = path.join(debugDir, `${debugPrefix}-prompt.txt`);
-      fs.writeFileSync(promptFile, prompt, 'utf8');
-      console.log(`📁 Prompt saved to: ${promptFile}`);
 
       const response = await this.client.messages.create({
         model: 'claude-sonnet-4-20250514',
@@ -862,13 +843,6 @@ ${workNotesText}`;
       if (response.content && response.content.length > 0) {
         const content = response.content[0];
         if (content && content.type === 'text') {
-          // Write full response to file
-          const responseFile = path.join(debugDir, `${debugPrefix}-response.txt`);
-          fs.writeFileSync(responseFile, content.text, 'utf8');
-          console.log(`📁 Full response saved to: ${responseFile}`);
-
-          console.log('📄 Full response text:');
-          console.log(content.text);
           console.log('📄 Response length:', content.text.length, 'characters');
           console.log('');
 
@@ -906,15 +880,7 @@ ${workNotesText}`;
           }
           
           if (jsonString) {
-            // Write extracted JSON to file
-            const jsonFile = path.join(debugDir, `${debugPrefix}-extracted.json`);
-            fs.writeFileSync(jsonFile, jsonString, 'utf8');
-            console.log(`📁 Extracted JSON saved to: ${jsonFile}`);
-
-            console.log('🔍 Extracted JSON match:');
-            console.log('📄 JSON length:', jsonString.length, 'characters');
-            console.log('📄 JSON content (first 500 chars):', jsonString.substring(0, 500));
-            console.log('');
+            console.log('🔍 Extracted JSON length:', jsonString.length, 'characters');
 
             try {
               const result = JSON.parse(jsonString) as WorkNotesParseResult;
@@ -925,7 +891,7 @@ ${workNotesText}`;
               return result;
             } catch (parseError) {
               console.error('❌ JSON parsing failed:', parseError);
-              console.error('📄 Raw JSON string (first 1000 chars):', jsonString.substring(0, 1000));
+              console.error('📄 Raw JSON string (first 500 chars):', jsonString.substring(0, 500));
               
               // Check if response was truncated
               const wasTruncated = response.usage?.output_tokens === 12000; // Updated to new limit
@@ -972,12 +938,7 @@ ${workNotesText}`;
                 console.log(`🔧 Applied truncation recovery to JSON`);
               }
               
-              // Write fixed JSON to file
-              const fixedJsonFile = path.join(debugDir, `${debugPrefix}-fixed.json`);
-              fs.writeFileSync(fixedJsonFile, fixedJson, 'utf8');
-              console.log(`📁 Fixed JSON saved to: ${fixedJsonFile}`);
-              
-              console.log('🔧 Fixed JSON (first 500 chars):', fixedJson.substring(0, 500));
+              console.log('🔧 Fixed JSON length:', fixedJson.length, 'characters');
               
               try {
                 const result = JSON.parse(fixedJson) as WorkNotesParseResult;
@@ -991,25 +952,7 @@ ${workNotesText}`;
                 return result;
               } catch (secondParseError) {
                 console.error('❌ Second JSON parsing attempt failed:', secondParseError);
-                console.error('📄 Fixed JSON string (first 1000 chars):', fixedJson.substring(0, 1000));
-                
-                // Write error info to file
-                const errorFile = path.join(debugDir, `${debugPrefix}-error.txt`);
-                const errorInfo = `
-ORIGINAL PARSE ERROR:
-${parseError}
-
-SECOND PARSE ERROR:
-${secondParseError}
-
-ORIGINAL JSON (first 2000 chars):
-${jsonString.substring(0, 2000)}
-
-FIXED JSON (first 2000 chars):
-${fixedJson.substring(0, 2000)}
-                `.trim();
-                fs.writeFileSync(errorFile, errorInfo, 'utf8');
-                console.log(`📁 Error details saved to: ${errorFile}`);
+                console.error('📄 Fixed JSON string (first 500 chars):', fixedJson.substring(0, 500));
                 
                 // Return a fallback result
                 const fallbackResult = {
@@ -1029,11 +972,6 @@ ${fixedJson.substring(0, 2000)}
           } else {
             console.error('❌ No JSON match found in response');
             console.log('📄 Response text preview:', content.text.substring(0, 200));
-            
-            // Write response to file for debugging
-            const noJsonFile = path.join(debugDir, `${debugPrefix}-no-json.txt`);
-            fs.writeFileSync(noJsonFile, content.text, 'utf8');
-            console.log(`📁 Response with no JSON saved to: ${noJsonFile}`);
           }
         } else {
           console.error('❌ Invalid response content type');
