@@ -55,25 +55,63 @@ export class NotionSyncService {
   /**
    * Sync new and updated Notion pages with the CRM system using AI parsing
    */
-  async syncNotionPages(): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
+  async syncNotionPages(
+    onProgress?: (current: number, total: number, message: string, incrementalStats?: { created: number; updated: number; errors: number; warnings: string[] }) => void,
+    abortSignal?: AbortSignal
+  ): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
     try {
       debugLog.info('Starting Notion pages sync with AI parsing...');
       
       const stats = { created: 0, updated: 0, errors: 0, warnings: [] as string[] };
       
+      // Check if cancelled before starting
+      if (abortSignal?.aborted) {
+        throw new Error('Sync cancelled before starting');
+      }
+      
       // Get all pages from the Notion database
       const notionPages = await this.getAllNotionPages();
       debugLog.info(`Found ${notionPages.length} pages in Notion database`);
+      
+      // Send initial progress
+      if (onProgress) {
+        onProgress(0, notionPages.length, `Found ${notionPages.length} pages to process`, { ...stats });
+      }
 
-      for (const page of notionPages) {
+      for (let i = 0; i < notionPages.length; i++) {
+        // Check for cancellation
+        if (abortSignal?.aborted) {
+          debugLog.info(`Sync cancelled after processing ${i} pages`);
+          if (onProgress) {
+            onProgress(i, notionPages.length, `Sync cancelled after processing ${i}/${notionPages.length} pages`, { ...stats });
+          }
+          throw new Error(`Sync cancelled after processing ${i} pages`);
+        }
+        
+        const page = notionPages[i];
+        const currentPage = i + 1;
+        
         try {
+          // Send progress update
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `Processing page ${currentPage}/${notionPages.length}...`, { ...stats });
+          }
+          
           // Convert Notion page to natural text format
           const naturalText = await this.convertNotionPageToNaturalText(page);
           
           if (!naturalText.trim()) {
             debugLog.warn(`Skipping page ${page.id} - no content to parse`);
             stats.warnings.push(`Page ${page.id}: No content to parse`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no content`, { ...stats });
+            }
             continue;
+          }
+
+          // Send AI parsing progress update
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `Parsing page ${currentPage}/${notionPages.length} with AI...`, { ...stats });
           }
 
           // Use AI to parse the natural text
@@ -83,6 +121,9 @@ export class NotionSyncService {
           if (!aiResult.activities || aiResult.activities.length === 0) {
             debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
             stats.warnings.push(`Page ${page.id}: AI could not extract work activities`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no activities found`, { ...stats });
+            }
             continue;
           }
 
@@ -111,15 +152,24 @@ export class NotionSyncService {
               await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
               stats.updated++;
               debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
+              if (onProgress) {
+                onProgress(currentPage, notionPages.length, `✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
+              }
             } else {
               debugLog.info(`Skipping work activity ${existingActivity.id} - local changes are newer than last Notion sync`);
               stats.warnings.push(`"${activityWithNotionId.clientName}" on ${activityWithNotionId.date}: Skipped sync - you have newer local changes that would be overwritten`);
+              if (onProgress) {
+                onProgress(currentPage, notionPages.length, `⚠️ Skipped: ${activityWithNotionId.clientName} - local changes newer`, { ...stats });
+              }
             }
           } else {
             // Create new work activity using the validated workflow
             await this.createWorkActivityFromParsedData(activityWithNotionId);
             stats.created++;
             debugLog.info(`Created new work activity from Notion page ${page.id}`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
+            }
           }
 
           // Log any AI warnings
@@ -131,7 +181,15 @@ export class NotionSyncService {
           debugLog.error(`Error processing Notion page ${page.id}:`, error);
           stats.errors++;
           stats.warnings.push(`Page ${page.id}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`);
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `❌ Error processing page ${currentPage}/${notionPages.length}`, { ...stats });
+          }
         }
+      }
+
+      // Send final progress
+      if (onProgress) {
+        onProgress(notionPages.length, notionPages.length, `🎉 Sync completed: ${stats.created} created, ${stats.updated} updated, ${stats.errors} errors`, { ...stats });
       }
 
       debugLog.info(`Notion sync completed: ${stats.created} created, ${stats.updated} updated, ${stats.errors} errors`);

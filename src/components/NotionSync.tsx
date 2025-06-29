@@ -32,6 +32,7 @@ import {
   Warning,
   ExpandMore,
   Shield,
+  Stop,
 } from '@mui/icons-material';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -73,11 +74,34 @@ export const NotionSync: React.FC = () => {
   const [message, setMessage] = useState<string>('');
   const [error, setError] = useState<string>('');
   const [lastSyncWarnings, setLastSyncWarnings] = useState<string[]>([]);
+  
+  // Progress tracking state
+  const [syncProgress, setSyncProgress] = useState<{
+    current: number;
+    total: number;
+    percentage: number;
+    message: string;
+  } | null>(null);
+  const [isStreamingSync, setIsStreamingSync] = useState(false);
+  
+  // Incremental results state
+  const [runningSyncStats, setRunningSyncStats] = useState<SyncStats | null>(null);
+  const [recentActivity, setRecentActivity] = useState<string[]>([]);
+  const [currentEventSource, setCurrentEventSource] = useState<EventSource | null>(null);
 
   useEffect(() => {
     loadSyncStatus();
     loadImportStats();
   }, []);
+
+  // Cleanup EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (currentEventSource) {
+        currentEventSource.close();
+      }
+    };
+  }, [currentEventSource]);
 
   const loadSyncStatus = async () => {
     try {
@@ -123,6 +147,128 @@ export const NotionSync: React.FC = () => {
       setError(err.response?.data?.error || 'Sync failed');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSyncWithProgress = async () => {
+    setIsStreamingSync(true);
+    setMessage('');
+    setError('');
+    setLastSyncWarnings([]);
+    setSyncProgress(null);
+    setLastSyncStats(null);
+    setRunningSyncStats({ created: 0, updated: 0, errors: 0, warnings: [] });
+    setRecentActivity([]);
+    
+    try {
+      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-stream`);
+      setCurrentEventSource(eventSource);
+      
+      eventSource.onopen = () => {
+        console.log('SSE connection opened');
+      };
+      
+      eventSource.addEventListener('start', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setMessage(data.message);
+        setSyncProgress({ current: 0, total: 0, percentage: 0, message: data.message });
+        setRecentActivity([data.message]);
+      });
+      
+      eventSource.addEventListener('progress', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setSyncProgress({
+          current: data.current,
+          total: data.total,
+          percentage: data.percentage,
+          message: data.message
+        });
+        
+        // Update running stats if provided
+        if (data.stats) {
+          setRunningSyncStats(data.stats);
+        }
+        
+        // Add to recent activity log (keep last 10 items)
+        setRecentActivity(prev => {
+          const newActivity = [data.message, ...prev];
+          return newActivity.slice(0, 10);
+        });
+      });
+      
+      eventSource.addEventListener('complete', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setLastSyncStats(data.stats);
+        setMessage(data.message);
+        
+        // Handle warnings from AI parsing
+        if (data.warnings && data.warnings.length > 0) {
+          setLastSyncWarnings(data.warnings);
+        }
+        
+        setSyncProgress(null);
+        setRunningSyncStats(null);
+        eventSource.close();
+        setCurrentEventSource(null);
+        setIsStreamingSync(false);
+        
+        // Add completion message to activity
+        setRecentActivity(prev => [data.message, ...prev].slice(0, 10));
+        
+        // Reload status and stats after sync
+        loadSyncStatus();
+        loadImportStats();
+      });
+      
+      eventSource.addEventListener('cancelled', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setMessage(data.message);
+        setSyncProgress(null);
+        setRunningSyncStats(null);
+        eventSource.close();
+        setCurrentEventSource(null);
+        setIsStreamingSync(false);
+        
+        // Add cancellation message to activity
+        setRecentActivity(prev => [`🛑 ${data.message}`, ...prev].slice(0, 10));
+      });
+      
+      eventSource.addEventListener('error', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setError(data.error || 'Sync failed');
+        setSyncProgress(null);
+        setRunningSyncStats(null);
+        eventSource.close();
+        setCurrentEventSource(null);
+        setIsStreamingSync(false);
+      });
+      
+      eventSource.onerror = (event) => {
+        console.error('SSE error:', event);
+        setError('Connection error during sync');
+        setSyncProgress(null);
+        setRunningSyncStats(null);
+        eventSource.close();
+        setCurrentEventSource(null);
+        setIsStreamingSync(false);
+      };
+      
+    } catch (err: any) {
+      console.error('Error setting up sync stream:', err);
+      setError('Failed to start sync with progress');
+      setIsStreamingSync(false);
+    }
+  };
+
+  const handleStopSync = () => {
+    if (currentEventSource) {
+      currentEventSource.close();
+      setCurrentEventSource(null);
+      setIsStreamingSync(false);
+      setSyncProgress(null);
+      setRunningSyncStats(null);
+      setMessage('Sync stopped by user');
+      setRecentActivity(prev => ['🛑 Sync stopped by user', ...prev].slice(0, 10));
     }
   };
 
@@ -268,16 +414,155 @@ export const NotionSync: React.FC = () => {
             <Typography variant="h6" gutterBottom>
               Sync Controls
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={isLoading ? <CircularProgress size={20} /> : <Sync />}
-              onClick={handleSync}
-              disabled={!syncStatus.configured || isLoading}
-              size="large"
-              sx={{ mb: 2 }}
-            >
-              {isLoading ? 'Syncing with AI...' : 'Sync Notion Pages'}
-            </Button>
+            
+            {/* Progress Display */}
+            {syncProgress && (
+              <Box sx={{ mb: 3 }}>
+                <Card variant="outlined" sx={{ p: 2, bgcolor: 'info.50' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                    <Typography variant="subtitle1" color="info.dark">
+                      Sync Progress
+                    </Typography>
+                    <Typography variant="body2" color="info.dark">
+                      {syncProgress.current}/{syncProgress.total} ({syncProgress.percentage}%)
+                    </Typography>
+                  </Box>
+                  
+                  <LinearProgress 
+                    variant="determinate" 
+                    value={syncProgress.percentage} 
+                    sx={{ 
+                      mb: 2, 
+                      height: 8, 
+                      borderRadius: 4,
+                      bgcolor: 'info.100',
+                      '& .MuiLinearProgress-bar': {
+                        bgcolor: 'info.main'
+                      }
+                    }} 
+                  />
+                  
+                  <Typography variant="body2" color="info.dark" sx={{ mb: 2 }}>
+                    {syncProgress.message}
+                  </Typography>
+
+                  {/* Running Stats */}
+                  {runningSyncStats && (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      gap: 2, 
+                      mb: 2,
+                      p: 1.5, 
+                      bgcolor: 'white', 
+                      borderRadius: 1,
+                      border: '1px solid',
+                      borderColor: 'info.200'
+                    }}>
+                      <Chip 
+                        label={`✨ Created: ${runningSyncStats.created}`} 
+                        size="small" 
+                        color="success"
+                        variant="outlined"
+                      />
+                      <Chip 
+                        label={`✅ Updated: ${runningSyncStats.updated}`} 
+                        size="small" 
+                        color="primary"
+                        variant="outlined"
+                      />
+                      {runningSyncStats.errors > 0 && (
+                        <Chip 
+                          label={`❌ Errors: ${runningSyncStats.errors}`} 
+                          size="small" 
+                          color="error"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
+                  )}
+                  
+                  {/* Stop Button */}
+                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="small"
+                      onClick={handleStopSync}
+                      startIcon={<Stop />}
+                      disabled={!isStreamingSync}
+                    >
+                      Stop Sync
+                    </Button>
+                  </Box>
+                </Card>
+              </Box>
+            )}
+
+            {/* Recent Activity Log */}
+            {recentActivity.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Card variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    Recent Activity
+                  </Typography>
+                  <Box sx={{ 
+                    maxHeight: 200, 
+                    overflowY: 'auto',
+                    bgcolor: 'grey.50',
+                    borderRadius: 1,
+                    p: 1
+                  }}>
+                    {recentActivity.map((activity, index) => (
+                      <Typography 
+                        key={index} 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace',
+                          fontSize: '0.875rem',
+                          py: 0.25,
+                          color: activity.includes('❌') ? 'error.main' :
+                                 activity.includes('✅') ? 'success.main' :
+                                 activity.includes('✨') ? 'primary.main' :
+                                 activity.includes('⚠️') ? 'warning.main' :
+                                 activity.includes('🛑') ? 'error.main' :
+                                 activity.includes('🎉') ? 'success.main' :
+                                 'text.primary'
+                        }}
+                      >
+                        {activity}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Card>
+              </Box>
+            )}
+            
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                startIcon={isStreamingSync ? <CircularProgress size={20} /> : <Sync />}
+                onClick={handleSyncWithProgress}
+                disabled={!syncStatus.configured || isStreamingSync || isLoading}
+                size="large"
+              >
+                {isStreamingSync ? 'Syncing with Progress...' : 'Sync with Progress'}
+              </Button>
+              
+              <Button
+                variant="outlined"
+                startIcon={isLoading ? <CircularProgress size={20} /> : <Sync />}
+                onClick={handleSync}
+                disabled={!syncStatus.configured || isLoading || isStreamingSync}
+                size="large"
+              >
+                {isLoading ? 'Syncing...' : 'Quick Sync'}
+              </Button>
+            </Box>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              • <strong>Sync with Progress:</strong> Real-time updates showing "1/10 processed, 2/10 processed" etc.<br/>
+              • <strong>Quick Sync:</strong> Traditional sync without progress updates
+            </Typography>
             
             {!syncStatus.configured && (
               <Alert severity="warning" sx={{ mt: 2 }}>

@@ -33,6 +33,91 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   });
 
   /**
+   * GET /api/notion-sync/sync-stream
+   * Manually trigger a sync with real-time progress updates via Server-Sent Events
+   */
+  router.get('/sync-stream', async (req, res) => {
+    // Set up Server-Sent Events headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Create AbortController for cancellation
+    const abortController = new AbortController();
+    
+    // Function to send SSE data
+    const sendEvent = (eventType: string, data: any) => {
+      res.write(`event: ${eventType}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Handle client disconnect
+    req.on('close', () => {
+      debugLog.info('Client disconnected, aborting sync');
+      abortController.abort();
+    });
+
+    // Handle client abort
+    req.on('aborted', () => {
+      debugLog.info('Client aborted request, aborting sync');
+      abortController.abort();
+    });
+
+    try {
+      debugLog.info('Manual Notion sync with progress streaming triggered via API');
+      
+      // Send initial event
+      sendEvent('start', { message: 'Starting Notion sync...' });
+
+      const stats = await notionSyncService.syncNotionPages(
+        (current, total, message, incrementalStats) => {
+          // Send progress update via SSE with incremental stats
+          sendEvent('progress', {
+            current,
+            total,
+            message,
+            percentage: Math.round((current / total) * 100),
+            stats: incrementalStats // Include running totals
+          });
+        },
+        abortController.signal // Pass abort signal
+      );
+      
+      // Send completion event
+      sendEvent('complete', {
+        success: true,
+        message: 'Notion sync completed with AI parsing',
+        stats,
+        warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
+      });
+
+      res.end();
+    } catch (error) {
+      debugLog.error('Error during manual Notion sync with streaming:', error);
+      
+      // Check if it was cancelled
+      if (error instanceof Error && error.message.includes('cancelled')) {
+        sendEvent('cancelled', {
+          success: false,
+          message: error.message
+        });
+      } else {
+        // Send error event
+        sendEvent('error', {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error during sync'
+        });
+      }
+
+      res.end();
+    }
+  });
+
+  /**
    * GET /api/notion-sync/status
    * Get sync service status and configuration
    */
@@ -78,6 +163,30 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
       res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error getting import statistics'
+      });
+    }
+  });
+
+  /**
+   * POST /api/notion-sync/cancel
+   * Cancel an ongoing sync operation (placeholder for future implementation)
+   */
+  router.post('/cancel', async (req, res) => {
+    try {
+      // Note: This is a placeholder. In a production system, you'd want to:
+      // 1. Store active sync operations with IDs
+      // 2. Allow clients to cancel specific operations
+      // 3. Handle cleanup properly
+      
+      res.json({
+        success: true,
+        message: 'Cancel request received. Sync will stop at next checkpoint.'
+      });
+    } catch (error) {
+      debugLog.error('Error handling cancel request:', error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during cancel'
       });
     }
   });
