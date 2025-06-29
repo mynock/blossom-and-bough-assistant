@@ -97,6 +97,34 @@ export class NotionSyncService {
             onProgress(currentPage, notionPages.length, `Processing page ${currentPage}/${notionPages.length}...`, { ...stats });
           }
           
+          // First check if work activity already exists by Notion page ID
+          const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
+
+          if (existingActivity) {
+            // Check if we should sync this record BEFORE doing expensive AI processing
+            const shouldSync = this.shouldSyncFromNotion(
+              page.last_edited_time,
+              existingActivity.lastNotionSyncAt?.toISOString(),
+              existingActivity.updatedAt.toISOString()
+            );
+            
+            if (!shouldSync) {
+              // Skip AI processing entirely - we already know we won't sync
+              debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
+              
+              // We need to get the client name for the warning, but we'll extract it from Notion properties directly
+              const clientName = this.extractClientNameFromNotionPage(page);
+              const date = this.extractDateFromNotionPage(page);
+              
+              stats.warnings.push(`"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`);
+              if (onProgress) {
+                onProgress(currentPage, notionPages.length, `⚠️ Skipped: ${clientName} - local changes newer`, { ...stats });
+              }
+              continue; // Skip to next page without AI processing
+            }
+          }
+
+          // Only do expensive AI processing if we need to sync or create new activity
           // Convert Notion page to natural text format
           const naturalText = await this.convertNotionPageToNaturalText(page);
           
@@ -137,30 +165,13 @@ export class NotionSyncService {
             lastEditedTime: page.last_edited_time
           };
 
-          // Check if work activity already exists by Notion page ID
-          const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
-
           if (existingActivity) {
-            // Check if we should sync this record (avoid overwriting local changes)
-            const shouldSync = this.shouldSyncFromNotion(
-              page.last_edited_time,
-              existingActivity.lastNotionSyncAt?.toISOString(),
-              existingActivity.updatedAt.toISOString()
-            );
-            
-            if (shouldSync) {
-              await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
-              stats.updated++;
-              debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
-              if (onProgress) {
-                onProgress(currentPage, notionPages.length, `✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
-              }
-            } else {
-              debugLog.info(`Skipping work activity ${existingActivity.id} - local changes are newer than last Notion sync`);
-              stats.warnings.push(`"${activityWithNotionId.clientName}" on ${activityWithNotionId.date}: Skipped sync - you have newer local changes that would be overwritten`);
-              if (onProgress) {
-                onProgress(currentPage, notionPages.length, `⚠️ Skipped: ${activityWithNotionId.clientName} - local changes newer`, { ...stats });
-              }
+            // We already know we should sync (checked above)
+            await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
+            stats.updated++;
+            debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
             }
           } else {
             // Create new work activity using the validated workflow
@@ -623,6 +634,42 @@ export class NotionSyncService {
     } catch (error) {
       debugLog.error('Error getting import stats:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Extract client name directly from Notion page properties
+   */
+  private extractClientNameFromNotionPage(page: any): string {
+    try {
+      if (page.properties && page.properties['Client Name'] && page.properties['Client Name'].select) {
+        return page.properties['Client Name'].select.name || 'Unknown Client';
+      }
+      if (page.properties && page.properties['Client'] && page.properties['Client'].select) {
+        return page.properties['Client'].select.name || 'Unknown Client';
+      }
+      return 'Unknown Client';
+    } catch (error) {
+      debugLog.warn(`Error extracting client name from page ${page.id}:`, error);
+      return 'Unknown Client';
+    }
+  }
+
+  /**
+   * Extract date directly from Notion page properties
+   */
+  private extractDateFromNotionPage(page: any): string {
+    try {
+      if (page.properties && page.properties['Date'] && page.properties['Date'].date) {
+        return page.properties['Date'].date.start || 'Unknown Date';
+      }
+      if (page.properties && page.properties['Work Date'] && page.properties['Work Date'].date) {
+        return page.properties['Work Date'].date.start || 'Unknown Date';
+      }
+      return 'Unknown Date';
+    } catch (error) {
+      debugLog.warn(`Error extracting date from page ${page.id}:`, error);
+      return 'Unknown Date';
     }
   }
 

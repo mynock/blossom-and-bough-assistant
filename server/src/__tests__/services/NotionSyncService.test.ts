@@ -78,6 +78,21 @@ describe('NotionSyncService - Conflict Prevention', () => {
     
     // Override the service instance in the NotionSyncService instance  
     (notionSyncService as any).workActivityService = mockWorkActivityService;
+    
+    // Mock ClientService methods
+    const mockClientService = {
+      getAllClients: jest.fn().mockResolvedValue([{
+        id: 1,
+        name: 'Test Client',
+        clientId: 'test-client-1',
+      }]),
+      createClient: jest.fn().mockResolvedValue({
+        id: 1,
+        name: 'Test Client',
+        clientId: 'test-client-1',
+      }),
+    };
+    (notionSyncService as any).clientService = mockClientService;
 
     // Setup common mocks
     mockAnthropicService.parseWorkNotes = jest.fn().mockResolvedValue({
