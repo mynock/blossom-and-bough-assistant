@@ -24,15 +24,42 @@ const NotionQuickEntry: React.FunctionComponent = () => {
   const [clients, setClients] = useState<Client[]>([]);
   const [loadingClients, setLoadingClients] = useState<boolean>(true);
   const [showForm, setShowForm] = useState<boolean>(true);
+  const [debugInfo, setDebugInfo] = useState<string[]>([]);
+
+  const addDebugInfo = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setDebugInfo(prev => [...prev.slice(-4), `${timestamp}: ${message}`]);
+  };
+
+  // Debug logging for iOS troubleshooting
+  useEffect(() => {
+    console.log('NotionQuickEntry mounted');
+    console.log('User Agent:', navigator.userAgent);
+    console.log('Is iOS:', /iPad|iPhone|iPod/.test(navigator.userAgent));
+    console.log('Window dimensions:', window.innerWidth, 'x', window.innerHeight);
+    console.log('Location:', window.location.href);
+    console.log('Parent window check:', window.parent !== window ? 'In iframe' : 'Not in iframe');
+    
+    addDebugInfo('Component mounted');
+    addDebugInfo(`iOS: ${/iPad|iPhone|iPod/.test(navigator.userAgent)}`);
+    addDebugInfo(`In iframe: ${window.parent !== window}`);
+    addDebugInfo(`Dimensions: ${window.innerWidth}x${window.innerHeight}`);
+  }, []);
 
   // Fetch all clients on component mount
   useEffect(() => {
-    const fetchClients = async () => {
+        const fetchClients = async () => {
       try {
+        console.log('Fetching clients from API...');
+        addDebugInfo('Fetching clients...');
         const response = await notionApi.getClients();
+        console.log('Clients fetched successfully:', response.clients.length, 'clients');
+        addDebugInfo(`Clients loaded: ${response.clients.length}`);
         setClients(response.clients);
       } catch (error) {
         console.error('Error fetching clients:', error);
+        console.error('Error details:', (error as any)?.response?.data || (error as Error)?.message);
+        addDebugInfo(`Client fetch error: ${(error as Error)?.message}`);
       } finally {
         setLoadingClients(false);
       }
@@ -47,20 +74,30 @@ const NotionQuickEntry: React.FunctionComponent = () => {
     
     if (!clientName) return;
     
+    console.log('Creating entry for client:', clientName);
+    console.log('API endpoint will be called:', '/api/notion/create-smart-entry');
+    
     setShowForm(false);
     setLoading(true);
     setResult(null);
 
     try {
+      console.log('Making API call...');
+      addDebugInfo(`Creating entry for ${clientName}`);
       const response = await notionApi.createSmartEntry(clientName);
+      console.log('API call successful:', response);
+      addDebugInfo(`Entry created successfully`);
       setResult(response);
     } catch (error) {
       console.error('Error creating entry:', error);
+      console.error('Error details:', (error as any)?.response?.data || (error as Error)?.message);
+      console.error('Error status:', (error as any)?.response?.status);
+      addDebugInfo(`API Error: ${(error as any)?.response?.status || 'Unknown'}`);
       setResult({
         success: false,
         page_url: '',
         carryover_tasks: [],
-        error: 'Failed to create entry',
+        error: 'Failed to create entry - check console for details',
       });
     } finally {
       setLoading(false);
@@ -295,10 +332,23 @@ const NotionQuickEntry: React.FunctionComponent = () => {
           ) : (
             <Box>
               <Typography variant="h6" sx={{ color: '#d32f2f', marginBottom: 2 }}>
-                ❌ Error
+                ❌ Error Details
               </Typography>
-              <Typography variant="body2" sx={{ marginBottom: 3 }}>
+              <Typography variant="body2" sx={{ marginBottom: 1 }}>
                 {result.error}
+              </Typography>
+              <Typography variant="caption" sx={{ 
+                display: 'block', 
+                marginBottom: 3, 
+                fontFamily: 'monospace',
+                backgroundColor: '#f5f5f5',
+                padding: 1,
+                borderRadius: 1,
+                fontSize: '12px'
+              }}>
+                Debug: Check browser console for detailed logs<br/>
+                User Agent: {/iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS Device' : 'Other Device'}<br/>
+                In iframe: {window.parent !== window ? 'Yes' : 'No'}
               </Typography>
               <Button
                 onClick={resetForm}
@@ -316,6 +366,31 @@ const NotionQuickEntry: React.FunctionComponent = () => {
               </Button>
             </Box>
           )}
+        </Box>
+      )}
+
+      {/* Visual Debug Info - only in development */}
+      {process.env.NODE_ENV === 'development' && debugInfo.length > 0 && (
+        <Box sx={{ 
+          position: 'fixed', 
+          bottom: 0, 
+          left: 0, 
+          right: 0, 
+          backgroundColor: 'rgba(0,0,0,0.9)', 
+          color: 'white', 
+          fontSize: '10px', 
+          padding: 1, 
+          zIndex: 9999,
+          borderTop: '1px solid #333',
+          maxHeight: '120px',
+          overflow: 'auto'
+        }}>
+          <Typography variant="caption" sx={{ fontWeight: 'bold', color: '#4CAF50' }}>
+            🐛 Debug Info:
+          </Typography>
+          {debugInfo.map((info, i) => (
+            <div key={i} style={{ marginBottom: 2 }}>{info}</div>
+          ))}
         </Box>
       )}
     </Box>

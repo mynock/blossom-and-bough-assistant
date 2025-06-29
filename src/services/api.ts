@@ -132,15 +132,44 @@ export const notionApi = {
     carryover_tasks: string[];
     error?: string;
   }> => {
-    const response = await apiClient.post('/notion/create-smart-entry', {
-      client_name: clientName,
-    });
-    return response.data;
+    console.log('NotionAPI: Making request to create smart entry');
+    console.log('NotionAPI: Client name:', clientName);
+    console.log('NotionAPI: Request URL:', `${API_BASE}/notion/create-smart-entry`);
+    console.log('NotionAPI: User Agent:', navigator.userAgent);
+    
+    try {
+      const response = await apiClient.post('/notion/create-smart-entry', {
+        client_name: clientName,
+      });
+      
+      console.log('NotionAPI: Response status:', response.status);
+      console.log('NotionAPI: Response data:', response.data);
+      
+      return response.data;
+    } catch (error) {
+      console.error('NotionAPI: Request failed');
+      console.error('NotionAPI: Error:', error);
+      console.error('NotionAPI: Error response:', (error as any)?.response);
+      console.error('NotionAPI: Error status:', (error as any)?.response?.status);
+      console.error('NotionAPI: Error data:', (error as any)?.response?.data);
+      throw error;
+    }
   },
   
   getClients: async (): Promise<{ clients: Client[] }> => {
-    const response = await apiClient.get('/notion/clients');
-    return response.data;
+    console.log('NotionAPI: Fetching clients list');
+    console.log('NotionAPI: Request URL:', `${API_BASE}/notion/clients`);
+    
+    try {
+      const response = await apiClient.get('/notion/clients');
+      console.log('NotionAPI: Clients fetched successfully:', response.data.clients?.length || 0, 'clients');
+      return response.data;
+    } catch (error) {
+      console.error('NotionAPI: Failed to fetch clients');
+      console.error('NotionAPI: Error:', error);
+      console.error('NotionAPI: Error response:', (error as any)?.response);
+      throw error;
+    }
   },
   
   healthCheck: async (): Promise<{

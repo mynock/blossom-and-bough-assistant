@@ -4,6 +4,18 @@ import NotionQuickEntry from './NotionQuickEntry';
 
 const NotionEmbedPage: React.FunctionComponent = () => {
   useEffect(() => {
+    // Add mobile debugging console for development
+    if (process.env.NODE_ENV === 'development') {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+      script.onload = () => {
+        (window as any).eruda.init();
+        console.log('🐛 Eruda mobile debugging console loaded');
+        console.log('📱 Tap floating button to open debug panel');
+      };
+      document.head.appendChild(script);
+    }
+
     // iOS-specific optimizations
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     
