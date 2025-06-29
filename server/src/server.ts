@@ -435,16 +435,20 @@ app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
   res.removeHeader('X-Frame-Options');
   
-  // Set headers to allow embedding
+  // Set headers to allow embedding with iOS-specific optimizations
   res.setHeader('Content-Security-Policy', 
     "default-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "script-src 'self'; " +
+    "script-src 'self' 'unsafe-inline'; " + // Allow inline scripts for iOS compatibility
     "img-src 'self' data: https:; " +
     "connect-src 'self'; " +
     "font-src 'self'; " +
     "frame-ancestors 'self' https://*.notion.so https://notion.so;"
   );
+  
+  // iOS-specific headers
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   
   // Cache busting headers to prevent Notion from caching the embed
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
@@ -452,6 +456,9 @@ app.use('/notion-embed', (req, res, next) => {
   res.setHeader('Expires', '0');
   res.setHeader('Last-Modified', new Date().toUTCString());
   res.setHeader('ETag', `"${Date.now()}"`);
+  
+  // iOS Safari specific headers
+  res.setHeader('Vary', 'User-Agent');
   
   next();
 });
