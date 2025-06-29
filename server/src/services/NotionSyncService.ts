@@ -100,11 +100,20 @@ export class NotionSyncService {
           const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
 
           if (existingActivity) {
-            // Check if the Notion page was updated since last sync
-            if (this.isNotionPageUpdated(page.last_edited_time, existingActivity.updatedAt.toISOString())) {
+            // Check if we should sync this record (avoid overwriting local changes)
+            const shouldSync = this.shouldSyncFromNotion(
+              page.last_edited_time,
+              existingActivity.lastNotionSyncAt?.toISOString(),
+              existingActivity.updatedAt.toISOString()
+            );
+            
+            if (shouldSync) {
               await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
               stats.updated++;
               debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
+            } else {
+              debugLog.info(`Skipping work activity ${existingActivity.id} - local changes are newer than last Notion sync`);
+              stats.warnings.push(`"${activityWithNotionId.clientName}" on ${activityWithNotionId.date}: Skipped sync - you have newer local changes that would be overwritten`);
             }
           } else {
             // Create new work activity using the validated workflow
@@ -309,6 +318,7 @@ export class NotionSyncService {
         breakTimeMinutes: parsedActivity.lunchTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
+        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
       };
 
       await this.workActivityService.updateWorkActivity(workActivityId, updateData);
@@ -342,7 +352,8 @@ export class NotionSyncService {
 
       if (matchingActivity) {
         await this.workActivityService.updateWorkActivity(matchingActivity.id, {
-          notionPageId: parsedActivity.notionPageId
+          notionPageId: parsedActivity.notionPageId,
+          lastNotionSyncAt: new Date() // Mark when we synced from Notion
         });
         debugLog.info(`Added Notion page ID ${parsedActivity.notionPageId} to work activity ${matchingActivity.id}`);
       } else {
@@ -497,5 +508,40 @@ export class NotionSyncService {
       debugLog.error('Error getting import stats:', error);
       throw error;
     }
+  }
+
+  /**
+   * Determine if a record should be synced from Notion based on timestamps
+   * Prevents overwriting local changes that are newer than the last Notion sync
+   */
+  private shouldSyncFromNotion(
+    notionLastEdited: string,
+    lastNotionSyncAt: string | null | undefined,
+    recordUpdatedAt: string
+  ): boolean {
+    const notionEditTime = new Date(notionLastEdited);
+    const recordUpdateTime = new Date(recordUpdatedAt);
+    
+    // If we've never synced from Notion, always sync
+    if (!lastNotionSyncAt) {
+      debugLog.debug(`No previous sync timestamp - will sync`);
+      return true;
+    }
+    
+    const lastSyncTime = new Date(lastNotionSyncAt);
+    
+    // If the record was updated locally after the last Notion sync,
+    // only sync if Notion was also updated after our last sync
+    if (recordUpdateTime > lastSyncTime) {
+      // Local changes detected - only sync if Notion is also newer
+      const shouldSync = notionEditTime > lastSyncTime;
+      debugLog.debug(`Local changes detected. Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt}, Record: ${recordUpdatedAt} -> ${shouldSync ? 'SYNC' : 'SKIP'}`);
+      return shouldSync;
+    }
+    
+    // No local changes since last sync - sync if Notion is newer
+    const shouldSync = notionEditTime > lastSyncTime;
+    debugLog.debug(`No local changes. Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC' : 'SKIP'}`);
+    return shouldSync;
   }
 } 

@@ -165,6 +165,9 @@ export class NotionService {
             'Work Type': {
               select: { name: 'Maintenance' },
             },
+            'Team Members': {
+              multi_select: [{ name: 'Andrea' }],
+            },
             Title: {
               title: [{ text: { content: pageTitle } }],
             }
@@ -293,6 +296,9 @@ export class NotionService {
               },
               'Work Type': {
                 select: { name: 'Maintenance' },
+              },
+              'Team Members': {
+                multi_select: [{ name: 'Andrea' }],
               }
             },
           });

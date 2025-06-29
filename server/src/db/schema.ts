@@ -70,6 +70,7 @@ export const workActivities = pgTable('work_activities', {
   notes: text('notes'),
   tasks: text('tasks'), // future work items/to-do notes
   notionPageId: text('notion_page_id').unique(), // Notion page ID for syncing
+  lastNotionSyncAt: timestamp('last_notion_sync_at'), // When this record was last synced from Notion
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
