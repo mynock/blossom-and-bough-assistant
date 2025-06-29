@@ -75,6 +75,30 @@ const NotionQuickEntry: React.FunctionComponent = () => {
     setClientInputValue('');
   };
 
+  // iOS-compatible navigation handler
+  const handleOpenEntry = (url: string) => {
+    try {
+      // Try to open in new window/tab - works better on iOS
+      const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!newWindow) {
+        // Fallback: try direct navigation if popup blocked
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error('Error opening work entry:', error);
+      // Final fallback: copy URL to clipboard and show message
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(url).then(() => {
+          alert('Unable to open automatically. URL copied to clipboard - please paste in your browser.');
+        }).catch(() => {
+          alert('Unable to open automatically. Please navigate to: ' + url);
+        });
+      } else {
+        alert('Unable to open automatically. Please navigate to: ' + url);
+      }
+    }
+  };
+
   return (
     <Box
       sx={{
@@ -182,6 +206,9 @@ const NotionQuickEntry: React.FunctionComponent = () => {
                 textTransform: 'none',
                 fontSize: '16px',
                 padding: '12px 24px',
+                minHeight: '48px',
+                WebkitTapHighlightColor: 'transparent',
+                touchAction: 'manipulation',
               }}
             >
               Create Work Entry
@@ -225,8 +252,7 @@ const NotionQuickEntry: React.FunctionComponent = () => {
               </Typography>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                 <Button
-                  href={result.page_url}
-                  target="_parent"
+                  onClick={() => handleOpenEntry(result.page_url)}
                   variant="contained"
                   sx={{
                     backgroundColor: '#0969da',
@@ -236,6 +262,10 @@ const NotionQuickEntry: React.FunctionComponent = () => {
                     },
                     textTransform: 'none',
                     fontSize: '14px',
+                    minHeight: '44px',
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    padding: '10px 16px',
                   }}
                 >
                   → Open Work Entry
@@ -252,6 +282,10 @@ const NotionQuickEntry: React.FunctionComponent = () => {
                     },
                     textTransform: 'none',
                     fontSize: '14px',
+                    minHeight: '44px',
+                    WebkitTapHighlightColor: 'transparent',
+                    touchAction: 'manipulation',
+                    padding: '10px 16px',
                   }}
                 >
                   Create Another Entry
