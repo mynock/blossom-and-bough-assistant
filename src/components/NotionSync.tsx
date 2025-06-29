@@ -31,6 +31,7 @@ import {
   Assignment,
   Warning,
   ExpandMore,
+  Shield,
 } from '@mui/icons-material';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
@@ -306,26 +307,44 @@ export const NotionSync: React.FC = () => {
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <Warning color="warning" />
                     <Typography variant="h6">
-                      AI Parsing Warnings ({lastSyncWarnings.length})
+                      Sync Warnings ({lastSyncWarnings.length})
                     </Typography>
                   </Box>
                 </AccordionSummary>
                 <AccordionDetails>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    The following warnings were generated during AI parsing of Notion pages:
+                    The following issues occurred during sync. Items may have been skipped to protect your local changes:
                   </Typography>
+                  {lastSyncWarnings.some(w => w.includes('Skipped sync')) && (
+                    <Alert severity="info" sx={{ mb: 2 }}>
+                      <Typography variant="body2">
+                        🛡️ <strong>Data Protection Active:</strong> Some items were skipped because you have local 
+                        changes that are newer than the last Notion sync. Your edits are safe!
+                      </Typography>
+                    </Alert>
+                  )}
                   <List dense>
-                    {lastSyncWarnings.map((warning, index) => (
-                      <ListItem key={index} sx={{ pl: 0 }}>
-                        <ListItemIcon>
-                          <Warning color="warning" fontSize="small" />
-                        </ListItemIcon>
-                        <ListItemText 
-                          primary={warning}
-                          primaryTypographyProps={{ variant: 'body2' }}
-                        />
-                      </ListItem>
-                    ))}
+                    {lastSyncWarnings.map((warning, index) => {
+                      const isSkipped = warning.includes('Skipped sync');
+                      return (
+                        <ListItem key={index} sx={{ pl: 0 }}>
+                          <ListItemIcon>
+                            {isSkipped ? (
+                              <Shield color="info" fontSize="small" />
+                            ) : (
+                              <Warning color="warning" fontSize="small" />
+                            )}
+                          </ListItemIcon>
+                          <ListItemText 
+                            primary={warning}
+                            primaryTypographyProps={{ 
+                              variant: 'body2',
+                              color: isSkipped ? 'info.main' : 'warning.main'
+                            }}
+                          />
+                        </ListItem>
+                      );
+                    })}
                   </List>
                 </AccordionDetails>
               </Accordion>
