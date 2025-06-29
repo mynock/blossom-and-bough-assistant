@@ -31,6 +31,8 @@ import {
   AccessTime as TimeIcon,
   Person as PersonIcon,
   Remove as RemoveIcon,
+  Sync as SyncIcon,
+  Update as UpdateIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
@@ -60,6 +62,8 @@ interface WorkActivity {
   tasks?: string;
   createdAt: string;
   updatedAt: string;
+  notionPageId?: string;
+  lastNotionSyncAt?: string;
   clientName?: string | null;
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
@@ -383,6 +387,21 @@ const WorkActivityManagement: React.FC = () => {
     });
   };
 
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short',
+      day: 'numeric',
+      year: '2-digit'
+    })} ${date.toLocaleTimeString('en-US', { 
+      timeZone: 'America/Los_Angeles',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    })}`;
+  };
+
   // Configure table columns
   const columns: ColumnConfig<WorkActivity>[] = [
     {
@@ -472,6 +491,51 @@ const WorkActivityManagement: React.FC = () => {
       ),
     },
     {
+      key: 'lastNotionSyncAt',
+      label: 'Last Notion Sync',
+      sortable: true,
+      render: (activity) => (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+          <SyncIcon sx={{ fontSize: '0.875rem', color: 'text.secondary', mt: 0.1 }} />
+          <Box>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+              {formatTimestamp(activity.lastNotionSyncAt)}
+            </Typography>
+            {activity.notionPageId && (
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                ID: {activity.notionPageId.slice(-8)}
+              </Typography>
+            )}
+            {/* Show if local changes would be protected */}
+            {activity.lastNotionSyncAt && activity.updatedAt && 
+             new Date(activity.updatedAt) > new Date(activity.lastNotionSyncAt) && (
+              <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem', fontWeight: 600 }}>
+                🛡️ Protected from sync
+              </Typography>
+            )}
+          </Box>
+        </Box>
+      ),
+    },
+    {
+      key: 'updatedAt',
+      label: 'Last Updated',
+      sortable: true,
+      render: (activity) => (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+          <UpdateIcon sx={{ fontSize: '0.875rem', color: 'text.secondary', mt: 0.1 }} />
+          <Box>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+              {formatTimestamp(activity.updatedAt)}
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+              Created: {formatTimestamp(activity.createdAt)}
+            </Typography>
+          </Box>
+        </Box>
+      ),
+    },
+    {
       key: 'status',
       label: 'Status',
       sortable: true,
@@ -523,6 +587,11 @@ const WorkActivityManagement: React.FC = () => {
         value: type,
         label: type.replace('_', ' ').toUpperCase()
       })),
+    },
+    {
+      key: 'notionPageId',
+      label: 'Notion Page ID',
+      type: 'text',
     },
   ];
 
