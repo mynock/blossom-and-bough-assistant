@@ -164,7 +164,11 @@ export class NotionSyncService {
             }
           } else {
             // Create new work activity using the validated workflow
-            await this.createWorkActivityFromParsedData(activityWithNotionId);
+            const clientProgressCallback = onProgress ? (message: string) => {
+              onProgress(currentPage, notionPages.length, message, { ...stats });
+            } : undefined;
+            
+            await this.createWorkActivityFromParsedData(activityWithNotionId, clientProgressCallback);
             stats.created++;
             debugLog.info(`Created new work activity from Notion page ${page.id}`);
             if (onProgress) {
@@ -327,8 +331,24 @@ export class NotionSyncService {
   /**
    * Create a new work activity from AI-parsed data
    */
-  private async createWorkActivityFromParsedData(parsedActivity: any): Promise<void> {
+  private async createWorkActivityFromParsedData(
+    parsedActivity: any, 
+    onProgress?: (message: string) => void
+  ): Promise<void> {
     try {
+      // Check if we need to create the client
+      const existingClients = await this.clientService.getAllClients();
+      const existingClient = existingClients.find(client => 
+        client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
+      );
+
+      if (!existingClient && onProgress) {
+        onProgress(`🏗️ Creating new client: ${parsedActivity.clientName}`);
+      }
+
+      // Ensure the client exists before validation
+      await this.ensureClientExists(parsedActivity.clientName);
+
       // Validate the parsed activity using the same logic as work notes import
       const mockAiResult = {
         activities: [parsedActivity],
@@ -356,6 +376,44 @@ export class NotionSyncService {
     } catch (error) {
       debugLog.error('Error creating work activity from parsed data:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Ensure a client exists, creating it if necessary
+   */
+  private async ensureClientExists(clientName: string): Promise<void> {
+    if (!clientName || clientName.trim() === '') {
+      throw new Error('Client name is required');
+    }
+
+    try {
+      // Check if client already exists (case-insensitive search)
+      const existingClients = await this.clientService.getAllClients();
+      const existingClient = existingClients.find(client => 
+        client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
+      );
+
+      if (existingClient) {
+        debugLog.info(`Client "${clientName}" already exists (ID: ${existingClient.id})`);
+        return;
+      }
+
+      // Create the client if it doesn't exist
+      debugLog.info(`Creating new client: "${clientName}"`);
+      const newClient = await this.clientService.createClient({
+        clientId: `notion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
+        name: clientName.trim(),
+        address: '', // Empty address - can be filled in later
+        geoZone: '', // Empty geo zone - can be filled in later
+        isRecurringMaintenance: false,
+        activeStatus: 'active'
+      });
+
+      debugLog.info(`✨ Auto-created client "${clientName}" (ID: ${newClient.id}) from Notion import`);
+    } catch (error) {
+      debugLog.error(`Error ensuring client "${clientName}" exists:`, error);
+      throw new Error(`Failed to create client "${clientName}": ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
