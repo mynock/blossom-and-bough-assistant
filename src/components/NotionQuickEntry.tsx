@@ -25,14 +25,27 @@ const NotionQuickEntry: React.FunctionComponent = () => {
   const [loadingClients, setLoadingClients] = useState<boolean>(true);
   const [showForm, setShowForm] = useState<boolean>(true);
 
+  // Debug logging for iOS troubleshooting
+  useEffect(() => {
+    console.log('NotionQuickEntry mounted');
+    console.log('User Agent:', navigator.userAgent);
+    console.log('Is iOS:', /iPad|iPhone|iPod/.test(navigator.userAgent));
+    console.log('Window dimensions:', window.innerWidth, 'x', window.innerHeight);
+    console.log('Location:', window.location.href);
+    console.log('Parent window check:', window.parent !== window ? 'In iframe' : 'Not in iframe');
+  }, []);
+
   // Fetch all clients on component mount
   useEffect(() => {
     const fetchClients = async () => {
       try {
+        console.log('Fetching clients from API...');
         const response = await notionApi.getClients();
+        console.log('Clients fetched successfully:', response.clients.length, 'clients');
         setClients(response.clients);
-      } catch (error) {
-        console.error('Error fetching clients:', error);
+              } catch (error) {
+          console.error('Error fetching clients:', error);
+          console.error('Error details:', (error as any)?.response?.data || (error as Error)?.message);
       } finally {
         setLoadingClients(false);
       }
@@ -47,20 +60,27 @@ const NotionQuickEntry: React.FunctionComponent = () => {
     
     if (!clientName) return;
     
+    console.log('Creating entry for client:', clientName);
+    console.log('API endpoint will be called:', '/api/notion/create-smart-entry');
+    
     setShowForm(false);
     setLoading(true);
     setResult(null);
 
     try {
+      console.log('Making API call...');
       const response = await notionApi.createSmartEntry(clientName);
+      console.log('API call successful:', response);
       setResult(response);
     } catch (error) {
       console.error('Error creating entry:', error);
+      console.error('Error details:', (error as any)?.response?.data || (error as Error)?.message);
+      console.error('Error status:', (error as any)?.response?.status);
       setResult({
         success: false,
         page_url: '',
         carryover_tasks: [],
-        error: 'Failed to create entry',
+        error: 'Failed to create entry - check console for details',
       });
     } finally {
       setLoading(false);
@@ -295,10 +315,23 @@ const NotionQuickEntry: React.FunctionComponent = () => {
           ) : (
             <Box>
               <Typography variant="h6" sx={{ color: '#d32f2f', marginBottom: 2 }}>
-                ❌ Error
+                ❌ Error Details
               </Typography>
-              <Typography variant="body2" sx={{ marginBottom: 3 }}>
+              <Typography variant="body2" sx={{ marginBottom: 1 }}>
                 {result.error}
+              </Typography>
+              <Typography variant="caption" sx={{ 
+                display: 'block', 
+                marginBottom: 3, 
+                fontFamily: 'monospace',
+                backgroundColor: '#f5f5f5',
+                padding: 1,
+                borderRadius: 1,
+                fontSize: '12px'
+              }}>
+                Debug: Check browser console for detailed logs<br/>
+                User Agent: {/iPad|iPhone|iPod/.test(navigator.userAgent) ? 'iOS Device' : 'Other Device'}<br/>
+                In iframe: {window.parent !== window ? 'Yes' : 'No'}
               </Typography>
               <Button
                 onClick={resetForm}
