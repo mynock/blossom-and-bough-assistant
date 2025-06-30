@@ -224,14 +224,15 @@ export class NotionService {
                 };
               } catch (tableError) {
                 debugLog.error(`Error processing table block ${index}:`, tableError);
-                // Return a simplified table structure as fallback
+                // Return a simplified table structure as fallback with empty children
                 return {
                   ...blockWithoutMeta,
                   table: {
                     table_width: block.table.table_width || 2,
                     has_column_header: block.table.has_column_header || false,
                     has_row_header: block.table.has_row_header || false,
-                  }
+                  },
+                  children: []
                 };
               }
             }
