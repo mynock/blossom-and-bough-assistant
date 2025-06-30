@@ -34,6 +34,8 @@ import {
   Shield,
   Stop,
 } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
 const api = axios.create({
@@ -612,8 +614,8 @@ export const NotionSync: React.FC = () => {
                     {lastSyncWarnings.map((warning, index) => {
                       const isSkipped = warning.includes('Skipped sync');
                       return (
-                        <ListItem key={index} sx={{ pl: 0 }}>
-                          <ListItemIcon>
+                        <ListItem key={index} sx={{ pl: 0, alignItems: 'flex-start' }}>
+                          <ListItemIcon sx={{ minWidth: 36, mt: 0.5 }}>
                             {isSkipped ? (
                               <Shield color="info" fontSize="small" />
                             ) : (
@@ -621,11 +623,45 @@ export const NotionSync: React.FC = () => {
                             )}
                           </ListItemIcon>
                           <ListItemText 
-                            primary={warning}
-                            primaryTypographyProps={{ 
-                              variant: 'body2',
-                              color: isSkipped ? 'info.main' : 'warning.main'
-                            }}
+                            primary={
+                              <ReactMarkdown 
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  // Style links to match Material-UI theme
+                                  a: ({ node, ...props }) => (
+                                    // eslint-disable-next-line jsx-a11y/anchor-has-content
+                                    <a 
+                                      {...props} 
+                                      style={{ 
+                                        color: isSkipped ? '#0288d1' : '#ed6c02',
+                                        textDecoration: 'none',
+                                        fontWeight: 500
+                                      }}
+                                      onMouseOver={(e) => {
+                                        e.currentTarget.style.textDecoration = 'underline';
+                                      }}
+                                      onMouseOut={(e) => {
+                                        e.currentTarget.style.textDecoration = 'none';
+                                      }}
+                                    />
+                                  ),
+                                  // Style paragraphs to match list item typography
+                                  p: ({ node, ...props }) => (
+                                    <span 
+                                      {...props} 
+                                      style={{ 
+                                        fontSize: '0.875rem',
+                                        color: isSkipped ? '#0288d1' : '#ed6c02',
+                                        margin: 0,
+                                        lineHeight: 1.43
+                                      }} 
+                                    />
+                                  )
+                                }}
+                              >
+                                {warning}
+                              </ReactMarkdown>
+                            }
                           />
                         </ListItem>
                       );
