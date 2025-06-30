@@ -426,33 +426,38 @@ export function FilterableTable<T>({
                 </TableCell>
               </TableRow>
             ) : (
-              processedData.map((row) => (
-                <TableRow key={String(row[rowKeyField])}>
-                  {columns.map((column) => (
-                    <TableCell key={String(column.key)} align={column.align || 'left'}>
-                      {column.render ? 
-                        column.render(row) : 
-                        String(getNestedValue(row, String(column.key)) || '')
-                      }
-                    </TableCell>
-                  ))}
-                  {actions.length > 0 && (
-                    <TableCell align="center">
-                      {actions.map((action) => (
-                        <IconButton
-                          key={action.key}
-                          onClick={() => onRowAction?.(action.key, row)}
-                          size="small"
-                          color={action.color || 'default'}
-                          title={action.label}
-                        >
-                          {action.icon}
-                        </IconButton>
-                      ))}
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))
+              processedData.map((row) => {
+                return (
+                  <TableRow key={String(row[rowKeyField])}>
+                    {columns.map((column) => {
+                      const cellValue = column.render 
+                        ? column.render(row) 
+                        : String(getNestedValue(row, String(column.key)) || '');
+                      
+                      return (
+                        <TableCell key={String(column.key)} align={column.align || 'left'}>
+                          {cellValue}
+                        </TableCell>
+                      );
+                    })}
+                    {actions.length > 0 && (
+                      <TableCell align="center">
+                        {actions.map((action) => (
+                          <IconButton
+                            key={action.key}
+                            onClick={() => onRowAction?.(action.key, row)}
+                            size="small"
+                            color={action.color || 'default'}
+                            title={action.label}
+                          >
+                            {action.icon}
+                          </IconButton>
+                        ))}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
