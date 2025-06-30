@@ -716,7 +716,8 @@ export class AdminService {
             travelTimeMinutes: activity.driveTime || 0,
             breakTimeMinutes: activity.lunchTime || 0,
             notes: activity.notes || '',
-            tasks: activity.tasks.join('\n')
+            tasks: activity.tasks.join('\n'),
+            lastUpdatedBy: 'web_app' as const
           };
           
           // Create employee assignments

@@ -1,0 +1,1 @@
+ALTER TABLE "work_activities" ADD COLUMN "last_updated_by" text DEFAULT 'web_app';

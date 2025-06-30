@@ -105,7 +105,7 @@ export class NotionSyncService {
             const shouldSync = this.shouldSyncFromNotion(
               page.last_edited_time,
               existingActivity.lastNotionSyncAt?.toISOString(),
-              existingActivity.updatedAt.toISOString()
+              existingActivity.lastUpdatedBy
             );
             
             if (!shouldSync) {
@@ -446,6 +446,7 @@ export class NotionSyncService {
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
         lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastUpdatedBy: 'notion_sync' as const, // Mark that this update came from Notion sync
       };
 
       await this.workActivityService.updateWorkActivity(workActivityId, updateData);
@@ -480,7 +481,8 @@ export class NotionSyncService {
       if (matchingActivity) {
         await this.workActivityService.updateWorkActivity(matchingActivity.id, {
           notionPageId: parsedActivity.notionPageId,
-          lastNotionSyncAt: new Date() // Mark when we synced from Notion
+          lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+          lastUpdatedBy: 'notion_sync' as const // Mark that this update came from Notion sync
         });
         debugLog.info(`Added Notion page ID ${parsedActivity.notionPageId} to work activity ${matchingActivity.id}`);
       } else {
@@ -674,16 +676,15 @@ export class NotionSyncService {
   }
 
   /**
-   * Determine if a record should be synced from Notion based on timestamps
-   * Prevents overwriting local changes that are newer than the last Notion sync
+   * Determine if a record should be synced from Notion based on who made the last update
+   * Prevents overwriting user changes made through the web app
    */
   private shouldSyncFromNotion(
     notionLastEdited: string,
     lastNotionSyncAt: string | null | undefined,
-    recordUpdatedAt: string
+    lastUpdatedBy: string | null | undefined
   ): boolean {
     const notionEditTime = new Date(notionLastEdited);
-    const recordUpdateTime = new Date(recordUpdatedAt);
     
     // If we've never synced from Notion, always sync
     if (!lastNotionSyncAt) {
@@ -693,18 +694,17 @@ export class NotionSyncService {
     
     const lastSyncTime = new Date(lastNotionSyncAt);
     
-    // If the record was updated locally after the last Notion sync,
-    // only sync if Notion was also updated after our last sync
-    if (recordUpdateTime > lastSyncTime) {
-      // Local changes detected - only sync if Notion is also newer
+    // If the last update was made by a user through the web app, protect it
+    if (lastUpdatedBy === 'web_app') {
+      // Only sync if Notion was edited after our last sync (resolves conflicts in favor of Notion)
       const shouldSync = notionEditTime > lastSyncTime;
-      debugLog.debug(`Local changes detected. Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt}, Record: ${recordUpdatedAt} -> ${shouldSync ? 'SYNC' : 'SKIP'}`);
+      debugLog.debug(`User changes detected (lastUpdatedBy: ${lastUpdatedBy}). Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC (Notion newer)' : 'SKIP (protect user changes)'}`);
       return shouldSync;
     }
     
-    // No local changes since last sync - sync if Notion is newer
+    // If the last update was from notion sync, always sync if Notion is newer
     const shouldSync = notionEditTime > lastSyncTime;
-    debugLog.debug(`No local changes. Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC' : 'SKIP'}`);
+    debugLog.debug(`No user changes (lastUpdatedBy: ${lastUpdatedBy}). Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC' : 'SKIP (no changes)'}`);
     return shouldSync;
   }
 } 

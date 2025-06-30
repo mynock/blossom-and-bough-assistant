@@ -31,7 +31,6 @@ import {
   AccessTime as TimeIcon,
   Person as PersonIcon,
   Remove as RemoveIcon,
-  Sync as SyncIcon,
   Update as UpdateIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
@@ -64,6 +63,7 @@ interface WorkActivity {
   updatedAt: string;
   notionPageId?: string;
   lastNotionSyncAt?: string;
+  lastUpdatedBy?: 'web_app' | 'notion_sync';
   clientName?: string | null;
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
@@ -159,8 +159,21 @@ const WorkActivityManagement: React.FC = () => {
     try {
       const response = await apiClient.get(API_ENDPOINTS.WORK_ACTIVITIES);
       const data = await response.json();
-      setWorkActivities(data);
+      
+      // Debug logging to see what we're receiving
+      console.log('API response for work activities:', data);
+      
+      // Ensure we have an array
+      if (Array.isArray(data)) {
+        setWorkActivities(data);
+      } else {
+        console.error('Work activities API returned non-array data:', data);
+        setWorkActivities([]);
+        showSnackbar('Failed to load work activities - invalid data format', 'error');
+      }
     } catch (error) {
+      console.error('Error fetching work activities:', error);
+      setWorkActivities([]);
       showSnackbar('Failed to fetch work activities', 'error');
     } finally {
       setLoading(false);
@@ -491,33 +504,6 @@ const WorkActivityManagement: React.FC = () => {
       ),
     },
     {
-      key: 'lastNotionSyncAt',
-      label: 'Last Notion Sync',
-      sortable: true,
-      render: (activity) => (
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-          <SyncIcon sx={{ fontSize: '0.875rem', color: 'text.secondary', mt: 0.1 }} />
-          <Box>
-            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-              {formatTimestamp(activity.lastNotionSyncAt)}
-            </Typography>
-            {activity.notionPageId && (
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                ID: {activity.notionPageId.slice(-8)}
-              </Typography>
-            )}
-            {/* Show if local changes would be protected */}
-            {activity.lastNotionSyncAt && activity.updatedAt && 
-             new Date(activity.updatedAt) > new Date(activity.lastNotionSyncAt) && (
-              <Typography variant="caption" color="warning.main" sx={{ fontSize: '0.65rem', fontWeight: 600 }}>
-                🛡️ Protected from sync
-              </Typography>
-            )}
-          </Box>
-        </Box>
-      ),
-    },
-    {
       key: 'updatedAt',
       label: 'Last Updated',
       sortable: true,
@@ -528,6 +514,25 @@ const WorkActivityManagement: React.FC = () => {
             <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
               {formatTimestamp(activity.updatedAt)}
             </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                by {activity.lastUpdatedBy === 'web_app' ? 'User' : 'Notion Sync'}
+              </Typography>
+              {activity.lastUpdatedBy === 'web_app' && (
+                <Chip 
+                  label="🛡️ Protected" 
+                  size="small" 
+                  variant="outlined"
+                  sx={{ 
+                    fontSize: '0.6rem', 
+                    height: '16px',
+                    '& .MuiChip-label': { px: 0.5 },
+                    color: 'warning.main',
+                    borderColor: 'warning.main'
+                  }}
+                />
+              )}
+            </Box>
             <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
               Created: {formatTimestamp(activity.createdAt)}
             </Typography>
