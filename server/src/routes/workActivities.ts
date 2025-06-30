@@ -62,8 +62,14 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Ensure lastUpdatedBy is controlled by the system, not the user
+    const sanitizedWorkActivity = {
+      ...workActivity,
+      lastUpdatedBy: 'web_app' as const // Always set to web_app for API requests
+    };
+
     const created = await workActivityService.createWorkActivity({
-      workActivity,
+      workActivity: sanitizedWorkActivity,
       employees,
       charges
     });
@@ -86,7 +92,11 @@ router.put('/:id', async (req, res) => {
       return res.status(400).json({ error: 'Invalid work activity ID' });
     }
 
-    const updated = await workActivityService.updateWorkActivity(id, req.body);
+    // Ensure lastUpdatedBy is controlled by the system, not the user
+    // Remove it from the request body if present and let the service set it
+    const { lastUpdatedBy, ...updateData } = req.body;
+
+    const updated = await workActivityService.updateWorkActivity(id, updateData);
     if (!updated) {
       return res.status(404).json({ error: 'Work activity not found' });
     }

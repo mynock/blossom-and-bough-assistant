@@ -1,0 +1,1 @@
+ALTER TABLE "work_activities" ADD COLUMN "last_notion_sync_at" timestamp;

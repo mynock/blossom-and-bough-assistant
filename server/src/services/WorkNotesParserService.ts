@@ -195,7 +195,8 @@ export class WorkNotesParserService {
           travelTimeMinutes: activity.driveTime || 0,
           breakTimeMinutes: activity.lunchTime || 0,
           notes: activity.notes,
-          tasks: activity.tasks.join('\n')
+          tasks: activity.tasks.join('\n'),
+          lastUpdatedBy: 'web_app' as const // Explicitly mark as web app import
         };
 
         // Prepare employee assignments

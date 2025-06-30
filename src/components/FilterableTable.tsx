@@ -114,6 +114,12 @@ export function FilterableTable<T>({
 
   // Filter and sort data
   const processedData = useMemo(() => {
+    // Ensure data is an array to prevent filter errors
+    if (!Array.isArray(data)) {
+      console.warn('FilterableTable: data prop is not an array:', data);
+      return [];
+    }
+    
     let filtered = data.filter(item => {
       return filters.every(filter => {
         const filterValue = filterValues[filter.key];
@@ -374,7 +380,7 @@ export function FilterableTable<T>({
                     Clear All Filters
                   </Button>
                   <Typography variant="body2" sx={{ alignSelf: 'center', color: 'text.secondary' }}>
-                    Showing {processedData.length} of {data.length} records
+                    Showing {processedData.length} of {Array.isArray(data) ? data.length : 0} records
                   </Typography>
                 </Box>
               </Grid>

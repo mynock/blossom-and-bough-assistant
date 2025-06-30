@@ -1,7 +1,9 @@
 import { Client } from '@notionhq/client';
-import { WorkActivityService } from './WorkActivityService';
+import { WorkActivityService, CreateWorkActivityData } from './WorkActivityService';
 import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
+import { AnthropicService } from './AnthropicService';
+import { WorkNotesParserService } from './WorkNotesParserService';
 import { debugLog } from '../utils/logger';
 import { NewWorkActivity } from '../db/schema';
 
@@ -30,11 +32,17 @@ export class NotionSyncService {
   private workActivityService: WorkActivityService;
   private clientService: ClientService;
   private employeeService: EmployeeService;
+  private anthropicService: AnthropicService;
+  private workNotesParserService: WorkNotesParserService;
 
-  constructor() {
+  constructor(anthropicService?: AnthropicService) {
     this.workActivityService = new WorkActivityService();
     this.clientService = new ClientService();
     this.employeeService = new EmployeeService();
+    
+    // Use injected service or create new one
+    this.anthropicService = anthropicService || new AnthropicService();
+    this.workNotesParserService = new WorkNotesParserService(this.anthropicService);
 
     if (!process.env.NOTION_TOKEN) {
       debugLog.warn('NOTION_TOKEN not found in environment variables');
@@ -45,47 +53,159 @@ export class NotionSyncService {
   }
 
   /**
-   * Sync new and updated Notion pages with the CRM system
+   * Sync new and updated Notion pages with the CRM system using AI parsing
    */
-  async syncNotionPages(): Promise<{ created: number; updated: number; errors: number }> {
+  async syncNotionPages(
+    onProgress?: (current: number, total: number, message: string, incrementalStats?: { created: number; updated: number; errors: number; warnings: string[] }) => void,
+    abortSignal?: AbortSignal
+  ): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
     try {
-      debugLog.info('Starting Notion pages sync...');
+      debugLog.info('Starting Notion pages sync with AI parsing...');
       
-      const stats = { created: 0, updated: 0, errors: 0 };
+      const stats = { created: 0, updated: 0, errors: 0, warnings: [] as string[] };
+      
+      // Check if cancelled before starting
+      if (abortSignal?.aborted) {
+        throw new Error('Sync cancelled before starting');
+      }
       
       // Get all pages from the Notion database
       const notionPages = await this.getAllNotionPages();
       debugLog.info(`Found ${notionPages.length} pages in Notion database`);
+      
+      // Send initial progress
+      if (onProgress) {
+        onProgress(0, notionPages.length, `Found ${notionPages.length} pages to process`, { ...stats });
+      }
 
-      for (const page of notionPages) {
+      for (let i = 0; i < notionPages.length; i++) {
+        // Check for cancellation
+        if (abortSignal?.aborted) {
+          debugLog.info(`Sync cancelled after processing ${i} pages`);
+          if (onProgress) {
+            onProgress(i, notionPages.length, `Sync cancelled after processing ${i}/${notionPages.length} pages`, { ...stats });
+          }
+          throw new Error(`Sync cancelled after processing ${i} pages`);
+        }
+        
+        const page = notionPages[i];
+        const currentPage = i + 1;
+        
         try {
-          const workActivityData = await this.extractWorkActivityData(page);
+          // Send progress update
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `Processing page ${currentPage}/${notionPages.length}...`, { ...stats });
+          }
           
-          if (!workActivityData) {
-            debugLog.warn(`Skipping page ${page.id} - insufficient data`);
+          // First check if work activity already exists by Notion page ID
+          const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
+
+          if (existingActivity) {
+            // Check if we should sync this record BEFORE doing expensive AI processing
+            const shouldSync = this.shouldSyncFromNotion(
+              page.last_edited_time,
+              existingActivity.lastNotionSyncAt?.toISOString(),
+              existingActivity.lastUpdatedBy
+            );
+            
+            if (!shouldSync) {
+              // Skip AI processing entirely - we already know we won't sync
+              debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
+              
+              // We need to get the client name for the warning, but we'll extract it from Notion properties directly
+              const clientName = this.extractClientNameFromNotionPage(page);
+              const date = this.extractDateFromNotionPage(page);
+              
+              stats.warnings.push(`"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`);
+              if (onProgress) {
+                onProgress(currentPage, notionPages.length, `⚠️ Skipped: ${clientName} - local changes newer`, { ...stats });
+              }
+              continue; // Skip to next page without AI processing
+            }
+          }
+
+          // Only do expensive AI processing if we need to sync or create new activity
+          // Convert Notion page to natural text format
+          const naturalText = await this.convertNotionPageToNaturalText(page);
+          
+          if (!naturalText.trim()) {
+            debugLog.warn(`Skipping page ${page.id} - no content to parse`);
+            stats.warnings.push(`${this.createPageReference(page)}: No content to parse`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no content`, { ...stats });
+            }
             continue;
           }
 
-          // Check if work activity already exists by Notion page ID
-          const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(workActivityData.notionPageId);
+          // Send AI parsing progress update
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `Parsing page ${currentPage}/${notionPages.length} with AI...`, { ...stats });
+          }
+
+          // Use AI to parse the natural text
+          debugLog.info(`Parsing Notion page ${page.id} with AI...`);
+          const aiResult = await this.anthropicService.parseWorkNotes(naturalText);
+
+          if (!aiResult.activities || aiResult.activities.length === 0) {
+            debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
+            stats.warnings.push(`${this.createPageReference(page)}: AI could not extract work activities`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no activities found`, { ...stats });
+            }
+            continue;
+          }
+
+          // Use the first parsed activity (assuming one activity per Notion page)
+          const parsedActivity = aiResult.activities[0];
           
+          // Add Notion page ID to the parsed activity
+          const activityWithNotionId = {
+            ...parsedActivity,
+            notionPageId: page.id,
+            lastEditedTime: page.last_edited_time
+          };
+
           if (existingActivity) {
-            // Check if the Notion page was updated since last sync
-            if (this.isNotionPageUpdated(workActivityData.lastEditedTime, existingActivity.updatedAt.toISOString())) {
-              await this.updateWorkActivityFromNotion(existingActivity.id, workActivityData);
-              stats.updated++;
-              debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${workActivityData.notionPageId}`);
+            // We already know we should sync (checked above)
+            await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
+            stats.updated++;
+            debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
             }
           } else {
-            // Create new work activity
-            await this.createWorkActivityFromNotion(workActivityData);
+            // Create new work activity using the validated workflow
+            const clientProgressCallback = onProgress ? (message: string) => {
+              onProgress(currentPage, notionPages.length, message, { ...stats });
+            } : undefined;
+            
+            await this.createWorkActivityFromParsedData(activityWithNotionId, clientProgressCallback);
             stats.created++;
-            debugLog.info(`Created new work activity from Notion page ${workActivityData.notionPageId}`);
+            debugLog.info(`Created new work activity from Notion page ${page.id}`);
+            if (onProgress) {
+              onProgress(currentPage, notionPages.length, `✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
+            }
           }
+
+          // Log any AI warnings
+          if (aiResult.warnings && aiResult.warnings.length > 0) {
+            const workActivityId = existingActivity?.id;
+            stats.warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page, workActivityId)}: ${w}`));
+          }
+
         } catch (error) {
           debugLog.error(`Error processing Notion page ${page.id}:`, error);
           stats.errors++;
+          stats.warnings.push(`${this.createPageReference(page)}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`);
+          if (onProgress) {
+            onProgress(currentPage, notionPages.length, `❌ Error processing page ${currentPage}/${notionPages.length}`, { ...stats });
+          }
         }
+      }
+
+      // Send final progress
+      if (onProgress) {
+        onProgress(notionPages.length, notionPages.length, `🎉 Sync completed: ${stats.created} created, ${stats.updated} updated, ${stats.errors} errors`, { ...stats });
       }
 
       debugLog.info(`Notion sync completed: ${stats.created} created, ${stats.updated} updated, ${stats.errors} errors`);
@@ -120,50 +240,276 @@ export class NotionSyncService {
   }
 
   /**
-   * Extract work activity data from a Notion page
+   * Convert a Notion page to natural text format for AI parsing
    */
-  private async extractWorkActivityData(page: any): Promise<NotionWorkActivityData | null> {
+  private async convertNotionPageToNaturalText(page: any): Promise<string> {
     try {
       const properties = page.properties;
-      
-      // Required fields
+
+      // Extract basic properties
       const clientName = this.getSelectProperty(properties, 'Client Name');
       const date = this.getDateProperty(properties, 'Date');
-      const workType = this.getSelectProperty(properties, 'Work Type') || 'Maintenance';
-      
-      if (!clientName || !date) {
-        debugLog.warn(`Missing required fields for page ${page.id}: clientName=${clientName}, date=${date}`);
-        return null;
-      }
-
-      // Optional fields
+      const workType = this.getSelectProperty(properties, 'Work Type');
       const startTime = this.getTextProperty(properties, 'Start Time');
       const endTime = this.getTextProperty(properties, 'End Time');
-      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members') || [];
+      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
       const travelTime = this.getNumberProperty(properties, 'Travel Time');
 
-      // Get page content (tasks, notes, materials)
+      // Get page content
       const pageContent = await this.getPageContent(page.id);
 
-      return {
-        notionPageId: page.id,
-        clientName,
-        date,
-        workType,
-        startTime: startTime || undefined,
-        endTime: endTime || undefined,
-        teamMembers,
-        travelTime: travelTime || undefined,
-        tasks: pageContent.tasks,
-        notes: pageContent.notes,
-        materials: pageContent.materials,
-        lastEditedTime: page.last_edited_time,
-      };
+      // Build natural text in a format similar to work notes
+      let naturalText = '';
+
+      // Add date
+      if (date) {
+        // Convert YYYY-MM-DD to M/D format for consistency with work notes
+        const dateObj = new Date(date);
+        const month = dateObj.getMonth() + 1;
+        const day = dateObj.getDate();
+        naturalText += `${month}/${day}\n`;
+      }
+
+      // Add time and team info
+      if (startTime && endTime) {
+        naturalText += `Time: ${startTime}-${endTime}`;
+        if (teamMembers && teamMembers.length > 0) {
+          // Convert team member names to abbreviations if possible
+          const memberAbbrevs = teamMembers.map(member => this.getEmployeeAbbreviation(member)).join(' & ');
+          naturalText += ` w ${memberAbbrevs}`;
+        }
+        if (travelTime) {
+          naturalText += ` inc ${travelTime} min drive`;
+        }
+        naturalText += '\n';
+      }
+
+      // Add client name
+      if (clientName) {
+        naturalText += `${clientName}\n`;
+      }
+
+      // Add work type if specified and different from default
+      if (workType && workType.toLowerCase() !== 'maintenance') {
+        naturalText += `Work Type: ${workType}\n`;
+      }
+
+      // Add tasks
+      if (pageContent.tasks) {
+        naturalText += 'Work Completed:\n';
+        naturalText += pageContent.tasks + '\n';
+      }
+
+      // Add notes
+      if (pageContent.notes) {
+        naturalText += 'Notes:\n';
+        naturalText += pageContent.notes + '\n';
+      }
+
+      // Add materials/charges
+      if (pageContent.materials && pageContent.materials.length > 0) {
+        naturalText += 'Charges:\n';
+        pageContent.materials.forEach(material => {
+          naturalText += `- ${material.description}`;
+          if (material.cost > 0) {
+            naturalText += ` ($${material.cost})`;
+          }
+          naturalText += '\n';
+        });
+      }
+
+      debugLog.info(`Converted Notion page ${page.id} to natural text (${naturalText.length} chars)`);
+      return naturalText;
+
     } catch (error) {
-      debugLog.error(`Error extracting data from Notion page ${page.id}:`, error);
-      return null;
+      debugLog.error(`Error converting Notion page ${page.id} to text:`, error);
+      return '';
     }
   }
+
+  /**
+   * Get employee abbreviation for natural text format
+   */
+  private getEmployeeAbbreviation(memberName: string): string {
+    const name = memberName.toLowerCase();
+    if (name.includes('virginia')) return 'V';
+    if (name.includes('rebecca')) return 'R';
+    if (name.includes('anne')) return 'A';
+    if (name.includes('megan')) return 'M';
+    if (name.includes('andrea')) return 'Me';
+    return memberName; // Return full name if no abbreviation found
+  }
+
+  /**
+   * Create a new work activity from AI-parsed data
+   */
+  private async createWorkActivityFromParsedData(
+    parsedActivity: any, 
+    onProgress?: (message: string) => void
+  ): Promise<void> {
+    try {
+      // Check if we need to create the client
+      const existingClients = await this.clientService.getAllClients();
+      const existingClient = existingClients.find(client => 
+        client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
+      );
+
+      if (!existingClient && onProgress) {
+        onProgress(`🏗️ Creating new client: ${parsedActivity.clientName}`);
+      }
+
+      // Ensure the client exists before validation
+      await this.ensureClientExists(parsedActivity.clientName);
+
+      // Get the client ID after ensuring it exists
+      const updatedClients = await this.clientService.getAllClients();
+      const clientRecord = updatedClients.find(client => 
+        client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
+      );
+
+      if (!clientRecord) {
+        throw new Error(`Could not find client "${parsedActivity.clientName}" after creation`);
+      }
+
+      // Get all employees for employee matching
+      const allEmployees = await this.employeeService.getAllEmployees();
+      const employeeIds: number[] = [];
+      
+      // Match employees from parsed activity
+      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
+        for (const empName of parsedActivity.employees) {
+          const matchedEmployee = allEmployees.find(emp => 
+            emp.name.toLowerCase().includes(empName.toLowerCase()) ||
+            empName.toLowerCase().includes(emp.name.toLowerCase())
+          );
+          if (matchedEmployee) {
+            employeeIds.push(matchedEmployee.id);
+          }
+        }
+      }
+
+      // Create work activity directly with correct lastUpdatedBy for Notion sync
+      const workActivity: NewWorkActivity = {
+        workType: parsedActivity.workType || 'MAINTENANCE',
+        date: parsedActivity.date,
+        status: 'completed',
+        startTime: parsedActivity.startTime || null,
+        endTime: parsedActivity.endTime || null,
+        billableHours: parsedActivity.totalHours || 0,
+        totalHours: parsedActivity.totalHours || 0,
+        hourlyRate: null,
+        clientId: clientRecord.id,
+        projectId: null,
+        travelTimeMinutes: parsedActivity.driveTime || 0,
+        breakTimeMinutes: parsedActivity.lunchTime || 0,
+        notes: parsedActivity.notes || null,
+        tasks: parsedActivity.tasks?.join('\n') || null,
+        notionPageId: parsedActivity.notionPageId, // Set Notion page ID directly
+        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastUpdatedBy: 'notion_sync' as const // Correctly mark as Notion sync from the start
+      };
+
+      // Prepare employee assignments
+      const employees = employeeIds.map(employeeId => ({
+        employeeId,
+        hours: parsedActivity.totalHours / employeeIds.length // Split hours evenly
+      }));
+
+      // Prepare charges
+      const charges = parsedActivity.charges?.map((charge: any) => ({
+        chargeType: charge.type || 'MATERIAL',
+        description: charge.description,
+        quantity: 1,
+        unitRate: charge.cost || 0,
+        totalCost: charge.cost || 0,
+        billable: true
+      })) || [];
+
+      // Create work activity directly using WorkActivityService
+      const createData: CreateWorkActivityData = {
+        workActivity,
+        employees,
+        charges
+      };
+
+      await this.workActivityService.createWorkActivity(createData);
+      debugLog.info(`✅ Created work activity from Notion with correct lastUpdatedBy: 'notion_sync'`);
+
+    } catch (error) {
+      debugLog.error('Error creating work activity from parsed data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Ensure a client exists, creating it if necessary
+   */
+  private async ensureClientExists(clientName: string): Promise<void> {
+    if (!clientName || clientName.trim() === '') {
+      throw new Error('Client name is required');
+    }
+
+    try {
+      // Check if client already exists (case-insensitive search)
+      const existingClients = await this.clientService.getAllClients();
+      const existingClient = existingClients.find(client => 
+        client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
+      );
+
+      if (existingClient) {
+        debugLog.info(`Client "${clientName}" already exists (ID: ${existingClient.id})`);
+        return;
+      }
+
+      // Create the client if it doesn't exist
+      debugLog.info(`Creating new client: "${clientName}"`);
+      const newClient = await this.clientService.createClient({
+        clientId: `notion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Generate unique ID
+        name: clientName.trim(),
+        address: '', // Empty address - can be filled in later
+        geoZone: '', // Empty geo zone - can be filled in later
+        isRecurringMaintenance: false,
+        activeStatus: 'active'
+      });
+
+      debugLog.info(`✨ Auto-created client "${clientName}" (ID: ${newClient.id}) from Notion import`);
+    } catch (error) {
+      debugLog.error(`Error ensuring client "${clientName}" exists:`, error);
+      throw new Error(`Failed to create client "${clientName}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Update an existing work activity from AI-parsed data
+   */
+  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any): Promise<void> {
+    try {
+      // For updates, we'll use a more direct approach since we already have an ID
+      const updateData = {
+        workType: parsedActivity.workType,
+        date: parsedActivity.date,
+        startTime: parsedActivity.startTime || null,
+        endTime: parsedActivity.endTime || null,
+        billableHours: parsedActivity.totalHours,
+        totalHours: parsedActivity.totalHours,
+        travelTimeMinutes: parsedActivity.driveTime || 0,
+        breakTimeMinutes: parsedActivity.lunchTime || 0,
+        notes: parsedActivity.notes || null,
+        tasks: parsedActivity.tasks?.join('\n') || null,
+        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastUpdatedBy: 'notion_sync' as const, // Mark that this update came from Notion sync
+      };
+
+      await this.workActivityService.updateWorkActivity(workActivityId, updateData);
+      debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data`);
+
+    } catch (error) {
+      debugLog.error(`Error updating work activity ${workActivityId}:`, error);
+      throw error;
+    }
+  }
+
+
 
   /**
    * Get page content (blocks) from Notion
@@ -238,146 +584,10 @@ export class NotionSyncService {
   }
 
   /**
-   * Create a new work activity from Notion data
-   */
-  private async createWorkActivityFromNotion(data: NotionWorkActivityData): Promise<void> {
-    // Find or create client
-    let client = await this.clientService.getClientByName(data.clientName);
-    if (!client) {
-      // Create basic client record
-      client = await this.clientService.createClient({
-        clientId: data.clientName.toLowerCase().replace(/\s+/g, '-'),
-        name: data.clientName,
-        address: '',
-        geoZone: 'TBD',
-      });
-    }
-
-    // Calculate total hours from start/end time if available
-    const totalHours = this.calculateHours(data.startTime, data.endTime);
-    
-    // Create work activity
-    const workActivity: NewWorkActivity = {
-      workType: data.workType,
-      date: data.date,
-      status: 'completed',
-      startTime: data.startTime || null,
-      endTime: data.endTime || null,
-      billableHours: totalHours,
-      totalHours: totalHours || 0,
-      hourlyRate: null,
-      projectId: null,
-      clientId: client.id,
-      travelTimeMinutes: data.travelTime || null,
-      breakTimeMinutes: null,
-      notes: data.notes || null,
-      tasks: data.tasks || null,
-      notionPageId: data.notionPageId,
-    };
-
-    // Get employee IDs for team members
-    const employees = await this.mapTeamMembersToEmployees(data.teamMembers);
-
-    // Create charges for materials
-    const charges = data.materials.map(material => ({
-      chargeType: 'material',
-      description: material.description,
-      quantity: 1,
-      unitRate: material.cost,
-      totalCost: material.cost,
-      billable: true,
-    }));
-
-    await this.workActivityService.createWorkActivity({
-      workActivity,
-      employees,
-      charges: charges.length > 0 ? charges : undefined,
-    });
-  }
-
-  /**
-   * Update an existing work activity with Notion data
-   */
-  private async updateWorkActivityFromNotion(workActivityId: number, data: NotionWorkActivityData): Promise<void> {
-    // Find or create client
-    let client = await this.clientService.getClientByName(data.clientName);
-    if (!client) {
-      client = await this.clientService.createClient({
-        clientId: data.clientName.toLowerCase().replace(/\s+/g, '-'),
-        name: data.clientName,
-        address: '',
-        geoZone: 'TBD',
-      });
-    }
-
-    const totalHours = this.calculateHours(data.startTime, data.endTime);
-
-    const updateData = {
-      workType: data.workType,
-      date: data.date,
-      startTime: data.startTime || null,
-      endTime: data.endTime || null,
-      billableHours: totalHours,
-      totalHours: totalHours || 0,
-      clientId: client.id,
-      travelTimeMinutes: data.travelTime || null,
-      notes: data.notes || null,
-      tasks: data.tasks || null,
-    };
-
-    await this.workActivityService.updateWorkActivity(workActivityId, updateData);
-
-    // TODO: Update employees and charges as well
-    // This would require more complex logic to handle additions/removals
-  }
-
-  /**
-   * Map team member names to employee IDs
-   */
-  private async mapTeamMembersToEmployees(teamMembers: string[]): Promise<Array<{ employeeId: number; hours: number }>> {
-    const employees = [];
-    
-    for (const memberName of teamMembers) {
-      const employee = await this.employeeService.getEmployeeByName(memberName);
-      if (employee) {
-        employees.push({ employeeId: employee.id, hours: 0 }); // Hours will need to be calculated separately
-      }
-    }
-
-    return employees;
-  }
-
-  /**
    * Check if Notion page was updated since last sync
    */
   private isNotionPageUpdated(notionLastEdited: string, dbLastUpdated: string): boolean {
     return new Date(notionLastEdited) > new Date(dbLastUpdated);
-  }
-
-  /**
-   * Calculate total hours from start and end time strings
-   */
-  private calculateHours(startTime?: string, endTime?: string): number | null {
-    if (!startTime || !endTime) return null;
-
-    try {
-      // Parse time strings like "8:45" or "3:10"
-      const [startHour, startMin] = startTime.split(':').map(Number);
-      const [endHour, endMin] = endTime.split(':').map(Number);
-      
-      const startMinutes = startHour * 60 + startMin;
-      let endMinutes = endHour * 60 + endMin;
-      
-      // Handle case where end time is next day (rare but possible)
-      if (endMinutes < startMinutes) {
-        endMinutes += 24 * 60;
-      }
-      
-      return (endMinutes - startMinutes) / 60;
-    } catch (error) {
-      debugLog.warn(`Could not parse time strings: start=${startTime}, end=${endTime}`);
-      return null;
-    }
   }
 
   // Helper methods for extracting Notion properties
@@ -443,5 +653,95 @@ export class NotionSyncService {
       debugLog.error('Error getting import stats:', error);
       throw error;
     }
+  }
+
+  /**
+   * Extract client name directly from Notion page properties
+   */
+  private extractClientNameFromNotionPage(page: any): string {
+    try {
+      if (page.properties && page.properties['Client Name'] && page.properties['Client Name'].select) {
+        return page.properties['Client Name'].select.name || 'Unknown Client';
+      }
+      if (page.properties && page.properties['Client'] && page.properties['Client'].select) {
+        return page.properties['Client'].select.name || 'Unknown Client';
+      }
+      return 'Unknown Client';
+    } catch (error) {
+      debugLog.warn(`Error extracting client name from page ${page.id}:`, error);
+      return 'Unknown Client';
+    }
+  }
+
+  /**
+   * Extract date directly from Notion page properties
+   */
+  private extractDateFromNotionPage(page: any): string {
+    try {
+      if (page.properties && page.properties['Date'] && page.properties['Date'].date) {
+        return page.properties['Date'].date.start || 'Unknown Date';
+      }
+      if (page.properties && page.properties['Work Date'] && page.properties['Work Date'].date) {
+        return page.properties['Work Date'].date.start || 'Unknown Date';
+      }
+      return 'Unknown Date';
+    } catch (error) {
+      debugLog.warn(`Error extracting date from page ${page.id}:`, error);
+      return 'Unknown Date';
+    }
+  }
+
+  /**
+   * Create a user-friendly page reference for warnings and messages
+   */
+  private createPageReference(page: any, workActivityId?: number): string {
+    const clientName = this.extractClientNameFromNotionPage(page);
+    const date = this.extractDateFromNotionPage(page);
+    
+    // Format date nicely (convert YYYY-MM-DD to M/D/YYYY)
+    let formattedDate = date;
+    try {
+      if (date !== 'Unknown Date') {
+        const dateObj = new Date(date);
+        formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
+      }
+    } catch (error) {
+      // Keep original date if parsing fails
+    }
+
+    // Create base reference
+    let reference = `"${clientName}" on ${formattedDate}`;
+    
+    // Add work activity link if available
+    if (workActivityId) {
+      reference = `[${reference}](/work-activities/${workActivityId})`;
+    }
+    
+    // Add Notion page link
+    const notionUrl = `https://notion.so/${page.id.replace(/-/g, '')}`;
+    reference += ` ([View in Notion](${notionUrl}))`;
+    
+    return reference;
+  }
+
+  /**
+   * Determine if a record should be synced from Notion based on who made the last update
+   * Prevents overwriting user changes made through the web app
+   */
+  private shouldSyncFromNotion(
+    notionLastEdited: string,
+    lastNotionSyncAt: string | null | undefined,
+    lastUpdatedBy: string | null | undefined
+  ): boolean {
+    // Simple rule: Only protect records that were last updated by the web app
+    // If lastUpdatedBy is 'web_app', don't sync to protect user changes
+    if (lastUpdatedBy === 'web_app') {
+      debugLog.debug(`Skipping sync - record was last updated by web app (lastUpdatedBy: ${lastUpdatedBy})`);
+      return false;
+    }
+    
+    // For all other cases (lastUpdatedBy === 'notion_sync' or null/undefined), allow sync
+    debugLog.debug(`Allowing sync - record was last updated by ${lastUpdatedBy || 'unknown'} (not web app)`);
+    return true;
   }
 } 

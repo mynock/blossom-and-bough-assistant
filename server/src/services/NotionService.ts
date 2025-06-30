@@ -165,6 +165,9 @@ export class NotionService {
             'Work Type': {
               select: { name: 'Maintenance' },
             },
+            'Team Members': {
+              multi_select: [{ name: 'Andrea' }],
+            },
             Title: {
               title: [{ text: { content: pageTitle } }],
             }
@@ -180,38 +183,67 @@ export class NotionService {
             // Remove the id and other metadata that shouldn't be copied
             const { id, created_time, created_by, last_edited_time, last_edited_by, archived, ...blockWithoutMeta } = block;
             
-            // Handle table blocks specially
+            // Handle table blocks specially - improved for Materials/Fees and Plant List tables
             if (block.type === 'table' && block.table) {
-              debugLog.info(`Processing table block at index ${index}`);
+              debugLog.info(`Processing table block at index ${index} with ${block.table.table_width} columns`);
               try {
                 // Get table rows
-                const tableRows = await notion.blocks.children.list({ block_id: block.id });
+                const tableRows = await notion.blocks.children.list({ 
+                  block_id: block.id,
+                  page_size: 100 // Ensure we get all rows
+                });
                 
-                // Process table rows
-                const processedRows = tableRows.results.map((row: any) => {
+                debugLog.info(`Found ${tableRows.results.length} rows in table`);
+                
+                // Process each table row, preserving structure
+                const processedRows = tableRows.results.map((row: any, rowIndex: number) => {
                   const { id, created_time, created_by, last_edited_time, last_edited_by, archived, ...rowWithoutMeta } = row;
+                  
+                  // Special handling for table_row type
+                  if (row.type === 'table_row' && row.table_row) {
+                    debugLog.debug(`Processing table row ${rowIndex} with ${row.table_row.cells?.length || 0} cells`);
+                    return {
+                      ...rowWithoutMeta,
+                      table_row: {
+                        cells: row.table_row.cells || []
+                      }
+                    };
+                  }
+                  
                   return rowWithoutMeta;
                 });
                 
                 return {
                   ...blockWithoutMeta,
                   table: {
-                    ...block.table,
-                    children: processedRows,
-                  }
+                    table_width: block.table.table_width,
+                    has_column_header: block.table.has_column_header || false,
+                    has_row_header: block.table.has_row_header || false,
+                  },
+                  children: processedRows,
                 };
               } catch (tableError) {
                 debugLog.error(`Error processing table block ${index}:`, tableError);
-                // Skip this block if we can't process it
-                return null;
+                // Return a simplified table structure as fallback
+                return {
+                  ...blockWithoutMeta,
+                  table: {
+                    table_width: block.table.table_width || 2,
+                    has_column_header: block.table.has_column_header || false,
+                    has_row_header: block.table.has_row_header || false,
+                  }
+                };
               }
             }
             
             // Handle other block types that might have children
-            if (block.has_children) {
+            if (block.has_children && block.type !== 'table') {
               debugLog.info(`Processing block with children at index ${index}, type: ${block.type}`);
               try {
-                const childBlocks = await notion.blocks.children.list({ block_id: block.id });
+                const childBlocks = await notion.blocks.children.list({ 
+                  block_id: block.id,
+                  page_size: 100
+                });
                 const processedChildren = childBlocks.results.map((child: any) => {
                   const { id, created_time, created_by, last_edited_time, last_edited_by, archived, ...childWithoutMeta } = child;
                   return childWithoutMeta;
@@ -235,13 +267,44 @@ export class NotionService {
           if (carryoverTasks.length > 0) {
             debugLog.info(`Inserting ${carryoverTasks.length} carryover tasks into template content`);
             
-            // Find the first to-do item and insert carryover tasks after it
+            // Find the first to-do item in the Tasks section and insert carryover tasks after it
             let insertIndex = -1;
+            let foundTasksSection = false;
+            
             for (let i = 0; i < processedBlocks.length; i++) {
-              if (processedBlocks[i] && (processedBlocks[i] as any).type === 'to_do') {
+              const block = processedBlocks[i] as any;
+              
+              // Look for Tasks heading first
+              if (block && block.type === 'heading_2' && 
+                  block.heading_2?.rich_text?.[0]?.text?.content?.toLowerCase().includes('task')) {
+                foundTasksSection = true;
+                debugLog.info(`Found Tasks section at index ${i}`);
+                continue;
+              }
+              
+              // Once we're in the Tasks section, find the first to-do item
+              if (foundTasksSection && block && block.type === 'to_do') {
                 insertIndex = i + 1;
-                debugLog.info(`Found first to-do at index ${i}, will insert carryover tasks at index ${insertIndex}`);
+                debugLog.info(`Found first to-do in Tasks section at index ${i}, will insert carryover tasks at index ${insertIndex}`);
                 break;
+              }
+              
+              // If we hit another heading after Tasks section, stop looking
+              if (foundTasksSection && block && block.type === 'heading_2') {
+                debugLog.info(`Reached next section at index ${i}, inserting carryover tasks here`);
+                insertIndex = i;
+                break;
+              }
+            }
+            
+            // If no specific location found, insert after first to-do (fallback to old behavior)
+            if (insertIndex === -1) {
+              for (let i = 0; i < processedBlocks.length; i++) {
+                if (processedBlocks[i] && (processedBlocks[i] as any).type === 'to_do') {
+                  insertIndex = i + 1;
+                  debugLog.info(`Fallback: Found first to-do at index ${i}, will insert carryover tasks at index ${insertIndex}`);
+                  break;
+                }
               }
             }
             
@@ -259,6 +322,17 @@ export class NotionService {
               // Insert carryover tasks at the found position
               processedBlocks.splice(insertIndex, 0, ...carryoverTaskBlocks);
               debugLog.info(`Inserted ${carryoverTasks.length} carryover tasks into template at index ${insertIndex}`);
+            } else {
+              debugLog.warn(`Could not find suitable location for carryover tasks, appending to end`);
+              const carryoverTaskBlocks = carryoverTasks.map(task => ({
+                object: 'block' as const,
+                type: 'to_do' as const,
+                to_do: {
+                  rich_text: [{ text: { content: task } }],
+                  checked: false,
+                },
+              }));
+              processedBlocks.push(...carryoverTaskBlocks);
             }
           }
           
@@ -279,9 +353,9 @@ export class NotionService {
         // The page title should automatically reflect the Name property
         debugLog.info(`Page created with title: ${pageTitle}`);
               } else {
-          // Fallback: create page without template
-          debugLog.warn('No template ID provided, creating page without template');
-          const pageTitle = `${new Date().toLocaleDateString()} - ${clientName} (Maintenance)`;
+          // Fallback: create page without template - include new template structure
+          debugLog.warn('No template ID provided, creating page with default template structure');
+          const pageTitle = `${clientName} (Maintenance)`;
           response = await notion.pages.create({
             parent: { database_id: DATABASE_ID },
             properties: {
@@ -293,12 +367,146 @@ export class NotionService {
               },
               'Work Type': {
                 select: { name: 'Maintenance' },
+              },
+              'Team Members': {
+                multi_select: [{ name: 'Andrea' }],
+              },
+              Title: {
+                title: [{ text: { content: pageTitle } }],
               }
             },
           });
-        }
 
-            // Carryover tasks are now inserted directly into the template content above
+          // Add the template structure blocks
+          const templateBlocks = [
+            // Tasks section
+            {
+              object: 'block' as const,
+              type: 'heading_2' as const,
+              heading_2: {
+                rich_text: [{ text: { content: 'Tasks' } }],
+              },
+            },
+            {
+              object: 'block' as const,
+              type: 'to_do' as const,
+              to_do: {
+                rich_text: [{ text: { content: 'To-do' } }],
+                checked: false,
+              },
+            },
+            // Add carryover tasks if any
+            ...carryoverTasks.map(task => ({
+              object: 'block' as const,
+              type: 'to_do' as const,
+              to_do: {
+                rich_text: [{ text: { content: task } }],
+                checked: false,
+              },
+            })),
+            // Notes section
+            {
+              object: 'block' as const,
+              type: 'heading_2' as const,
+              heading_2: {
+                rich_text: [{ text: { content: 'Notes' } }],
+              },
+            },
+            {
+              object: 'block' as const,
+              type: 'paragraph' as const,
+              paragraph: {
+                rich_text: [],
+              },
+            },
+            // Materials/Fees section
+            {
+              object: 'block' as const,
+              type: 'heading_2' as const,
+              heading_2: {
+                rich_text: [{ text: { content: 'Materials/Fees:' } }],
+              },
+            },
+            {
+              object: 'block' as const,
+              type: 'table' as const,
+              table: {
+                table_width: 2,
+                has_column_header: true,
+                has_row_header: false,
+                children: [
+                  {
+                    object: 'block' as const,
+                    type: 'table_row' as const,
+                    table_row: {
+                      cells: [
+                        [{ text: { content: 'Item' } }],
+                        [{ text: { content: 'Cost' } }]
+                      ],
+                    },
+                  },
+                  {
+                    object: 'block' as const,
+                    type: 'table_row' as const,
+                    table_row: {
+                      cells: [
+                        [{ text: { content: '' } }],
+                        [{ text: { content: '' } }]
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+            // Plant List section
+            {
+              object: 'block' as const,
+              type: 'heading_2' as const,
+              heading_2: {
+                rich_text: [{ text: { content: 'Plant List' } }],
+              },
+            },
+            {
+              object: 'block' as const,
+              type: 'table' as const,
+              table: {
+                table_width: 2,
+                has_column_header: true,
+                has_row_header: false,
+                children: [
+                  {
+                    object: 'block' as const,
+                    type: 'table_row' as const,
+                    table_row: {
+                      cells: [
+                        [{ text: { content: 'Name' } }],
+                        [{ text: { content: 'Number' } }]
+                      ],
+                    },
+                  },
+                  {
+                    object: 'block' as const,
+                    type: 'table_row' as const,
+                    table_row: {
+                      cells: [
+                        [{ text: { content: '' } }],
+                        [{ text: { content: '' } }]
+                      ],
+                    },
+                  },
+                ],
+              },
+            },
+          ];
+
+          // Add all the template blocks to the page
+          await notion.blocks.children.append({
+            block_id: response.id,
+            children: templateBlocks,
+          });
+
+          debugLog.info(`Created fallback page with template structure for ${clientName}`);
+        }
 
       debugLog.info(`Successfully created Notion entry for ${clientName} using template: ${TEMPLATE_ID || 'none'}`);
       return response;

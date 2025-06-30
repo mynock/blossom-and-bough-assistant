@@ -26,7 +26,7 @@ import projectsRouter from './routes/projects';
 import authRouter from './routes/auth';
 import adminRouter from './routes/admin';
 import notionRouter from './routes/notion';
-import notionSyncRouter from './routes/notionSync';
+import { createNotionSyncRouter } from './routes/notionSync';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
 import { requireAuth } from './middleware/auth';
 
@@ -135,7 +135,7 @@ app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/work-notes', requireAuth, createWorkNotesImportRouter(anthropicService));
 app.use('/api/migration', requireAuth, migrationRouter);
 app.use('/api/notion', notionRouter); // Public routes for embedded usage
-app.use('/api/notion-sync', requireAuth, notionSyncRouter); // Notion sync routes
+app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
 
 // Get all helpers

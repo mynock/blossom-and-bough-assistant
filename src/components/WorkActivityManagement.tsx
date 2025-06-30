@@ -31,6 +31,7 @@ import {
   AccessTime as TimeIcon,
   Person as PersonIcon,
   Remove as RemoveIcon,
+  Update as UpdateIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
@@ -60,6 +61,9 @@ interface WorkActivity {
   tasks?: string;
   createdAt: string;
   updatedAt: string;
+  notionPageId?: string;
+  lastNotionSyncAt?: string;
+  lastUpdatedBy?: 'web_app' | 'notion_sync';
   clientName?: string | null;
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
@@ -155,8 +159,21 @@ const WorkActivityManagement: React.FC = () => {
     try {
       const response = await apiClient.get(API_ENDPOINTS.WORK_ACTIVITIES);
       const data = await response.json();
-      setWorkActivities(data);
+      
+      // Debug logging to see what we're receiving
+      console.log('API response for work activities:', data);
+      
+      // Ensure we have an array
+      if (Array.isArray(data)) {
+        setWorkActivities(data);
+      } else {
+        console.error('Work activities API returned non-array data:', data);
+        setWorkActivities([]);
+        showSnackbar('Failed to load work activities - invalid data format', 'error');
+      }
     } catch (error) {
+      console.error('Error fetching work activities:', error);
+      setWorkActivities([]);
       showSnackbar('Failed to fetch work activities', 'error');
     } finally {
       setLoading(false);
@@ -383,6 +400,21 @@ const WorkActivityManagement: React.FC = () => {
     });
   };
 
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    return `${date.toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short',
+      day: 'numeric',
+      year: '2-digit'
+    })} ${date.toLocaleTimeString('en-US', { 
+      timeZone: 'America/Los_Angeles',
+      hour: '2-digit', 
+      minute: '2-digit' 
+    })}`;
+  };
+
   // Configure table columns
   const columns: ColumnConfig<WorkActivity>[] = [
     {
@@ -472,6 +504,43 @@ const WorkActivityManagement: React.FC = () => {
       ),
     },
     {
+      key: 'updatedAt',
+      label: 'Last Updated',
+      sortable: true,
+      render: (activity) => (
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
+          <UpdateIcon sx={{ fontSize: '0.875rem', color: 'text.secondary', mt: 0.1 }} />
+          <Box>
+            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+              {formatTimestamp(activity.updatedAt)}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+                by {activity.lastUpdatedBy === 'web_app' ? 'User' : 'Notion Sync'}
+              </Typography>
+              {activity.lastUpdatedBy === 'web_app' && (
+                <Chip 
+                  label="🛡️ Protected" 
+                  size="small" 
+                  variant="outlined"
+                  sx={{ 
+                    fontSize: '0.6rem', 
+                    height: '16px',
+                    '& .MuiChip-label': { px: 0.5 },
+                    color: 'warning.main',
+                    borderColor: 'warning.main'
+                  }}
+                />
+              )}
+            </Box>
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
+              Created: {formatTimestamp(activity.createdAt)}
+            </Typography>
+          </Box>
+        </Box>
+      ),
+    },
+    {
       key: 'status',
       label: 'Status',
       sortable: true,
@@ -523,6 +592,11 @@ const WorkActivityManagement: React.FC = () => {
         value: type,
         label: type.replace('_', ' ').toUpperCase()
       })),
+    },
+    {
+      key: 'notionPageId',
+      label: 'Notion Page ID',
+      type: 'text',
     },
   ];
 

@@ -51,6 +51,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -102,6 +104,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -149,6 +153,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -222,9 +228,16 @@ export class WorkActivityService extends DatabaseService {
    * Update a work activity
    */
   async updateWorkActivity(id: number, data: Partial<NewWorkActivity>): Promise<WorkActivity | undefined> {
+    // Set lastUpdatedBy to 'web_app' by default unless explicitly provided (for Notion sync)
+    const updateData = {
+      ...data,
+      updatedAt: this.formatTimestamp(new Date()),
+      lastUpdatedBy: data.lastUpdatedBy || 'web_app' as const
+    };
+    
     const updated = await this.db
       .update(workActivities)
-      .set({ ...data, updatedAt: this.formatTimestamp(new Date()) })
+      .set(updateData)
       .where(eq(workActivities.id, id))
       .returning();
 
@@ -304,6 +317,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -359,6 +374,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -412,6 +429,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,
@@ -465,6 +484,8 @@ export class WorkActivityService extends DatabaseService {
         notes: workActivities.notes,
         tasks: workActivities.tasks,
         notionPageId: workActivities.notionPageId,
+        lastNotionSyncAt: workActivities.lastNotionSyncAt,
+        lastUpdatedBy: workActivities.lastUpdatedBy,
         createdAt: workActivities.createdAt,
         updatedAt: workActivities.updatedAt,
         clientName: clients.name,

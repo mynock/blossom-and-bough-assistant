@@ -593,4 +593,344 @@ describe('WorkActivityService', () => {
       expect(incompleteActivity.endTime).toBeNull();
     });
   });
+
+  describe('lastUpdatedBy tracking', () => {
+    test('should set lastUpdatedBy to web_app by default when creating work activity', async () => {
+      // Mock the insert operation for creating work activity
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{
+            id: 1,
+            workType: 'maintenance',
+            date: '2024-01-15',
+            status: 'completed',
+            totalHours: 8,
+            clientId: 1,
+            lastUpdatedBy: 'web_app',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }])
+        })
+      });
+
+      // Mock the insert operation for employees
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 8,
+          clientId: 1,
+        },
+        employees: [{ employeeId: 1, hours: 8 }],
+      };
+
+      const result = await workActivityService.createWorkActivity(createData);
+
+      expect(result.lastUpdatedBy).toBe('web_app');
+    });
+
+    test('should allow explicit setting of lastUpdatedBy during creation', async () => {
+      // Mock the insert operation for creating work activity
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{
+            id: 1,
+            workType: 'maintenance',
+            date: '2024-01-15',
+            status: 'completed',
+            totalHours: 8,
+            clientId: 1,
+            lastUpdatedBy: 'notion_sync',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }])
+        })
+      });
+
+      // Mock the insert operation for employees
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 8,
+          clientId: 1,
+          lastUpdatedBy: 'notion_sync' as const,
+        },
+        employees: [{ employeeId: 1, hours: 8 }],
+      };
+
+      const result = await workActivityService.createWorkActivity(createData);
+
+      expect(result.lastUpdatedBy).toBe('notion_sync');
+    });
+
+    test('should set lastUpdatedBy to web_app by default when updating work activity', async () => {
+      // First create an activity - mock the create operation
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{
+            id: 1,
+            workType: 'maintenance',
+            date: '2024-01-15',
+            status: 'completed',
+            totalHours: 8,
+            clientId: 1,
+            lastUpdatedBy: 'web_app',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }])
+        })
+      });
+
+      // Mock the insert operation for employees
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      // Mock the update operation
+      mockDb.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            returning: jest.fn().mockResolvedValue([{
+              id: 1,
+              workType: 'maintenance',
+              date: '2024-01-15',
+              status: 'completed',
+              totalHours: 8,
+              clientId: 1,
+              notes: 'Updated notes',
+              lastUpdatedBy: 'web_app',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            }])
+          })
+        })
+      });
+
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 8,
+          clientId: 1,
+        },
+        employees: [{ employeeId: 1, hours: 8 }],
+      };
+
+      const created = await workActivityService.createWorkActivity(createData);
+
+      // Update the activity without specifying lastUpdatedBy
+      const updated = await workActivityService.updateWorkActivity(created.id, {
+        notes: 'Updated notes',
+      });
+
+      expect(updated!.lastUpdatedBy).toBe('web_app');
+    });
+
+    test('should allow explicit setting of lastUpdatedBy during update (for system operations)', async () => {
+      // First create an activity - mock the create operation
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{
+            id: 1,
+            workType: 'maintenance',
+            date: '2024-01-15',
+            status: 'completed',
+            totalHours: 8,
+            clientId: 1,
+            lastUpdatedBy: 'web_app',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }])
+        })
+      });
+
+      // Mock the insert operation for employees
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      // Mock the update operation
+      mockDb.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            returning: jest.fn().mockResolvedValue([{
+              id: 1,
+              workType: 'maintenance',
+              date: '2024-01-15',
+              status: 'completed',
+              totalHours: 8,
+              clientId: 1,
+              notes: 'Updated from Notion',
+              lastUpdatedBy: 'notion_sync',
+              createdAt: new Date(),
+              updatedAt: new Date()
+            }])
+          })
+        })
+      });
+
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 8,
+          clientId: 1,
+        },
+        employees: [{ employeeId: 1, hours: 8 }],
+      };
+
+      const created = await workActivityService.createWorkActivity(createData);
+
+      // Update the activity explicitly setting lastUpdatedBy to notion_sync
+      const updated = await workActivityService.updateWorkActivity(created.id, {
+        notes: 'Updated from Notion',
+        lastUpdatedBy: 'notion_sync' as const,
+      });
+
+      expect(updated!.lastUpdatedBy).toBe('notion_sync');
+    });
+
+    test('should preserve lastUpdatedBy when retrieving work activities', async () => {
+      // Mock the create operation
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([{
+            id: 1,
+            workType: 'maintenance',
+            date: '2024-01-15',
+            status: 'completed',
+            totalHours: 8,
+            clientId: 1,
+            lastUpdatedBy: 'notion_sync',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }])
+        })
+      });
+
+      // Mock the insert operation for employees
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      // Mock the select operation for getWorkActivityById
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            leftJoin: jest.fn().mockReturnValue({
+              where: jest.fn().mockResolvedValue([{
+                id: 1,
+                workType: 'maintenance',
+                date: '2024-01-15',
+                status: 'completed',
+                totalHours: 8,
+                clientId: 1,
+                lastUpdatedBy: 'notion_sync',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                clientName: 'Test Client',
+                projectName: null
+              }])
+            })
+          })
+        })
+      });
+
+      // Mock the employees query
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockResolvedValue([
+              { employeeId: 1, employeeName: 'Test Employee', hours: 8 }
+            ])
+          })
+        })
+      });
+
+      // Mock the charges query
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      // Mock the select operation for getAllWorkActivities
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            leftJoin: jest.fn().mockReturnValue({
+              orderBy: jest.fn().mockResolvedValue([{
+                id: 1,
+                workType: 'maintenance',
+                date: '2024-01-15',
+                status: 'completed',
+                totalHours: 8,
+                clientId: 1,
+                lastUpdatedBy: 'notion_sync',
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                clientName: 'Test Client',
+                projectName: null
+              }])
+            })
+          })
+        })
+      });
+
+      // Mock the employees query for getAllWorkActivities
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockResolvedValue([
+              { employeeId: 1, employeeName: 'Test Employee', hours: 8 }
+            ])
+          })
+        })
+      });
+
+      // Mock the charges query for getAllWorkActivities
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      // Create activity with notion_sync as lastUpdatedBy
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 8,
+          clientId: 1,
+          lastUpdatedBy: 'notion_sync' as const,
+        },
+        employees: [{ employeeId: 1, hours: 8 }],
+      };
+
+      const created = await workActivityService.createWorkActivity(createData);
+
+      // Retrieve and check
+      const retrieved = await workActivityService.getWorkActivityById(created.id);
+      expect(retrieved!.lastUpdatedBy).toBe('notion_sync');
+
+      // Also check in getAll
+      const allActivities = await workActivityService.getAllWorkActivities();
+      const foundActivity = allActivities.find(a => a.id === created.id);
+      expect(foundActivity!.lastUpdatedBy).toBe('notion_sync');
+    });
+  });
 });
