@@ -380,7 +380,7 @@ export class NotionSyncService {
         throw new Error(`Import failed: ${importResults.errors.join(', ')}`);
       }
 
-      // Update the created activity with Notion page ID
+      // Update the created activity with Notion page ID and correct lastUpdatedBy
       // We need to find the just-created activity and add the notionPageId
       await this.updateNotionPageIdForActivity(parsedActivity, preview.activities[0]);
 
@@ -459,7 +459,7 @@ export class NotionSyncService {
   }
 
   /**
-   * Update the work activity with Notion page ID after creation
+   * Update the work activity with Notion page ID after creation and correct lastUpdatedBy
    */
   private async updateNotionPageIdForActivity(parsedActivity: any, validatedActivity: any): Promise<void> {
     try {
@@ -469,24 +469,37 @@ export class NotionSyncService {
         parsedActivity.date
       );
 
+      debugLog.info(`Looking for activity to update with Notion page ID ${parsedActivity.notionPageId}. Found ${activities.length} activities on ${parsedActivity.date}`);
+
       // Find the most recently created activity that matches our criteria
-      const matchingActivity = activities
-        .filter(a => 
-          a.clientId === validatedActivity.clientId &&
-          a.totalHours === parsedActivity.totalHours &&
-          !a.notionPageId // Only activities without Notion page ID
-        )
+      const matchingActivities = activities.filter(a => 
+        a.clientId === validatedActivity.clientId &&
+        a.totalHours === parsedActivity.totalHours &&
+        a.date === parsedActivity.date &&
+        !a.notionPageId // Only activities without Notion page ID
+      );
+
+      debugLog.info(`Found ${matchingActivities.length} matching activities without Notion page ID`);
+
+      // Sort by most recent creation and take the first one
+      const matchingActivity = matchingActivities
         .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())[0];
 
       if (matchingActivity) {
+        debugLog.info(`Updating activity ${matchingActivity.id} with Notion page ID and correcting lastUpdatedBy to 'notion_sync'`);
         await this.workActivityService.updateWorkActivity(matchingActivity.id, {
           notionPageId: parsedActivity.notionPageId,
           lastNotionSyncAt: new Date(), // Mark when we synced from Notion
-          lastUpdatedBy: 'notion_sync' as const // Mark that this update came from Notion sync
+          lastUpdatedBy: 'notion_sync' as const // Correct the lastUpdatedBy value for Notion imports
         });
-        debugLog.info(`Added Notion page ID ${parsedActivity.notionPageId} to work activity ${matchingActivity.id}`);
+        debugLog.info(`✅ Successfully updated work activity ${matchingActivity.id} with Notion page ID ${parsedActivity.notionPageId} and corrected lastUpdatedBy to 'notion_sync'`);
       } else {
-        debugLog.warn(`Could not find matching work activity to update with Notion page ID ${parsedActivity.notionPageId}`);
+        debugLog.warn(`❌ Could not find matching work activity to update with Notion page ID ${parsedActivity.notionPageId}. Looking for: clientId=${validatedActivity.clientId}, totalHours=${parsedActivity.totalHours}, date=${parsedActivity.date}, no existing notionPageId`);
+        
+        // Log available activities for debugging
+        activities.forEach(a => {
+          debugLog.info(`Available activity: id=${a.id}, clientId=${a.clientId}, totalHours=${a.totalHours}, date=${a.date}, notionPageId=${a.notionPageId}, lastUpdatedBy=${a.lastUpdatedBy}`);
+        });
       }
 
     } catch (error) {
