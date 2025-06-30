@@ -219,8 +219,8 @@ export class NotionService {
                     table_width: block.table.table_width,
                     has_column_header: block.table.has_column_header || false,
                     has_row_header: block.table.has_row_header || false,
+                    children: processedRows,
                   },
-                  children: processedRows,
                 };
               } catch (tableError) {
                 debugLog.error(`Error processing table block ${index}:`, tableError);
@@ -231,8 +231,8 @@ export class NotionService {
                     table_width: block.table.table_width || 2,
                     has_column_header: block.table.has_column_header || false,
                     has_row_header: block.table.has_row_header || false,
+                    children: []
                   },
-                  children: []
                 };
               }
             }
