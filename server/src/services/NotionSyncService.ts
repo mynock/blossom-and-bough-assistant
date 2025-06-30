@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client';
-import { WorkActivityService } from './WorkActivityService';
+import { WorkActivityService, CreateWorkActivityData } from './WorkActivityService';
 import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
@@ -360,29 +360,79 @@ export class NotionSyncService {
       // Ensure the client exists before validation
       await this.ensureClientExists(parsedActivity.clientName);
 
-      // Validate the parsed activity using the same logic as work notes import
-      const mockAiResult = {
-        activities: [parsedActivity],
-        unparsedSections: [],
-        warnings: []
+      // Get the client ID after ensuring it exists
+      const updatedClients = await this.clientService.getAllClients();
+      const clientRecord = updatedClients.find(client => 
+        client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
+      );
+
+      if (!clientRecord) {
+        throw new Error(`Could not find client "${parsedActivity.clientName}" after creation`);
+      }
+
+      // Get all employees for employee matching
+      const allEmployees = await this.employeeService.getAllEmployees();
+      const employeeIds: number[] = [];
+      
+      // Match employees from parsed activity
+      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
+        for (const empName of parsedActivity.employees) {
+          const matchedEmployee = allEmployees.find(emp => 
+            emp.name.toLowerCase().includes(empName.toLowerCase()) ||
+            empName.toLowerCase().includes(emp.name.toLowerCase())
+          );
+          if (matchedEmployee) {
+            employeeIds.push(matchedEmployee.id);
+          }
+        }
+      }
+
+      // Create work activity directly with correct lastUpdatedBy for Notion sync
+      const workActivity: NewWorkActivity = {
+        workType: parsedActivity.workType || 'MAINTENANCE',
+        date: parsedActivity.date,
+        status: 'completed',
+        startTime: parsedActivity.startTime || null,
+        endTime: parsedActivity.endTime || null,
+        billableHours: parsedActivity.totalHours || 0,
+        totalHours: parsedActivity.totalHours || 0,
+        hourlyRate: null,
+        clientId: clientRecord.id,
+        projectId: null,
+        travelTimeMinutes: parsedActivity.driveTime || 0,
+        breakTimeMinutes: parsedActivity.lunchTime || 0,
+        notes: parsedActivity.notes || null,
+        tasks: parsedActivity.tasks?.join('\n') || null,
+        notionPageId: parsedActivity.notionPageId, // Set Notion page ID directly
+        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastUpdatedBy: 'notion_sync' as const // Correctly mark as Notion sync from the start
       };
 
-      const preview = await this.workNotesParserService.validateAndPreview(mockAiResult);
-      
-      if (preview.activities.length === 0 || !preview.activities[0].canImport) {
-        throw new Error(`Validation failed: ${preview.activities[0]?.validationIssues.map(i => i.message).join(', ')}`);
-      }
+      // Prepare employee assignments
+      const employees = employeeIds.map(employeeId => ({
+        employeeId,
+        hours: parsedActivity.totalHours / employeeIds.length // Split hours evenly
+      }));
 
-      // Import the validated activity
-      const importResults = await this.workNotesParserService.importActivities([preview.activities[0]]);
-      
-      if (importResults.failed > 0) {
-        throw new Error(`Import failed: ${importResults.errors.join(', ')}`);
-      }
+      // Prepare charges
+      const charges = parsedActivity.charges?.map((charge: any) => ({
+        chargeType: charge.type || 'MATERIAL',
+        description: charge.description,
+        quantity: 1,
+        unitRate: charge.cost || 0,
+        totalCost: charge.cost || 0,
+        billable: true
+      })) || [];
 
-      // Update the created activity with Notion page ID and correct lastUpdatedBy
-      // We need to find the just-created activity and add the notionPageId
-      await this.updateNotionPageIdForActivity(parsedActivity, preview.activities[0]);
+      // Create work activity directly using WorkActivityService
+      const createData: CreateWorkActivityData = {
+        workActivity,
+        employees,
+        charges
+      };
+
+      await this.workActivityService.createWorkActivity(createData);
+      debugLog.info(`✅ Created work activity from Notion with correct lastUpdatedBy: 'notion_sync'`);
 
     } catch (error) {
       debugLog.error('Error creating work activity from parsed data:', error);
@@ -458,55 +508,7 @@ export class NotionSyncService {
     }
   }
 
-  /**
-   * Update the work activity with Notion page ID after creation and correct lastUpdatedBy
-   */
-  private async updateNotionPageIdForActivity(parsedActivity: any, validatedActivity: any): Promise<void> {
-    try {
-      // Find the activity by matching client, date, and other unique characteristics
-      const activities = await this.workActivityService.getWorkActivitiesByDateRange(
-        parsedActivity.date, 
-        parsedActivity.date
-      );
 
-      debugLog.info(`Looking for activity to update with Notion page ID ${parsedActivity.notionPageId}. Found ${activities.length} activities on ${parsedActivity.date}`);
-
-      // Find the most recently created activity that matches our criteria
-      const matchingActivities = activities.filter(a => 
-        a.clientId === validatedActivity.clientId &&
-        a.totalHours === parsedActivity.totalHours &&
-        a.date === parsedActivity.date &&
-        !a.notionPageId // Only activities without Notion page ID
-      );
-
-      debugLog.info(`Found ${matchingActivities.length} matching activities without Notion page ID`);
-
-      // Sort by most recent creation and take the first one
-      const matchingActivity = matchingActivities
-        .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())[0];
-
-      if (matchingActivity) {
-        debugLog.info(`Updating activity ${matchingActivity.id} with Notion page ID and correcting lastUpdatedBy to 'notion_sync'`);
-        await this.workActivityService.updateWorkActivity(matchingActivity.id, {
-          notionPageId: parsedActivity.notionPageId,
-          lastNotionSyncAt: new Date(), // Mark when we synced from Notion
-          lastUpdatedBy: 'notion_sync' as const // Correct the lastUpdatedBy value for Notion imports
-        });
-        debugLog.info(`✅ Successfully updated work activity ${matchingActivity.id} with Notion page ID ${parsedActivity.notionPageId} and corrected lastUpdatedBy to 'notion_sync'`);
-      } else {
-        debugLog.warn(`❌ Could not find matching work activity to update with Notion page ID ${parsedActivity.notionPageId}. Looking for: clientId=${validatedActivity.clientId}, totalHours=${parsedActivity.totalHours}, date=${parsedActivity.date}, no existing notionPageId`);
-        
-        // Log available activities for debugging
-        activities.forEach(a => {
-          debugLog.info(`Available activity: id=${a.id}, clientId=${a.clientId}, totalHours=${a.totalHours}, date=${a.date}, notionPageId=${a.notionPageId}, lastUpdatedBy=${a.lastUpdatedBy}`);
-        });
-      }
-
-    } catch (error) {
-      debugLog.error('Error updating work activity with Notion page ID:', error);
-      // Don't throw here since the activity was created successfully
-    }
-  }
 
   /**
    * Get page content (blocks) from Notion
