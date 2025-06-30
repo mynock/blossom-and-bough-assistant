@@ -130,7 +130,7 @@ export class NotionSyncService {
           
           if (!naturalText.trim()) {
             debugLog.warn(`Skipping page ${page.id} - no content to parse`);
-            stats.warnings.push(`Page ${page.id}: No content to parse`);
+            stats.warnings.push(`${this.createPageReference(page)}: No content to parse`);
             if (onProgress) {
               onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no content`, { ...stats });
             }
@@ -148,7 +148,7 @@ export class NotionSyncService {
 
           if (!aiResult.activities || aiResult.activities.length === 0) {
             debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
-            stats.warnings.push(`Page ${page.id}: AI could not extract work activities`);
+            stats.warnings.push(`${this.createPageReference(page)}: AI could not extract work activities`);
             if (onProgress) {
               onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no activities found`, { ...stats });
             }
@@ -189,13 +189,14 @@ export class NotionSyncService {
 
           // Log any AI warnings
           if (aiResult.warnings && aiResult.warnings.length > 0) {
-            stats.warnings.push(...aiResult.warnings.map(w => `Page ${page.id}: ${w}`));
+            const workActivityId = existingActivity?.id;
+            stats.warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page, workActivityId)}: ${w}`));
           }
 
         } catch (error) {
           debugLog.error(`Error processing Notion page ${page.id}:`, error);
           stats.errors++;
-          stats.warnings.push(`Page ${page.id}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`);
+          stats.warnings.push(`${this.createPageReference(page)}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`);
           if (onProgress) {
             onProgress(currentPage, notionPages.length, `❌ Error processing page ${currentPage}/${notionPages.length}`, { ...stats });
           }
@@ -688,6 +689,39 @@ export class NotionSyncService {
       debugLog.warn(`Error extracting date from page ${page.id}:`, error);
       return 'Unknown Date';
     }
+  }
+
+  /**
+   * Create a user-friendly page reference for warnings and messages
+   */
+  private createPageReference(page: any, workActivityId?: number): string {
+    const clientName = this.extractClientNameFromNotionPage(page);
+    const date = this.extractDateFromNotionPage(page);
+    
+    // Format date nicely (convert YYYY-MM-DD to M/D/YYYY)
+    let formattedDate = date;
+    try {
+      if (date !== 'Unknown Date') {
+        const dateObj = new Date(date);
+        formattedDate = `${dateObj.getMonth() + 1}/${dateObj.getDate()}/${dateObj.getFullYear()}`;
+      }
+    } catch (error) {
+      // Keep original date if parsing fails
+    }
+
+    // Create base reference
+    let reference = `"${clientName}" on ${formattedDate}`;
+    
+    // Add work activity link if available
+    if (workActivityId) {
+      reference = `[${reference}](/work-activities/${workActivityId})`;
+    }
+    
+    // Add Notion page link
+    const notionUrl = `https://notion.so/${page.id.replace(/-/g, '')}`;
+    reference += ` ([View in Notion](${notionUrl}))`;
+    
+    return reference;
   }
 
   /**
