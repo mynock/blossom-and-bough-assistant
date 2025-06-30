@@ -697,27 +697,15 @@ export class NotionSyncService {
     lastNotionSyncAt: string | null | undefined,
     lastUpdatedBy: string | null | undefined
   ): boolean {
-    const notionEditTime = new Date(notionLastEdited);
-    
-    // If we've never synced from Notion, always sync
-    if (!lastNotionSyncAt) {
-      debugLog.debug(`No previous sync timestamp - will sync`);
-      return true;
-    }
-    
-    const lastSyncTime = new Date(lastNotionSyncAt);
-    
-    // If the last update was made by a user through the web app, protect it
+    // Simple rule: Only protect records that were last updated by the web app
+    // If lastUpdatedBy is 'web_app', don't sync to protect user changes
     if (lastUpdatedBy === 'web_app') {
-      // Only sync if Notion was edited after our last sync (resolves conflicts in favor of Notion)
-      const shouldSync = notionEditTime > lastSyncTime;
-      debugLog.debug(`User changes detected (lastUpdatedBy: ${lastUpdatedBy}). Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC (Notion newer)' : 'SKIP (protect user changes)'}`);
-      return shouldSync;
+      debugLog.debug(`Skipping sync - record was last updated by web app (lastUpdatedBy: ${lastUpdatedBy})`);
+      return false;
     }
     
-    // If the last update was from notion sync, always sync if Notion is newer
-    const shouldSync = notionEditTime > lastSyncTime;
-    debugLog.debug(`No user changes (lastUpdatedBy: ${lastUpdatedBy}). Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt} -> ${shouldSync ? 'SYNC' : 'SKIP (no changes)'}`);
-    return shouldSync;
+    // For all other cases (lastUpdatedBy === 'notion_sync' or null/undefined), allow sync
+    debugLog.debug(`Allowing sync - record was last updated by ${lastUpdatedBy || 'unknown'} (not web app)`);
+    return true;
   }
 } 
