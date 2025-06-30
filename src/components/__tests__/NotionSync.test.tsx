@@ -5,26 +5,36 @@ import axios from 'axios';
 import { NotionSync } from '../NotionSync';
 
 // Mock axios
-jest.mock('axios', () => ({
-  create: jest.fn(() => ({
-    get: jest.fn(),
-    post: jest.fn(),
-  })),
-}));
-
-const mockAxios = axios as jest.Mocked<typeof axios>;
 const mockApi = {
   get: jest.fn(),
   post: jest.fn(),
 };
 
+jest.mock('axios', () => ({
+  create: jest.fn(),
+}));
+
+// Mock ReactMarkdown to avoid ES module issues in tests
+jest.mock('react-markdown', () => {
+  return function MockReactMarkdown({ children }: { children: string }) {
+    return <div data-testid="react-markdown">{children}</div>;
+  };
+});
+
+// Mock remark-gfm
+jest.mock('remark-gfm', () => ({}));
+
+const mockAxios = axios as jest.Mocked<typeof axios>;
+
 describe('NotionSync - Warning Display', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    
+    // Set up axios.create to return our mock API
     mockAxios.create.mockReturnValue(mockApi as any);
     
     // Default mock responses
-    mockApi.get.mockImplementation((url) => {
+    mockApi.get.mockImplementation((url: string) => {
       if (url === '/notion-sync/status') {
         return Promise.resolve({
           data: {
@@ -38,9 +48,11 @@ describe('NotionSync - Warning Display', () => {
       if (url === '/notion-sync/stats') {
         return Promise.resolve({
           data: {
-            totalWorkActivities: 10,
-            notionImported: 8,
-            percentage: 80,
+            stats: {
+              totalWorkActivities: 10,
+              notionImported: 8,
+              percentage: 80,
+            },
           },
         });
       }
@@ -70,11 +82,11 @@ describe('NotionSync - Warning Display', () => {
 
     // Wait for component to load
     await waitFor(() => {
-      expect(screen.getByText('Notion Sync')).toBeInTheDocument();
+      expect(screen.getByText('Notion Sync with AI Parsing')).toBeInTheDocument();
     });
 
     // Click sync button
-    const syncButton = screen.getByText('Sync from Notion');
+    const syncButton = screen.getByText('Quick Sync');
     fireEvent.click(syncButton);
 
     // Wait for sync to complete
@@ -126,11 +138,11 @@ describe('NotionSync - Warning Display', () => {
     render(<NotionSync />);
 
     await waitFor(() => {
-      expect(screen.getByText('Notion Sync')).toBeInTheDocument();
+      expect(screen.getByText('Notion Sync with AI Parsing')).toBeInTheDocument();
     });
 
     // Click sync button
-    const syncButton = screen.getByText('Sync from Notion');
+    const syncButton = screen.getByText('Quick Sync');
     fireEvent.click(syncButton);
 
     // Wait for sync to complete
@@ -173,11 +185,11 @@ describe('NotionSync - Warning Display', () => {
     render(<NotionSync />);
 
     await waitFor(() => {
-      expect(screen.getByText('Notion Sync')).toBeInTheDocument();
+      expect(screen.getByText('Notion Sync with AI Parsing')).toBeInTheDocument();
     });
 
     // Click sync button
-    const syncButton = screen.getByText('Sync from Notion');
+    const syncButton = screen.getByText('Quick Sync');
     fireEvent.click(syncButton);
 
     // Wait for sync to complete
@@ -210,11 +222,11 @@ describe('NotionSync - Warning Display', () => {
     render(<NotionSync />);
 
     await waitFor(() => {
-      expect(screen.getByText('Notion Sync')).toBeInTheDocument();
+      expect(screen.getByText('Notion Sync with AI Parsing')).toBeInTheDocument();
     });
 
     // Click sync button
-    const syncButton = screen.getByText('Sync from Notion');
+    const syncButton = screen.getByText('Quick Sync');
     fireEvent.click(syncButton);
 
     // Wait for sync to complete and expand warnings
@@ -246,11 +258,11 @@ describe('NotionSync - Warning Display', () => {
     render(<NotionSync />);
 
     await waitFor(() => {
-      expect(screen.getByText('Notion Sync')).toBeInTheDocument();
+      expect(screen.getByText('Notion Sync with AI Parsing')).toBeInTheDocument();
     });
 
     // Click sync button
-    const syncButton = screen.getByText('Sync from Notion');
+    const syncButton = screen.getByText('Quick Sync');
     fireEvent.click(syncButton);
 
     // Wait for error to be displayed
