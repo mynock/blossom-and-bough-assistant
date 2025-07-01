@@ -7,12 +7,6 @@ import {
   Grid,
   Chip,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Card,
   CardContent,
   Divider,
@@ -34,7 +28,6 @@ import {
   FormControl,
   InputLabel,
   Snackbar,
-  IconButton,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -44,11 +37,11 @@ import {
   AttachMoney as MoneyIcon,
   ExpandMore as ExpandMoreIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
   LocationOn as LocationIcon,
   Flag as PriorityIcon,
   CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
+import { WorkActivitiesTable } from './WorkActivitiesTable';
 
 interface Client {
   id: number;
@@ -145,8 +138,7 @@ const ClientDetail: React.FC = () => {
   const [selectedWorkActivity, setSelectedWorkActivity] = useState<WorkActivity | null>(null);
   const [workActivityFormData, setWorkActivityFormData] = useState<Partial<WorkActivity>>({});
   
-  // Expanded rows state
-  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -310,17 +302,7 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const toggleRowExpansion = (activityId: number) => {
-    setExpandedRows(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(activityId)) {
-        newSet.delete(activityId);
-      } else {
-        newSet.add(activityId);
-      }
-      return newSet;
-    });
-  };
+
 
   if (loading) {
     return (
@@ -535,125 +517,13 @@ const ClientDetail: React.FC = () => {
             <Typography variant="h5" gutterBottom>Work Activities</Typography>
             <Divider sx={{ mb: 2 }} />
             
-            {workActivities.length === 0 ? (
-              <Alert severity="info">No work activities found for this client.</Alert>
-            ) : (
-              <TableContainer sx={{ overflowX: 'auto' }}>
-                <Table sx={{ minWidth: 800 }}>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell sx={{ width: '10%' }}>Date</TableCell>
-                      <TableCell sx={{ width: '10%' }}>Type</TableCell>
-                      <TableCell sx={{ width: '10%' }}>Status</TableCell>
-                      <TableCell sx={{ width: '12%' }}>Time</TableCell>
-                      <TableCell sx={{ width: '8%' }}>Hours</TableCell>
-                      <TableCell sx={{ width: '20%' }}>Employees</TableCell>
-                      <TableCell sx={{ width: '10%' }}>Charges</TableCell>
-                      <TableCell sx={{ width: '10%' }}>Notes/Tasks</TableCell>
-                      <TableCell sx={{ width: '10%', textAlign: 'center' }}>Actions</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {workActivities.map((activity) => (
-                      <React.Fragment key={activity.id}>
-                        <TableRow sx={{ '&:nth-of-type(odd)': { backgroundColor: 'action.hover' } }}>
-                          <TableCell>{formatDate(activity.date)}</TableCell>
-                          <TableCell>
-                            <Chip label={activity.workType} size="small" />
-                          </TableCell>
-                          <TableCell>
-                            <Chip 
-                              label={activity.status} 
-                              color={getStatusColor(activity.status) as any} 
-                              size="small" 
-                            />
-                          </TableCell>
-                          <TableCell>
-                            {activity.startTime && activity.endTime 
-                              ? `${activity.startTime} - ${activity.endTime}`
-                              : '-'
-                            }
-                          </TableCell>
-                          <TableCell sx={{ fontWeight: 600 }}>{activity.totalHours}h</TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                              {activity.employeesList.map((emp, index) => (
-                                <Chip 
-                                  key={index}
-                                  label={emp.employeeName || 'Unknown'}
-                                  size="small"
-                                  variant="outlined"
-                                  sx={{ fontSize: '0.75rem', height: '24px' }}
-                                />
-                              ))}
-                            </Box>
-                          </TableCell>
-                          <TableCell>{formatCurrency(activity.totalCharges)}</TableCell>
-                          <TableCell>
-                            {(activity.notes || activity.tasks) ? (
-                              <Button 
-                                variant="text" 
-                                size="small" 
-                                onClick={() => toggleRowExpansion(activity.id)}
-                                sx={{ minWidth: 'auto', p: 0.5 }}
-                              >
-                                {expandedRows.has(activity.id) ? 'Hide' : 'View'}
-                              </Button>
-                            ) : (
-                              <Typography variant="body2" color="text.secondary">-</Typography>
-                            )}
-                          </TableCell>
-                          <TableCell sx={{ textAlign: 'center' }}>
-                            <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                              <IconButton onClick={() => handleWorkActivityEdit(activity)} size="small" color="primary">
-                                <EditIcon />
-                              </IconButton>
-                              <IconButton onClick={() => handleWorkActivityDelete(activity)} size="small" color="error">
-                                <DeleteIcon />
-                              </IconButton>
-                            </Box>
-                          </TableCell>
-                        </TableRow>
-                        {expandedRows.has(activity.id) && (activity.notes || activity.tasks) && (
-                          <TableRow>
-                            <TableCell colSpan={9} sx={{ p: 0, borderBottom: 'none' }}>
-                              <Box sx={{ p: 3, backgroundColor: 'grey.50', borderRadius: 1, m: 1 }}>
-                                <Grid container spacing={3}>
-                                  {activity.notes && (
-                                    <Grid item xs={12} md={6}>
-                                      <Box>
-                                        <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
-                                          📝 Notes
-                                        </Typography>
-                                        <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                                          {activity.notes}
-                                        </Typography>
-                                      </Box>
-                                    </Grid>
-                                  )}
-                                  {activity.tasks && (
-                                    <Grid item xs={12} md={activity.notes ? 6 : 12}>
-                                      <Box>
-                                        <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1 }}>
-                                          ✓ Tasks
-                                        </Typography>
-                                        <Typography variant="body1" component="pre" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                                          {activity.tasks}
-                                        </Typography>
-                                      </Box>
-                                    </Grid>
-                                  )}
-                                </Grid>
-                              </Box>
-                            </TableCell>
-                          </TableRow>
-                        )}
-                      </React.Fragment>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
+            <WorkActivitiesTable
+              activities={workActivities}
+              onEdit={handleWorkActivityEdit}
+              onDelete={handleWorkActivityDelete}
+              showClientColumn={false}
+              emptyMessage="No work activities found for this client."
+            />
           </Paper>
         </Grid>
       </Grid>
