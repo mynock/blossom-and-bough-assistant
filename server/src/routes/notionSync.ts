@@ -33,6 +33,101 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   });
 
   /**
+   * POST /api/notion-sync/sync-page/:pageId
+   * Sync a specific Notion page by ID
+   */
+  router.post('/sync-page/:pageId', async (req, res) => {
+    try {
+      const { pageId } = req.params;
+      
+      if (!pageId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Page ID is required'
+        });
+      }
+
+      debugLog.info(`Manual sync of specific Notion page ${pageId} triggered via API`);
+      const stats = await notionSyncService.syncSpecificNotionPage(pageId);
+      
+      res.json({
+        success: true,
+        message: `Notion page sync completed`,
+        stats,
+        warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
+      });
+    } catch (error) {
+      debugLog.error(`Error during sync of Notion page ${req.params.pageId}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during page sync'
+      });
+    }
+  });
+
+  /**
+   * GET /api/notion-sync/sync-page-stream/:pageId
+   * Sync a specific Notion page with real-time progress updates via Server-Sent Events
+   */
+  router.get('/sync-page-stream/:pageId', async (req, res) => {
+    const { pageId } = req.params;
+    
+    if (!pageId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Page ID is required'
+      });
+    }
+
+    // Set up Server-Sent Events headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Function to send SSE data
+    const sendEvent = (eventType: string, data: any) => {
+      res.write(`event: ${eventType}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      debugLog.info(`Manual sync of specific Notion page ${pageId} with progress streaming triggered via API`);
+      
+      // Send initial event
+      sendEvent('start', { message: `Starting sync for page ${pageId}...` });
+
+      const stats = await notionSyncService.syncSpecificNotionPage(pageId, (message: string) => {
+        // Send progress update via SSE
+        sendEvent('progress', { message });
+      });
+      
+      // Send completion event
+      sendEvent('complete', {
+        success: true,
+        message: 'Notion page sync completed',
+        stats,
+        warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
+      });
+
+      res.end();
+    } catch (error) {
+      debugLog.error(`Error during sync of Notion page ${pageId} with streaming:`, error);
+      
+      // Send error event
+      sendEvent('error', {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error during page sync'
+      });
+
+      res.end();
+    }
+  });
+
+  /**
    * GET /api/notion-sync/sync-stream
    * Manually trigger a sync with real-time progress updates via Server-Sent Events
    */

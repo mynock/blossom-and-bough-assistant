@@ -22,6 +22,8 @@ import {
   AccordionSummary,
   AccordionDetails,
   Divider,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Sync,
@@ -33,6 +35,8 @@ import {
   ExpandMore,
   Shield,
   Stop,
+  Description,
+  Link,
 } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -90,6 +94,15 @@ export const NotionSync: React.FC = () => {
   const [runningSyncStats, setRunningSyncStats] = useState<SyncStats | null>(null);
   const [recentActivity, setRecentActivity] = useState<string[]>([]);
   const [currentEventSource, setCurrentEventSource] = useState<EventSource | null>(null);
+
+  // Specific page sync state
+  const [pageId, setPageId] = useState<string>('');
+  const [isPageSyncLoading, setIsPageSyncLoading] = useState(false);
+  const [pageMessage, setPageMessage] = useState<string>('');
+  const [pageError, setPageError] = useState<string>('');
+  const [pageLastSyncStats, setPageLastSyncStats] = useState<SyncStats | null>(null);
+  const [isPageStreamingSync, setIsPageStreamingSync] = useState(false);
+  const [pageRecentActivity, setPageRecentActivity] = useState<string[]>([]);
 
   useEffect(() => {
     loadSyncStatus();
@@ -271,6 +284,137 @@ export const NotionSync: React.FC = () => {
       setRunningSyncStats(null);
       setMessage('Sync stopped by user');
       setRecentActivity(prev => ['🛑 Sync stopped by user', ...prev].slice(0, 10));
+    }
+  };
+
+  const handlePageSync = async () => {
+    if (!pageId.trim()) {
+      setPageError('Please enter a valid Notion page ID');
+      return;
+    }
+
+    setIsPageSyncLoading(true);
+    setPageMessage('');
+    setPageError('');
+    setPageLastSyncStats(null);
+    
+    try {
+      const response = await api.post(`/notion-sync/sync-page/${pageId.trim()}`);
+      setPageLastSyncStats(response.data.stats);
+      setPageMessage(response.data.message);
+      
+      // Handle warnings from AI parsing
+      if (response.data.warnings && response.data.warnings.length > 0) {
+        setLastSyncWarnings(response.data.warnings);
+      }
+      
+      // Reload status and stats after sync
+      await loadSyncStatus();
+      await loadImportStats();
+    } catch (err: any) {
+      console.error('Error during page sync:', err);
+      setPageError(err.response?.data?.error || 'Page sync failed');
+    } finally {
+      setIsPageSyncLoading(false);
+    }
+  };
+
+  const handlePageSyncWithProgress = async () => {
+    if (!pageId.trim()) {
+      setPageError('Please enter a valid Notion page ID');
+      return;
+    }
+
+    setIsPageStreamingSync(true);
+    setPageMessage('');
+    setPageError('');
+    setPageLastSyncStats(null);
+    setPageRecentActivity([]);
+    
+    try {
+      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-page-stream/${pageId.trim()}`);
+      
+      eventSource.onopen = () => {
+        console.log('Page sync SSE connection opened');
+      };
+      
+      eventSource.addEventListener('start', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setPageMessage(data.message);
+        setPageRecentActivity([data.message]);
+      });
+      
+      eventSource.addEventListener('progress', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        
+        // Add to recent activity log (keep last 10 items)
+        setPageRecentActivity(prev => {
+          const newActivity = [data.message, ...prev];
+          return newActivity.slice(0, 10);
+        });
+      });
+      
+      eventSource.addEventListener('complete', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setPageLastSyncStats(data.stats);
+        setPageMessage(data.message);
+        
+        // Handle warnings from AI parsing
+        if (data.warnings && data.warnings.length > 0) {
+          setLastSyncWarnings(data.warnings);
+        }
+        
+        eventSource.close();
+        setIsPageStreamingSync(false);
+        
+        // Add completion message to activity
+        setPageRecentActivity(prev => [data.message, ...prev].slice(0, 10));
+        
+        // Reload status and stats after sync
+        loadSyncStatus();
+        loadImportStats();
+      });
+      
+      eventSource.addEventListener('error', (event: MessageEvent) => {
+        const data = JSON.parse(event.data);
+        setPageError(data.error || 'Page sync failed');
+        eventSource.close();
+        setIsPageStreamingSync(false);
+      });
+      
+      eventSource.onerror = (event) => {
+        console.error('Page sync SSE error:', event);
+        setPageError('Connection error during page sync');
+        eventSource.close();
+        setIsPageStreamingSync(false);
+      };
+      
+    } catch (err: any) {
+      console.error('Error setting up page sync stream:', err);
+      setPageError('Failed to start page sync with progress');
+      setIsPageStreamingSync(false);
+    }
+  };
+
+  const extractPageIdFromUrl = (url: string): string => {
+    // Extract page ID from Notion URL
+    // Format: https://notion.so/workspace/Page-Name-123abc456def
+    const match = url.match(/([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i);
+    return match ? match[1].replace(/-/g, '') : url;
+  };
+
+  const handlePageIdChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    // If it looks like a URL, extract the page ID
+    if (value.includes('notion.so/')) {
+      const extractedId = extractPageIdFromUrl(value);
+      setPageId(extractedId);
+    } else {
+      setPageId(value);
+    }
+    // Clear previous errors when user types
+    if (pageError) {
+      setPageError('');
     }
   };
 
@@ -570,6 +714,155 @@ export const NotionSync: React.FC = () => {
               <Alert severity="warning" sx={{ mt: 2 }}>
                 Please configure Notion token, database ID, and Anthropic API key in environment variables to enable sync.
               </Alert>
+            )}
+          </Box>
+
+          <Divider sx={{ my: 4 }} />
+
+          {/* Specific Page Sync Section */}
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Description color="primary" />
+              Sync Specific Page
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Sync a single Notion page by entering its page ID or URL. This is useful for testing or syncing individual updates.
+            </Typography>
+            
+            <Box sx={{ mb: 3 }}>
+              <TextField
+                fullWidth
+                label="Notion Page ID or URL"
+                placeholder="e.g., 123abc456def or https://notion.so/workspace/Page-Name-123abc456def"
+                value={pageId}
+                onChange={handlePageIdChange}
+                disabled={!syncStatus.configured || isPageSyncLoading || isPageStreamingSync}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Link color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+                helperText="Enter a Notion page ID (32 characters) or paste the full Notion page URL"
+                error={!!pageError}
+                sx={{ mb: 2 }}
+              />
+            </Box>
+
+            {/* Page Sync Recent Activity Log */}
+            {pageRecentActivity.length > 0 && (
+              <Box sx={{ mb: 3 }}>
+                <Card variant="outlined" sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Page Sync Activity
+                  </Typography>
+                  <Box sx={{ 
+                    maxHeight: 150, 
+                    overflowY: 'auto',
+                    bgcolor: 'grey.50',
+                    borderRadius: 1,
+                    p: 1
+                  }}>
+                    {pageRecentActivity.map((activity, index) => (
+                      <Typography 
+                        key={index} 
+                        variant="body2" 
+                        sx={{ 
+                          fontFamily: 'monospace',
+                          fontSize: '0.8rem',
+                          py: 0.25,
+                          color: activity.includes('❌') ? 'error.main' :
+                                 activity.includes('✅') ? 'success.main' :
+                                 activity.includes('✨') ? 'primary.main' :
+                                 activity.includes('⚠️') ? 'warning.main' :
+                                 'text.primary'
+                        }}
+                      >
+                        {activity}
+                      </Typography>
+                    ))}
+                  </Box>
+                </Card>
+              </Box>
+            )}
+
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                color="secondary"
+                startIcon={isPageStreamingSync ? <CircularProgress size={20} /> : <Sync />}
+                onClick={handlePageSyncWithProgress}
+                disabled={!syncStatus.configured || !pageId.trim() || isPageStreamingSync || isPageSyncLoading}
+                size="large"
+              >
+                {isPageStreamingSync ? 'Syncing Page...' : 'Sync Page with Progress'}
+              </Button>
+              
+              <Button
+                variant="outlined"
+                color="secondary"
+                startIcon={isPageSyncLoading ? <CircularProgress size={20} /> : <Sync />}
+                onClick={handlePageSync}
+                disabled={!syncStatus.configured || !pageId.trim() || isPageSyncLoading || isPageStreamingSync}
+                size="large"
+              >
+                {isPageSyncLoading ? 'Syncing...' : 'Quick Page Sync'}
+              </Button>
+            </Box>
+
+            {/* Page Sync Messages */}
+            {pageMessage && (
+              <Alert severity="success" sx={{ mt: 2 }} icon={<CheckCircle />}>
+                {pageMessage}
+              </Alert>
+            )}
+            
+            {pageError && (
+              <Alert severity="error" sx={{ mt: 2 }} icon={<Error />}>
+                {pageError}
+              </Alert>
+            )}
+
+            {/* Page Sync Results */}
+            {pageLastSyncStats && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Page Sync Results
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'success.50' }}>
+                      <Typography variant="h5" color="success.main">
+                        {pageLastSyncStats.created}
+                      </Typography>
+                      <Typography variant="body2" color="success.dark">
+                        Created
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'info.50' }}>
+                      <Typography variant="h5" color="info.main">
+                        {pageLastSyncStats.updated}
+                      </Typography>
+                      <Typography variant="body2" color="info.dark">
+                        Updated
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Paper sx={{ p: 2, textAlign: 'center', bgcolor: pageLastSyncStats.errors > 0 ? 'error.50' : 'grey.50' }}>
+                      <Typography variant="h5" color={pageLastSyncStats.errors > 0 ? 'error.main' : 'text.secondary'}>
+                        {pageLastSyncStats.errors}
+                      </Typography>
+                      <Typography variant="body2" color={pageLastSyncStats.errors > 0 ? 'error.dark' : 'text.secondary'}>
+                        Errors
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
             )}
           </Box>
 

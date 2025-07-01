@@ -91,115 +91,32 @@ export class NotionSyncService {
         const page = notionPages[i];
         const currentPage = i + 1;
         
-        try {
-          // Send progress update
+        // Send progress update
+        if (onProgress) {
+          onProgress(currentPage, notionPages.length, `Processing page ${currentPage}/${notionPages.length}...`, { ...stats });
+        }
+        
+        // Use the extracted single page processing logic
+        const result = await this.processSingleNotionPage(page, (message: string) => {
           if (onProgress) {
-            onProgress(currentPage, notionPages.length, `Processing page ${currentPage}/${notionPages.length}...`, { ...stats });
+            onProgress(currentPage, notionPages.length, message, { ...stats });
           }
-          
-          // First check if work activity already exists by Notion page ID
-          const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
-
-          if (existingActivity) {
-            // Check if we should sync this record BEFORE doing expensive AI processing
-            const shouldSync = this.shouldSyncFromNotion(
-              page.last_edited_time,
-              existingActivity.lastNotionSyncAt?.toISOString(),
-              existingActivity.lastUpdatedBy
-            );
-            
-            if (!shouldSync) {
-              // Skip AI processing entirely - we already know we won't sync
-              debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
-              
-              // We need to get the client name for the warning, but we'll extract it from Notion properties directly
-              const clientName = this.extractClientNameFromNotionPage(page);
-              const date = this.extractDateFromNotionPage(page);
-              
-              stats.warnings.push(`"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`);
-              if (onProgress) {
-                onProgress(currentPage, notionPages.length, `⚠️ Skipped: ${clientName} - local changes newer`, { ...stats });
-              }
-              continue; // Skip to next page without AI processing
-            }
-          }
-
-          // Only do expensive AI processing if we need to sync or create new activity
-          // Convert Notion page to natural text format
-          const naturalText = await this.convertNotionPageToNaturalText(page);
-          
-          if (!naturalText.trim()) {
-            debugLog.warn(`Skipping page ${page.id} - no content to parse`);
-            stats.warnings.push(`${this.createPageReference(page)}: No content to parse`);
-            if (onProgress) {
-              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no content`, { ...stats });
-            }
-            continue;
-          }
-
-          // Send AI parsing progress update
-          if (onProgress) {
-            onProgress(currentPage, notionPages.length, `Parsing page ${currentPage}/${notionPages.length} with AI...`, { ...stats });
-          }
-
-          // Use AI to parse the natural text
-          debugLog.info(`Parsing Notion page ${page.id} with AI...`);
-          const aiResult = await this.anthropicService.parseWorkNotes(naturalText);
-
-          if (!aiResult.activities || aiResult.activities.length === 0) {
-            debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
-            stats.warnings.push(`${this.createPageReference(page)}: AI could not extract work activities`);
-            if (onProgress) {
-              onProgress(currentPage, notionPages.length, `Skipped page ${currentPage}/${notionPages.length} - no activities found`, { ...stats });
-            }
-            continue;
-          }
-
-          // Use the first parsed activity (assuming one activity per Notion page)
-          const parsedActivity = aiResult.activities[0];
-          
-          // Add Notion page ID to the parsed activity
-          const activityWithNotionId = {
-            ...parsedActivity,
-            notionPageId: page.id,
-            lastEditedTime: page.last_edited_time
-          };
-
-          if (existingActivity) {
-            // We already know we should sync (checked above)
-            await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
-            stats.updated++;
-            debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
-            if (onProgress) {
-              onProgress(currentPage, notionPages.length, `✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
-            }
-          } else {
-            // Create new work activity using the validated workflow
-            const clientProgressCallback = onProgress ? (message: string) => {
-              onProgress(currentPage, notionPages.length, message, { ...stats });
-            } : undefined;
-            
-            await this.createWorkActivityFromParsedData(activityWithNotionId, clientProgressCallback);
-            stats.created++;
-            debugLog.info(`Created new work activity from Notion page ${page.id}`);
-            if (onProgress) {
-              onProgress(currentPage, notionPages.length, `✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`, { ...stats });
-            }
-          }
-
-          // Log any AI warnings
-          if (aiResult.warnings && aiResult.warnings.length > 0) {
-            const workActivityId = existingActivity?.id;
-            stats.warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page, workActivityId)}: ${w}`));
-          }
-
-        } catch (error) {
-          debugLog.error(`Error processing Notion page ${page.id}:`, error);
+        });
+        
+        // Update stats based on result
+        if (result.action === 'created') {
+          stats.created++;
+        } else if (result.action === 'updated') {
+          stats.updated++;
+        }
+        
+        if (result.warnings) {
+          stats.warnings.push(...result.warnings);
+        }
+        
+        if (result.error) {
           stats.errors++;
-          stats.warnings.push(`${this.createPageReference(page)}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`);
-          if (onProgress) {
-            onProgress(currentPage, notionPages.length, `❌ Error processing page ${currentPage}/${notionPages.length}`, { ...stats });
-          }
+          stats.warnings.push(result.error);
         }
       }
 
@@ -213,6 +130,184 @@ export class NotionSyncService {
     } catch (error) {
       debugLog.error('Error syncing Notion pages:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Sync a specific Notion page by ID
+   */
+  async syncSpecificNotionPage(
+    pageId: string,
+    onProgress?: (message: string) => void
+  ): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
+    try {
+      debugLog.info(`Starting sync for specific Notion page: ${pageId}`);
+      
+      const stats = { created: 0, updated: 0, errors: 0, warnings: [] as string[] };
+      
+      // Get the specific page from Notion
+      const page = await notion.pages.retrieve({ page_id: pageId });
+      
+      if (!page) {
+        throw new Error(`Notion page ${pageId} not found`);
+      }
+
+      if (onProgress) {
+        onProgress(`Found page: ${this.extractClientNameFromNotionPage(page)} on ${this.extractDateFromNotionPage(page)}`);
+      }
+
+      // Process the single page using the extracted logic
+      const result = await this.processSingleNotionPage(page, onProgress);
+      
+      // Update stats based on result
+      if (result.action === 'created') {
+        stats.created = 1;
+      } else if (result.action === 'updated') {
+        stats.updated = 1;
+      } else if (result.action === 'skipped') {
+        stats.warnings.push(result.message || 'Page was skipped');
+      }
+      
+      if (result.warnings) {
+        stats.warnings.push(...result.warnings);
+      }
+      
+      if (result.error) {
+        stats.errors = 1;
+        stats.warnings.push(result.error);
+      }
+
+      debugLog.info(`Specific page sync completed: ${stats.created} created, ${stats.updated} updated, ${stats.errors} errors`);
+      return stats;
+    } catch (error) {
+      debugLog.error(`Error syncing specific Notion page ${pageId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process a single Notion page (extracted from the main sync loop)
+   */
+  private async processSingleNotionPage(
+    page: any,
+    onProgress?: (message: string) => void
+  ): Promise<{
+    action: 'created' | 'updated' | 'skipped';
+    message?: string;
+    warnings?: string[];
+    error?: string;
+  }> {
+    const warnings: string[] = [];
+    
+    try {
+      // First check if work activity already exists by Notion page ID
+      const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
+
+      if (existingActivity) {
+        // Check if we should sync this record BEFORE doing expensive AI processing
+        const shouldSync = this.shouldSyncFromNotion(
+          page.last_edited_time,
+          existingActivity.lastNotionSyncAt?.toISOString(),
+          existingActivity.lastUpdatedBy
+        );
+        
+        if (!shouldSync) {
+          // Skip AI processing entirely - we already know we won't sync
+          debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
+          
+          const clientName = this.extractClientNameFromNotionPage(page);
+          const date = this.extractDateFromNotionPage(page);
+          
+          const skipMessage = `"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`;
+          if (onProgress) {
+            onProgress(`⚠️ Skipped: ${clientName} - local changes newer`);
+          }
+          return { action: 'skipped', message: skipMessage };
+        }
+      }
+
+      // Only do expensive AI processing if we need to sync or create new activity
+      // Convert Notion page to natural text format
+      const naturalText = await this.convertNotionPageToNaturalText(page);
+      
+      if (!naturalText.trim()) {
+        debugLog.warn(`Skipping page ${page.id} - no content to parse`);
+        const skipMessage = `${this.createPageReference(page)}: No content to parse`;
+        if (onProgress) {
+          onProgress(`Skipped - no content to parse`);
+        }
+        return { action: 'skipped', message: skipMessage };
+      }
+
+      // Send AI parsing progress update
+      if (onProgress) {
+        onProgress(`Parsing page with AI...`);
+      }
+
+      // Use AI to parse the natural text
+      debugLog.info(`Parsing Notion page ${page.id} with AI...`);
+      const aiResult = await this.anthropicService.parseWorkNotes(naturalText);
+
+      if (!aiResult.activities || aiResult.activities.length === 0) {
+        debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
+        const skipMessage = `${this.createPageReference(page)}: AI could not extract work activities`;
+        if (onProgress) {
+          onProgress(`Skipped - no activities found`);
+        }
+        return { action: 'skipped', message: skipMessage };
+      }
+
+      // Use the first parsed activity (assuming one activity per Notion page)
+      const parsedActivity = aiResult.activities[0];
+      
+      // Add Notion page ID to the parsed activity
+      const activityWithNotionId = {
+        ...parsedActivity,
+        notionPageId: page.id,
+        lastEditedTime: page.last_edited_time
+      };
+
+      if (existingActivity) {
+        // We already know we should sync (checked above)
+        await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
+        debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
+        if (onProgress) {
+          onProgress(`✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
+        }
+        
+        // Log any AI warnings
+        if (aiResult.warnings && aiResult.warnings.length > 0) {
+          warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page, existingActivity.id)}: ${w}`));
+        }
+        
+        return { action: 'updated', warnings: warnings.length > 0 ? warnings : undefined };
+      } else {
+        // Create new work activity using the validated workflow
+        const clientProgressCallback = onProgress ? (message: string) => {
+          onProgress(message);
+        } : undefined;
+        
+        await this.createWorkActivityFromParsedData(activityWithNotionId, clientProgressCallback);
+        debugLog.info(`Created new work activity from Notion page ${page.id}`);
+        if (onProgress) {
+          onProgress(`✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
+        }
+        
+        // Log any AI warnings
+        if (aiResult.warnings && aiResult.warnings.length > 0) {
+          warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page)}: ${w}`));
+        }
+        
+        return { action: 'created', warnings: warnings.length > 0 ? warnings : undefined };
+      }
+
+    } catch (error) {
+      debugLog.error(`Error processing Notion page ${page.id}:`, error);
+      const errorMessage = `${this.createPageReference(page)}: Processing error - ${error instanceof Error ? error.message : 'Unknown error'}`;
+      if (onProgress) {
+        onProgress(`❌ Error processing page`);
+      }
+      return { action: 'skipped', error: errorMessage };
     }
   }
 
@@ -348,6 +443,13 @@ export class NotionSyncService {
     onProgress?: (message: string) => void
   ): Promise<void> {
     try {
+      // Calculate total hours if missing or zero and we have start/end times
+      const calculatedTotalHours = this.calculateTotalHours(parsedActivity);
+      if (calculatedTotalHours !== null && (!parsedActivity.totalHours || parsedActivity.totalHours === 0)) {
+        parsedActivity.totalHours = calculatedTotalHours;
+        debugLog.info(`📊 Calculated total hours for ${parsedActivity.clientName} on ${parsedActivity.date}: ${calculatedTotalHours}h from ${parsedActivity.startTime}-${parsedActivity.endTime} with ${parsedActivity.employees?.length || 1} employee(s)`);
+      }
+
       // Check if we need to create the client
       const existingClients = await this.clientService.getAllClients();
       const existingClient = existingClients.find(client => 
@@ -388,6 +490,13 @@ export class NotionSyncService {
         }
       }
 
+      // Calculate billable hours
+      const billableHours = this.calculateBillableHours(
+        parsedActivity.totalHours || 0, 
+        parsedActivity.driveTime, 
+        parsedActivity.lunchTime
+      );
+
       // Create work activity directly with correct lastUpdatedBy for Notion sync
       const workActivity: NewWorkActivity = {
         workType: parsedActivity.workType || 'MAINTENANCE',
@@ -395,7 +504,7 @@ export class NotionSyncService {
         status: 'completed',
         startTime: parsedActivity.startTime || null,
         endTime: parsedActivity.endTime || null,
-        billableHours: parsedActivity.totalHours || 0,
+        billableHours: billableHours,
         totalHours: parsedActivity.totalHours || 0,
         hourlyRate: null,
         clientId: clientRecord.id,
@@ -409,10 +518,12 @@ export class NotionSyncService {
         lastUpdatedBy: 'notion_sync' as const // Correctly mark as Notion sync from the start
       };
 
-      // Prepare employee assignments
+      // Prepare employee assignments - each employee gets the full work duration
+      // Since totalHours is already duration × employees, we need to get back to the base duration
+      const workDuration = employeeIds.length > 0 ? parsedActivity.totalHours / employeeIds.length : parsedActivity.totalHours;
       const employees = employeeIds.map(employeeId => ({
         employeeId,
-        hours: parsedActivity.totalHours / employeeIds.length // Split hours evenly
+        hours: workDuration // Each employee gets the work duration
       }));
 
       // Prepare charges
@@ -484,14 +595,28 @@ export class NotionSyncService {
    */
   private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any): Promise<void> {
     try {
+      // Calculate total hours if missing or zero and we have start/end times
+      const calculatedTotalHours = this.calculateTotalHours(parsedActivity);
+      if (calculatedTotalHours !== null && (!parsedActivity.totalHours || parsedActivity.totalHours === 0)) {
+        parsedActivity.totalHours = calculatedTotalHours;
+        debugLog.info(`📊 Calculated total hours for update ${workActivityId}: ${calculatedTotalHours}h from ${parsedActivity.startTime}-${parsedActivity.endTime} with ${parsedActivity.employees?.length || 1} employee(s)`);
+      }
+
+      // Calculate billable hours
+      const billableHours = this.calculateBillableHours(
+        parsedActivity.totalHours || 0, 
+        parsedActivity.driveTime, 
+        parsedActivity.lunchTime
+      );
+
       // For updates, we'll use a more direct approach since we already have an ID
       const updateData = {
         workType: parsedActivity.workType,
         date: parsedActivity.date,
         startTime: parsedActivity.startTime || null,
         endTime: parsedActivity.endTime || null,
-        billableHours: parsedActivity.totalHours,
-        totalHours: parsedActivity.totalHours,
+        billableHours: billableHours,
+        totalHours: parsedActivity.totalHours || 0,
         travelTimeMinutes: parsedActivity.driveTime || 0,
         breakTimeMinutes: parsedActivity.lunchTime || 0,
         notes: parsedActivity.notes || null,
@@ -508,8 +633,6 @@ export class NotionSyncService {
       throw error;
     }
   }
-
-
 
   /**
    * Get page content (blocks) from Notion
@@ -743,5 +866,75 @@ export class NotionSyncService {
     // For all other cases (lastUpdatedBy === 'notion_sync' or null/undefined), allow sync
     debugLog.debug(`Allowing sync - record was last updated by ${lastUpdatedBy || 'unknown'} (not web app)`);
     return true;
+  }
+
+  /**
+   * Calculate total hours from start time, end time, and number of employees
+   * Returns null if calculation is not possible
+   */
+  private calculateTotalHours(parsedActivity: any): number | null {
+    if (!parsedActivity.startTime || !parsedActivity.endTime) {
+      return null;
+    }
+
+    try {
+      // Parse times - they should be in HH:MM format
+      const startParts = parsedActivity.startTime.split(':');
+      const endParts = parsedActivity.endTime.split(':');
+      
+      if (startParts.length !== 2 || endParts.length !== 2) {
+        return null;
+      }
+
+      const startHour = parseInt(startParts[0], 10);
+      const startMinute = parseInt(startParts[1], 10);
+      const endHour = parseInt(endParts[0], 10);
+      const endMinute = parseInt(endParts[1], 10);
+
+      if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+        return null;
+      }
+
+      // Convert to minutes
+      const startMinutes = startHour * 60 + startMinute;
+      let endMinutes = endHour * 60 + endMinute;
+
+      // Handle overnight work (end time is next day)
+      if (endMinutes <= startMinutes) {
+        endMinutes += 24 * 60; // Add 24 hours
+      }
+
+      const durationMinutes = endMinutes - startMinutes;
+      const durationHours = durationMinutes / 60;
+
+      // Multiply by number of employees to get total person-hours
+      const employeeCount = parsedActivity.employees?.length || 1;
+      const totalHours = durationHours * employeeCount;
+
+      return Math.round(totalHours * 100) / 100; // Round to 2 decimal places
+    } catch (error) {
+      debugLog.error('Error calculating total hours:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate billable hours from total hours minus non-billable time
+   */
+  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number): number {
+    let nonBillableHours = 0;
+    
+    if (driveTime) {
+      nonBillableHours += driveTime / 60; // Convert minutes to hours
+    }
+    
+    if (lunchTime) {
+      nonBillableHours += lunchTime / 60; // Convert minutes to hours
+    }
+    
+    const billableHours = totalHours - nonBillableHours;
+    
+    // Ensure billable hours is not negative
+    return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
   }
 } 
