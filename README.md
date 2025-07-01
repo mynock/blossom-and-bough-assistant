@@ -395,3 +395,36 @@ The React app includes:
 - **Auth Context**: Manages user state across the app
 - **Protected Routes**: Automatically redirects unauthenticated users
 - **User Menu**: Shows user avatar, name, and logout option in navigation 
+
+## API Documentation
+
+### Notion Sync Endpoints
+
+The application provides several endpoints for syncing with Notion:
+
+#### Sync All Pages
+- **POST** `/api/notion-sync/sync` - Sync all Notion pages
+- **GET** `/api/notion-sync/sync-stream` - Sync all pages with real-time progress
+
+#### Sync Specific Page
+- **POST** `/api/notion-sync/sync-page/:pageId` - Sync a specific Notion page by ID
+- **POST** `/api/notion-sync/sync-page-stream/:pageId` - Sync a specific page with real-time progress
+
+#### Usage Examples
+
+**Sync a specific page:**
+```bash
+curl -X POST http://localhost:3001/api/notion-sync/sync-page/YOUR_PAGE_ID
+```
+
+**Sync a specific page with streaming progress:**
+```bash
+curl -X POST http://localhost:3001/api/notion-sync/sync-page-stream/YOUR_PAGE_ID
+```
+
+**Get Notion page ID:**
+- In Notion, click on a page and copy the URL
+- The page ID is the part after the last `/` in the URL (without hyphens)
+- Example: `https://notion.so/workspace/Page-Name-123abc456def` → page ID is `123abc456def`
+
+## Features 
