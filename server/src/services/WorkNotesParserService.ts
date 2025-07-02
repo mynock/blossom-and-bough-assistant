@@ -187,7 +187,7 @@ export class WorkNotesParserService {
           status: 'completed', // Default to completed for imported activities
           startTime: activity.startTime,
           endTime: activity.endTime,
-          billableHours: activity.totalHours, // Assume all hours are billable unless specified
+          billableHours: this.calculateBillableHours(activity.totalHours, activity.driveTime, activity.lunchTime),
           totalHours: activity.totalHours,
           hourlyRate: null, // Will be set based on client rate
           clientId: activity.clientId || null,
@@ -199,10 +199,12 @@ export class WorkNotesParserService {
           lastUpdatedBy: 'web_app' as const // Explicitly mark as web app import
         };
 
-        // Prepare employee assignments
+        // Prepare employee assignments - each employee gets the work duration
+        // Since totalHours is already duration × employees, we need to get back to the base duration
+        const workDuration = activity.employeeIds.length > 0 ? activity.totalHours / activity.employeeIds.length : activity.totalHours;
         const employees = activity.employeeIds.map(employeeId => ({
           employeeId,
-          hours: activity.totalHours / activity.employeeIds.length // Split hours evenly
+          hours: workDuration // Each employee gets the work duration
         }));
 
         // Prepare charges
@@ -312,6 +314,13 @@ export class WorkNotesParserService {
     for (const activity of activities) {
       const validationIssues: ValidationIssue[] = [];
       
+      // Calculate total hours if missing or zero and we have start/end times
+      const calculatedTotalHours = this.calculateTotalHours(activity);
+      if (calculatedTotalHours !== null && (!activity.totalHours || activity.totalHours === 0)) {
+        activity.totalHours = calculatedTotalHours;
+        console.log(`📊 Calculated total hours for ${activity.clientName} on ${activity.date}: ${calculatedTotalHours}h from ${activity.startTime}-${activity.endTime} with ${activity.employees.length} employee(s)`);
+      }
+      
       // Find matches for this activity
       const clientMatch = clientMatches.find(c => c.originalName === activity.clientName);
       const activityEmployeeMatches = activity.employees.map(empName => 
@@ -420,6 +429,75 @@ export class WorkNotesParserService {
     }
 
     return validatedActivities;
+  }
+
+  /**
+   * Calculate total hours from start time, end time, and number of employees
+   * Returns null if calculation is not possible
+   */
+  private calculateTotalHours(activity: ParsedWorkActivity): number | null {
+    if (!activity.startTime || !activity.endTime || activity.employees.length === 0) {
+      return null;
+    }
+
+    try {
+      // Parse times - they should be in HH:MM format
+      const startParts = activity.startTime.split(':');
+      const endParts = activity.endTime.split(':');
+      
+      if (startParts.length !== 2 || endParts.length !== 2) {
+        return null;
+      }
+
+      const startHour = parseInt(startParts[0], 10);
+      const startMinute = parseInt(startParts[1], 10);
+      const endHour = parseInt(endParts[0], 10);
+      const endMinute = parseInt(endParts[1], 10);
+
+      if (isNaN(startHour) || isNaN(startMinute) || isNaN(endHour) || isNaN(endMinute)) {
+        return null;
+      }
+
+      // Convert to minutes
+      const startMinutes = startHour * 60 + startMinute;
+      let endMinutes = endHour * 60 + endMinute;
+
+      // Handle overnight work (end time is next day)
+      if (endMinutes <= startMinutes) {
+        endMinutes += 24 * 60; // Add 24 hours
+      }
+
+      const durationMinutes = endMinutes - startMinutes;
+      const durationHours = durationMinutes / 60;
+
+      // Multiply by number of employees to get total person-hours
+      const totalHours = durationHours * activity.employees.length;
+
+      return Math.round(totalHours * 100) / 100; // Round to 2 decimal places
+    } catch (error) {
+      console.error('Error calculating total hours:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate billable hours from total hours minus non-billable time
+   */
+  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number): number {
+    let nonBillableHours = 0;
+    
+    if (driveTime) {
+      nonBillableHours += driveTime / 60; // Convert minutes to hours
+    }
+    
+    if (lunchTime) {
+      nonBillableHours += lunchTime / 60; // Convert minutes to hours
+    }
+    
+    const billableHours = totalHours - nonBillableHours;
+    
+    // Ensure billable hours is not negative
+    return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
   }
 
   /**

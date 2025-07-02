@@ -11,24 +11,22 @@ jest.mock('../../services/EmployeeService');
 jest.mock('../../services/AnthropicService');
 jest.mock('../../services/WorkNotesParserService');
 
-// Mock Notion client
-jest.mock('@notionhq/client', () => {
-  const mockMethods = {
+// Mock the Notion client
+jest.mock('@notionhq/client', () => ({
+  Client: jest.fn().mockImplementation(() => ({
+    pages: {
+      retrieve: jest.fn()
+    },
     databases: {
-      query: jest.fn(),
+      query: jest.fn()
     },
     blocks: {
       children: {
-        list: jest.fn(),
-      },
-    },
-  };
-  
-  return {
-    Client: jest.fn().mockImplementation(() => mockMethods),
-    __mockMethods: mockMethods, // Export the methods for access in tests
-  };
-});
+        list: jest.fn()
+      }
+    }
+  }))
+}));
 
 // Mock environment variables
 process.env.NOTION_TOKEN = 'test-token';
@@ -553,3 +551,104 @@ describe('NotionSyncService - Conflict Prevention', () => {
     });
   });
 });
+
+describe('NotionSyncService Hours Calculation', () => {
+  let notionSyncService: NotionSyncService;
+  let mockAnthropicService: jest.Mocked<AnthropicService>;
+
+  beforeEach(() => {
+    mockAnthropicService = new AnthropicService() as jest.Mocked<AnthropicService>;
+    notionSyncService = new NotionSyncService(mockAnthropicService);
+  });
+
+  describe('calculateTotalHours', () => {
+    it('should calculate total hours for single employee correctly', () => {
+      const parsedActivity = {
+        startTime: '09:00',
+        endTime: '11:05',
+        employees: ['Virginia'],
+        date: '2025-05-16',
+        clientName: 'LaLumiere',
+        workType: 'Maintenance',
+        tasks: [],
+        notes: '',
+        totalHours: 0
+      };
+
+      // Use reflection to access private method
+      const calculateTotalHours = (notionSyncService as any).calculateTotalHours.bind(notionSyncService);
+      const result = calculateTotalHours(parsedActivity);
+
+      // 2 hours 5 minutes = 2.083 hours, rounded to 2.08
+      expect(result).toBe(2.08);
+    });
+
+    it('should calculate total hours for multiple employees correctly', () => {
+      const parsedActivity = {
+        startTime: '09:00',
+        endTime: '11:05',
+        employees: ['Virginia', 'Anne'],
+        date: '2025-05-16',
+        clientName: 'LaLumiere',
+        workType: 'Maintenance',
+        tasks: [],
+        notes: '',
+        totalHours: 0
+      };
+
+      const calculateTotalHours = (notionSyncService as any).calculateTotalHours.bind(notionSyncService);
+      const result = calculateTotalHours(parsedActivity);
+
+      // 2 hours 5 minutes * 2 employees = 4.16 hours
+      expect(result).toBe(4.17);
+    });
+
+    it('should return null for missing time information', () => {
+      const parsedActivity = {
+        employees: ['Virginia'],
+        date: '2025-05-16',
+        clientName: 'LaLumiere',
+        workType: 'Maintenance',
+        tasks: [],
+        notes: '',
+        totalHours: 0
+      };
+
+      const calculateTotalHours = (notionSyncService as any).calculateTotalHours.bind(notionSyncService);
+      const result = calculateTotalHours(parsedActivity);
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('calculateBillableHours', () => {
+    it('should calculate billable hours correctly with no non-billable time', () => {
+      const calculateBillableHours = (notionSyncService as any).calculateBillableHours.bind(notionSyncService);
+      const result = calculateBillableHours(4.0);
+
+      expect(result).toBe(4.0);
+    });
+
+    it('should calculate billable hours correctly with drive time', () => {
+      const calculateBillableHours = (notionSyncService as any).calculateBillableHours.bind(notionSyncService);
+      const result = calculateBillableHours(4.0, 30); // 30 minutes drive time
+
+      expect(result).toBe(3.5); // 4.0 - 0.5 hours
+    });
+
+    it('should calculate billable hours correctly with both drive and lunch time', () => {
+      const calculateBillableHours = (notionSyncService as any).calculateBillableHours.bind(notionSyncService);
+      const result = calculateBillableHours(8.0, 30, 60); // 30 min drive, 60 min lunch
+
+      expect(result).toBe(6.5); // 8.0 - 0.5 - 1.0 hours
+    });
+
+    it('should not return negative billable hours', () => {
+      const calculateBillableHours = (notionSyncService as any).calculateBillableHours.bind(notionSyncService);
+      const result = calculateBillableHours(1.0, 90); // 1 hour total, 90 minutes non-billable
+
+      expect(result).toBe(0); // Should not go negative
+    });
+  });
+});
+

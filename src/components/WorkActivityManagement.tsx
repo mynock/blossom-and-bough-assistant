@@ -8,7 +8,7 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-
+  Chip,
   IconButton,
   Alert,
   Snackbar,
@@ -63,8 +63,18 @@ interface WorkActivity {
   clientName?: string | null;
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
-  chargesList: Array<any>;
+  chargesList: Array<OtherCharge>;
   totalCharges: number;
+}
+
+interface OtherCharge {
+  id?: number;
+  chargeType: string;
+  description: string;
+  quantity?: number;
+  unitRate?: number;
+  totalCost: number;
+  billable: boolean;
 }
 
 interface Project {
@@ -125,6 +135,17 @@ const WorkActivityManagement: React.FC = () => {
   
   // State for employee selection dropdown
   const [employeeToAdd, setEmployeeToAdd] = useState<number | ''>('');
+  
+  // Charges state
+  const [selectedCharges, setSelectedCharges] = useState<Omit<OtherCharge, 'id'>[]>([]);
+  const [chargeFormData, setChargeFormData] = useState({
+    chargeType: 'material',
+    description: '',
+    quantity: 1,
+    unitRate: 0,
+    totalCost: 0,
+    billable: true
+  });
   
   // Editor states for WYSIWYG
   const [notesEditorState, setNotesEditorState] = useState(() => EditorState.createEmpty());
@@ -199,11 +220,20 @@ const WorkActivityManagement: React.FC = () => {
         breakTimeMinutes: 30,
       });
       setSelectedEmployees([]);
+      setSelectedCharges([]);
       // Reset editor states
       setNotesEditorState(EditorState.createEmpty());
       setTasksEditorState(EditorState.createEmpty());
-      // Reset employee dropdown
+      // Reset employee dropdown and charge form
       setEmployeeToAdd('');
+      setChargeFormData({
+        chargeType: 'material',
+        description: '',
+        quantity: 1,
+        unitRate: 0,
+        totalCost: 0,
+        billable: true
+      });
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
@@ -246,11 +276,28 @@ const WorkActivityManagement: React.FC = () => {
       employeeId: emp.employeeId,
       hours: emp.hours
     })));
+    // Initialize charges
+    setSelectedCharges(activity.chargesList.map(charge => ({
+      chargeType: charge.chargeType,
+      description: charge.description,
+      quantity: charge.quantity,
+      unitRate: charge.unitRate,
+      totalCost: charge.totalCost,
+      billable: charge.billable
+    })));
     // Initialize editor states with existing content
     setNotesEditorState(htmlToEditorState(activity.notes || ''));
     setTasksEditorState(htmlToEditorState(activity.tasks || ''));
-    // Reset employee dropdown
+    // Reset employee dropdown and charge form
     setEmployeeToAdd('');
+    setChargeFormData({
+      chargeType: 'material',
+      description: '',
+      quantity: 1,
+      unitRate: 0,
+      totalCost: 0,
+      billable: true
+    });
     setIsCreating(false);
     setEditDialogOpen(true);
   };
@@ -267,11 +314,20 @@ const WorkActivityManagement: React.FC = () => {
       breakTimeMinutes: 30,
     });
     setSelectedEmployees([]);
+    setSelectedCharges([]);
     // Reset editor states
     setNotesEditorState(EditorState.createEmpty());
     setTasksEditorState(EditorState.createEmpty());
-    // Reset employee dropdown
+    // Reset employee dropdown and charge form
     setEmployeeToAdd('');
+    setChargeFormData({
+      chargeType: 'material',
+      description: '',
+      quantity: 1,
+      unitRate: 0,
+      totalCost: 0,
+      billable: true
+    });
     setIsCreating(true);
     setEditDialogOpen(true);
   };
@@ -286,7 +342,7 @@ const WorkActivityManagement: React.FC = () => {
       const requestData = {
         workActivity: formData,
         employees: selectedEmployees,
-        charges: [] // TODO: Add charges support
+        charges: selectedCharges
       };
 
       const url = isCreating ? '/api/work-activities' : `/api/work-activities/${selectedActivity?.id}`;
@@ -371,6 +427,52 @@ const WorkActivityManagement: React.FC = () => {
     ));
   };
 
+  // Charge management functions
+  const handleAddCharge = () => {
+    if (!chargeFormData.description.trim()) {
+      showSnackbar('Please enter a charge description', 'error');
+      return;
+    }
+
+    const newCharge: Omit<OtherCharge, 'id'> = {
+      chargeType: chargeFormData.chargeType,
+      description: chargeFormData.description.trim(),
+      quantity: chargeFormData.quantity || 1,
+      unitRate: chargeFormData.unitRate || 0,
+      totalCost: chargeFormData.totalCost || 0,
+      billable: chargeFormData.billable
+    };
+
+    setSelectedCharges(prev => [...prev, newCharge]);
+    
+    // Reset form
+    setChargeFormData({
+      chargeType: 'material',
+      description: '',
+      quantity: 1,
+      unitRate: 0,
+      totalCost: 0,
+      billable: true
+    });
+  };
+
+  const handleRemoveCharge = (index: number) => {
+    setSelectedCharges(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleChargeFormChange = (field: keyof typeof chargeFormData, value: any) => {
+    setChargeFormData(prev => {
+      const updated = { ...prev, [field]: value };
+      
+      // Auto-calculate total cost when quantity or unit rate changes
+      if (field === 'quantity' || field === 'unitRate') {
+        updated.totalCost = (updated.quantity || 0) * (updated.unitRate || 0);
+      }
+      
+      return updated;
+    });
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'planned': return 'info';
@@ -409,6 +511,7 @@ const WorkActivityManagement: React.FC = () => {
       minute: '2-digit' 
     })}`;
   };
+
 
 
 
@@ -733,6 +836,175 @@ const WorkActivityManagement: React.FC = () => {
                     );
                   })}
                 </List>
+              )}
+            </Grid>
+
+            {/* Other Charges Section */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                💰 Other Charges
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Add materials, services, debris removal, or other billable charges for this work activity.
+              </Typography>
+              
+              {/* Add Charge Form */}
+              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  Add New Charge
+                </Typography>
+                
+                <Grid container spacing={2} alignItems="flex-end">
+                  <Grid item xs={12} sm={6} md={2}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Type</InputLabel>
+                      <Select
+                        value={chargeFormData.chargeType}
+                        onChange={(e) => handleChargeFormChange('chargeType', e.target.value)}
+                        label="Type"
+                      >
+                        <MenuItem value="material">Material</MenuItem>
+                        <MenuItem value="service">Service</MenuItem>
+                        <MenuItem value="debris">Debris</MenuItem>
+                        <MenuItem value="delivery">Delivery</MenuItem>
+                        <MenuItem value="equipment">Equipment</MenuItem>
+                        <MenuItem value="other">Other</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Description *"
+                      fullWidth
+                      size="small"
+                      value={chargeFormData.description}
+                      onChange={(e) => handleChargeFormChange('description', e.target.value)}
+                      placeholder="e.g., 1 bag debris, 3 astrantia plants, mulch delivery"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={1.5}>
+                    <TextField
+                      label="Quantity"
+                      type="number"
+                      fullWidth
+                      size="small"
+                      value={chargeFormData.quantity}
+                      onChange={(e) => handleChargeFormChange('quantity', parseFloat(e.target.value) || 0)}
+                      inputProps={{ min: 0, step: 0.1 }}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={1.5}>
+                    <TextField
+                      label="Unit Rate"
+                      type="number"
+                      fullWidth
+                      size="small"
+                      value={chargeFormData.unitRate}
+                      onChange={(e) => handleChargeFormChange('unitRate', parseFloat(e.target.value) || 0)}
+                      inputProps={{ min: 0, step: 0.01 }}
+                      InputProps={{
+                        startAdornment: <Typography sx={{ mr: 0.5, color: 'text.secondary' }}>$</Typography>
+                      }}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={1.5}>
+                    <TextField
+                      label="Total Cost"
+                      type="number"
+                      fullWidth
+                      size="small"
+                      value={chargeFormData.totalCost}
+                      onChange={(e) => handleChargeFormChange('totalCost', parseFloat(e.target.value) || 0)}
+                      inputProps={{ min: 0, step: 0.01 }}
+                      InputProps={{
+                        startAdornment: <Typography sx={{ mr: 0.5, color: 'text.secondary' }}>$</Typography>
+                      }}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={1}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleAddCharge}
+                      startIcon={<AddIcon />}
+                      sx={{ height: 40 }}
+                    >
+                      Add
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
+              
+              {/* Charges List */}
+              {selectedCharges.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2, textAlign: 'center', border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+                  No charges added yet. Use the form above to add materials, services, or other billable items.
+                </Typography>
+              ) : (
+                <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Added Charges (Total: ${selectedCharges.reduce((sum, charge) => sum + charge.totalCost, 0).toFixed(2)})
+                    </Typography>
+                  </Box>
+                  
+                  <List dense>
+                    {selectedCharges.map((charge, index) => (
+                      <ListItem key={index} divider={index < selectedCharges.length - 1}>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Chip 
+                                label={charge.chargeType.replace('_', ' ').toUpperCase()} 
+                                size="small" 
+                                variant="outlined"
+                                color="primary"
+                              />
+                              <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                                {charge.description}
+                              </Typography>
+                            </Box>
+                          }
+                          secondary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
+                              {(charge.quantity && charge.quantity > 0) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  Qty: {charge.quantity}
+                                </Typography>
+                              )}
+                              {(charge.unitRate && charge.unitRate > 0) && (
+                                <Typography variant="caption" color="text.secondary">
+                                  @ ${charge.unitRate.toFixed(2)}
+                                </Typography>
+                              )}
+                              <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
+                                ${charge.totalCost.toFixed(2)}
+                              </Typography>
+                              {!charge.billable && (
+                                <Chip label="Non-billable" size="small" color="warning" variant="outlined" />
+                              )}
+                            </Box>
+                          }
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            onClick={() => handleRemoveCharge(index)}
+                            size="small"
+                            color="error"
+                            title="Remove Charge"
+                          >
+                            <RemoveIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
               )}
             </Grid>
 

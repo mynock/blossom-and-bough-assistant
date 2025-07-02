@@ -771,12 +771,18 @@ CRITICAL DATE PARSING RULES:
 - Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
 - Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
 
+CRITICAL HOURS CALCULATION RULES:
+- totalHours = work duration × number of employees (total person-hours)
+- Example 1: 9:00-11:05 with 1 employee = 2.08 hours duration × 1 = 2.08 totalHours  
+- Example 2: 9:00-11:05 with 2 employees = 2.08 hours duration × 2 = 4.16 totalHours
+- Example 3: 8:30-4:15 with Andrea+Virginia = 7.75 hours duration × 2 = 15.5 totalHours
+
 For each work activity found, extract:
 1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
 2. Client name
 3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
-5. Total hours worked (calculate from times or extract from context)
+5. Total hours worked (MUST be calculated as: work duration × number of employees = total person-hours)
 6. Work type (categorize the main type of work)
 7. Detailed tasks performed (bullet points of work done)
 8. Notes (any client conversations, follow-ups, or observations)
@@ -810,6 +816,11 @@ Return JSON in this exact format:
   "unparsedSections": ["Any text sections that couldn't be parsed into activities"],
   "warnings": ["Any parsing concerns or ambiguities"]
 }
+
+HOURS CALCULATION EXAMPLES:
+- Single employee: 9:00-11:05 (2.08h) with 1 employee = 2.08 totalHours
+- Two employees: 9:00-11:05 (2.08h) with 2 employees = 4.16 totalHours  
+- Three employees: 8:30-4:15 (7.75h) with 3 employees = 23.25 totalHours
 
 CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
 
@@ -1043,12 +1054,18 @@ CRITICAL DATE PARSING RULES:
 - Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
 - Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
 
+CRITICAL HOURS CALCULATION RULES:
+- totalHours = work duration × number of employees (total person-hours)
+- Example 1: 9:00-11:05 with 1 employee = 2.08 hours duration × 1 = 2.08 totalHours  
+- Example 2: 9:00-11:05 with 2 employees = 2.08 hours duration × 2 = 4.16 totalHours
+- Example 3: 8:30-4:15 with Andrea+Virginia = 7.75 hours duration × 2 = 15.5 totalHours
+
 For each work activity found, extract:
 1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
 2. Client name
 3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
 4. Start/end times if available
-5. Total hours worked (calculate from times or extract from context)
+5. Total hours worked (MUST be calculated as: work duration × number of employees = total person-hours)
 6. Work type (categorize the main type of work)
 7. Detailed tasks performed (bullet points of work done)
 8. Notes (any client conversations, follow-ups, or observations)
@@ -1082,6 +1099,11 @@ Return JSON in this exact format:
   "unparsedSections": ["Any text sections that couldn't be parsed into activities"],
   "warnings": ["Any parsing concerns or ambiguities"]
 }
+
+HOURS CALCULATION EXAMPLES:
+- Single employee: 9:00-11:05 (2.08h) with 1 employee = 2.08 totalHours
+- Two employees: 9:00-11:05 (2.08h) with 2 employees = 4.16 totalHours  
+- Three employees: 8:30-4:15 (7.75h) with 3 employees = 23.25 totalHours
 
 CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
 

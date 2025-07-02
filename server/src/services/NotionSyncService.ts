@@ -646,19 +646,20 @@ export class NotionSyncService {
     let notes = '';
     const materials: Array<{ description: string; cost: number }> = [];
     let currentSection = '';
-    let inMaterialsTable = false;
+    let inChargesSection = false;
 
     for (const block of response.results) {
       if ('type' in block) {
         switch (block.type) {
+          case 'heading_1':
+          case 'heading_2':
           case 'heading_3':
-            if ('heading_3' in block && block.heading_3.rich_text.length > 0) {
-              currentSection = block.heading_3.rich_text[0].plain_text.toLowerCase();
-              if (currentSection.includes('materials') || currentSection.includes('charges')) {
-                inMaterialsTable = true;
-              } else {
-                inMaterialsTable = false;
-              }
+            const headingText = this.extractTextFromRichText(block as any);
+            if (headingText) {
+              currentSection = headingText.toLowerCase();
+              inChargesSection = currentSection.includes('materials') || 
+                               currentSection.includes('charges') || 
+                               currentSection.includes('materials/fees');
             }
             break;
 
@@ -673,14 +674,32 @@ export class NotionSyncService {
           case 'paragraph':
             if ('paragraph' in block && block.paragraph.rich_text.length > 0) {
               const text = block.paragraph.rich_text.map((text: any) => text.plain_text).join('');
-              if (currentSection.includes('notes')) {
+              
+              // Check if this paragraph contains charges info
+              if (text.toLowerCase().includes('charges:')) {
+                inChargesSection = true;
+                currentSection = 'charges';
+              } else if (currentSection.includes('notes')) {
                 notes += text + '\n';
               }
             }
             break;
 
+          case 'bulleted_list_item':
+          case 'numbered_list_item':
+            if (inChargesSection) {
+              const listText = this.extractTextFromRichText(block as any);
+              if (listText) {
+                const chargeItem = this.parseChargeFromText(listText);
+                if (chargeItem) {
+                  materials.push(chargeItem);
+                }
+              }
+            }
+            break;
+
           case 'table':
-            if (inMaterialsTable && 'table' in block) {
+            if (inChargesSection && 'table' in block) {
               // Get table rows for materials/charges
               const tableRows = await notion.blocks.children.list({ block_id: block.id });
               for (const row of tableRows.results) {
@@ -689,10 +708,10 @@ export class NotionSyncService {
                   if (cells.length >= 2) {
                     const description = cells[0]?.map((text: any) => text.plain_text).join('') || '';
                     const costText = cells[1]?.map((text: any) => text.plain_text).join('') || '0';
-                    const cost = parseFloat(costText) || 0;
+                    const cost = parseFloat(costText.replace(/[^0-9.-]/g, '')) || 0;
                     
-                    if (description && cost > 0) {
-                      materials.push({ description, cost });
+                    if (description && description.toLowerCase() !== 'item' && description.toLowerCase() !== 'charge') {
+                      materials.push({ description: description.trim(), cost });
                     }
                   }
                 }
@@ -704,6 +723,58 @@ export class NotionSyncService {
     }
 
     return { tasks: tasks.trim(), notes: notes.trim(), materials };
+  }
+
+  /**
+   * Extract text content from rich text blocks
+   */
+  private extractTextFromRichText(block: any): string {
+    if (block.type === 'heading_1' && block.heading_1?.rich_text) {
+      return block.heading_1.rich_text.map((text: any) => text.plain_text).join('');
+    }
+    if (block.type === 'heading_2' && block.heading_2?.rich_text) {
+      return block.heading_2.rich_text.map((text: any) => text.plain_text).join('');
+    }
+    if (block.type === 'heading_3' && block.heading_3?.rich_text) {
+      return block.heading_3.rich_text.map((text: any) => text.plain_text).join('');
+    }
+    if (block.type === 'bulleted_list_item' && block.bulleted_list_item?.rich_text) {
+      return block.bulleted_list_item.rich_text.map((text: any) => text.plain_text).join('');
+    }
+    if (block.type === 'numbered_list_item' && block.numbered_list_item?.rich_text) {
+      return block.numbered_list_item.rich_text.map((text: any) => text.plain_text).join('');
+    }
+    return '';
+  }
+
+  /**
+   * Parse charge information from text like "1 bag debris" or "2 native mock orange"
+   */
+  private parseChargeFromText(text: string): { description: string; cost: number } | null {
+    if (!text || text.trim() === '') return null;
+    
+    // Skip plant list items (ignore for now as requested)
+    const plantIndicators = ['native', 'achillea', 'agastache', 'guara', 'allium', 'terracotta', 'whirling', 'butterflies', 'kudos', 'yellow', 'cernuum'];
+    const lowerText = text.toLowerCase();
+    if (plantIndicators.some(indicator => lowerText.includes(indicator))) {
+      debugLog.debug(`Skipping plant list item: ${text}`);
+      return null;
+    }
+
+    // Try to extract cost from parentheses like "mulch ($27)" or "debris (35)"
+    const costMatch = text.match(/\(.*?(\d+(?:\.\d{2})?)\s*\)/);
+    const cost = costMatch ? parseFloat(costMatch[1]) : 0;
+
+    // Clean up description (remove cost info in parentheses)
+    let description = text.replace(/\(.*?\)/g, '').trim();
+    
+    // If no explicit cost, look for debris items which typically have standard costs
+    if (cost === 0 && description.toLowerCase().includes('debris')) {
+      // Default cost for debris items
+      return { description, cost: 25 }; // Default debris cost
+    }
+
+    return { description, cost };
   }
 
   /**
