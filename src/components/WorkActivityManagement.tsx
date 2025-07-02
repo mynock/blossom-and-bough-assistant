@@ -473,44 +473,7 @@ const WorkActivityManagement: React.FC = () => {
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'planned': return 'info';
-      case 'in_progress': return 'primary';
-      case 'completed': return 'success';
-      case 'invoiced': return 'secondary';
-      case 'cancelled': return 'error';
-      default: return 'default';
-    }
-  };
 
-  const formatDate = (dateString: string) => {
-    // Parse the date string as a local date to avoid timezone conversion
-    // dateString is in YYYY-MM-DD format from the database
-    const [year, month, day] = dateString.split('-').map(Number);
-    const date = new Date(year, month - 1, day); // month is 0-indexed
-    return date.toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles', // Force Pacific Time
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric'
-    });
-  };
-
-  const formatTimestamp = (timestamp?: string) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles',
-      month: 'short',
-      day: 'numeric',
-      year: '2-digit'
-    })} ${date.toLocaleTimeString('en-US', { 
-      timeZone: 'America/Los_Angeles',
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })}`;
-  };
 
 
 

@@ -191,16 +191,6 @@ const ClientDetail: React.FC = () => {
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed': return 'success';
-      case 'in_progress': return 'primary';
-      case 'planned': return 'warning';
-      case 'invoiced': return 'secondary';
-      default: return 'default';
-    }
-  };
-
   const handleEdit = () => {
     if (client) {
       setFormData(client);
