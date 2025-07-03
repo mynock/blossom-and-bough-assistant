@@ -49,6 +49,7 @@ interface WorkActivity {
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
   chargesList: Array<any>;
+  plantsList: Array<any>;
   totalCharges: number;
 }
 

@@ -64,6 +64,7 @@ interface WorkActivity {
   projectName?: string | null;
   employeesList: Array<{ employeeId: number; employeeName: string | null; hours: number }>;
   chargesList: Array<OtherCharge>;
+  plantsList: Array<PlantListItem>;
   totalCharges: number;
 }
 
@@ -75,6 +76,12 @@ interface OtherCharge {
   unitRate?: number;
   totalCost: number;
   billable: boolean;
+}
+
+interface PlantListItem {
+  id?: number;
+  name: string;
+  quantity: number;
 }
 
 interface Project {
@@ -145,6 +152,13 @@ const WorkActivityManagement: React.FC = () => {
     unitRate: 0,
     totalCost: 0,
     billable: true
+  });
+  
+  // Plant list state
+  const [selectedPlants, setSelectedPlants] = useState<Omit<PlantListItem, 'id'>[]>([]);
+  const [plantFormData, setPlantFormData] = useState({
+    name: '',
+    quantity: 1
   });
   
   // Editor states for WYSIWYG
@@ -219,21 +233,26 @@ const WorkActivityManagement: React.FC = () => {
         travelTimeMinutes: 0,
         breakTimeMinutes: 30,
       });
-      setSelectedEmployees([]);
-      setSelectedCharges([]);
-      // Reset editor states
-      setNotesEditorState(EditorState.createEmpty());
-      setTasksEditorState(EditorState.createEmpty());
-      // Reset employee dropdown and charge form
-      setEmployeeToAdd('');
-      setChargeFormData({
-        chargeType: 'material',
-        description: '',
-        quantity: 1,
-        unitRate: 0,
-        totalCost: 0,
-        billable: true
-      });
+          setSelectedEmployees([]);
+    setSelectedCharges([]);
+    setSelectedPlants([]);
+    // Reset editor states
+    setNotesEditorState(EditorState.createEmpty());
+    setTasksEditorState(EditorState.createEmpty());
+    // Reset employee dropdown and charge form
+    setEmployeeToAdd('');
+    setChargeFormData({
+      chargeType: 'material',
+      description: '',
+      quantity: 1,
+      unitRate: 0,
+      totalCost: 0,
+      billable: true
+    });
+    setPlantFormData({
+      name: '',
+      quantity: 1
+    });
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
@@ -284,6 +303,11 @@ const WorkActivityManagement: React.FC = () => {
       unitRate: charge.unitRate,
       totalCost: charge.totalCost,
       billable: charge.billable
+    })));
+    // Initialize plants
+    setSelectedPlants(activity.plantsList.map(plant => ({
+      name: plant.name,
+      quantity: plant.quantity
     })));
     // Initialize editor states with existing content
     setNotesEditorState(htmlToEditorState(activity.notes || ''));
@@ -342,7 +366,8 @@ const WorkActivityManagement: React.FC = () => {
       const requestData = {
         workActivity: formData,
         employees: selectedEmployees,
-        charges: selectedCharges
+        charges: selectedCharges,
+        plants: selectedPlants
       };
 
       const url = isCreating ? '/api/work-activities' : `/api/work-activities/${selectedActivity?.id}`;
@@ -471,6 +496,35 @@ const WorkActivityManagement: React.FC = () => {
       
       return updated;
     });
+  };
+
+  // Plant management functions
+  const handleAddPlant = () => {
+    if (!plantFormData.name.trim()) {
+      showSnackbar('Please enter a plant name', 'error');
+      return;
+    }
+
+    const newPlant: Omit<PlantListItem, 'id'> = {
+      name: plantFormData.name.trim(),
+      quantity: plantFormData.quantity || 1
+    };
+
+    setSelectedPlants(prev => [...prev, newPlant]);
+    
+    // Reset form
+    setPlantFormData({
+      name: '',
+      quantity: 1
+    });
+  };
+
+  const handleRemovePlant = (index: number) => {
+    setSelectedPlants(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handlePlantFormChange = (field: keyof typeof plantFormData, value: any) => {
+    setPlantFormData(prev => ({ ...prev, [field]: value }));
   };
 
 
@@ -847,7 +901,7 @@ const WorkActivityManagement: React.FC = () => {
                     />
                   </Grid>
                   
-                  <Grid item xs={6} sm={3} md={1.5}>
+                  <Grid item xs={6} sm={3} md={2}>
                     <TextField
                       label="Quantity"
                       type="number"
@@ -859,37 +913,7 @@ const WorkActivityManagement: React.FC = () => {
                     />
                   </Grid>
                   
-                  <Grid item xs={6} sm={3} md={1.5}>
-                    <TextField
-                      label="Unit Rate"
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={chargeFormData.unitRate}
-                      onChange={(e) => handleChargeFormChange('unitRate', parseFloat(e.target.value) || 0)}
-                      inputProps={{ min: 0, step: 0.01 }}
-                      InputProps={{
-                        startAdornment: <Typography sx={{ mr: 0.5, color: 'text.secondary' }}>$</Typography>
-                      }}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={1.5}>
-                    <TextField
-                      label="Total Cost"
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={chargeFormData.totalCost}
-                      onChange={(e) => handleChargeFormChange('totalCost', parseFloat(e.target.value) || 0)}
-                      inputProps={{ min: 0, step: 0.01 }}
-                      InputProps={{
-                        startAdornment: <Typography sx={{ mr: 0.5, color: 'text.secondary' }}>$</Typography>
-                      }}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={1}>
+                  <Grid item xs={6} sm={3} md={2}>
                     <Button
                       variant="contained"
                       size="small"
@@ -912,7 +936,7 @@ const WorkActivityManagement: React.FC = () => {
                 <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
                   <Box sx={{ p: 2, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      Added Charges (Total: ${selectedCharges.reduce((sum, charge) => sum + charge.totalCost, 0).toFixed(2)})
+                      Added Charges ({selectedCharges.length} items)
                     </Typography>
                   </Box>
                   
@@ -934,24 +958,9 @@ const WorkActivityManagement: React.FC = () => {
                             </Box>
                           }
                           secondary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 0.5 }}>
-                              {(charge.quantity && charge.quantity > 0) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  Qty: {charge.quantity}
-                                </Typography>
-                              )}
-                              {(charge.unitRate && charge.unitRate > 0) && (
-                                <Typography variant="caption" color="text.secondary">
-                                  @ ${charge.unitRate.toFixed(2)}
-                                </Typography>
-                              )}
-                              <Typography variant="body2" sx={{ fontWeight: 600, color: 'success.main' }}>
-                                ${charge.totalCost.toFixed(2)}
-                              </Typography>
-                              {!charge.billable && (
-                                <Chip label="Non-billable" size="small" color="warning" variant="outlined" />
-                              )}
-                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {(charge.quantity && charge.quantity > 0) ? `Quantity: ${charge.quantity}` : 'No quantity specified'}
+                            </Typography>
                           }
                         />
                         <ListItemSecondaryAction>
@@ -960,6 +969,104 @@ const WorkActivityManagement: React.FC = () => {
                             size="small"
                             color="error"
                             title="Remove Charge"
+                          >
+                            <RemoveIcon />
+                          </IconButton>
+                        </ListItemSecondaryAction>
+                      </ListItem>
+                    ))}
+                  </List>
+                </Box>
+              )}
+            </Grid>
+
+            {/* Plant List Section */}
+            <Grid item xs={12}>
+              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
+                🌱 Plant List
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Record plants installed or used in this work activity.
+              </Typography>
+              
+              {/* Add Plant Form */}
+              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
+                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
+                  Add New Plant
+                </Typography>
+                
+                <Grid container spacing={2} alignItems="flex-end">
+                  <Grid item xs={12} sm={6} md={4}>
+                    <TextField
+                      label="Plant Name *"
+                      fullWidth
+                      size="small"
+                      value={plantFormData.name}
+                      onChange={(e) => handlePlantFormChange('name', e.target.value)}
+                      placeholder="e.g., Native Mock Orange, Achillea Terracotta"
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={2}>
+                    <TextField
+                      label="Quantity"
+                      type="number"
+                      fullWidth
+                      size="small"
+                      value={plantFormData.quantity}
+                      onChange={(e) => handlePlantFormChange('quantity', parseFloat(e.target.value) || 1)}
+                      inputProps={{ min: 0, step: 0.1 }}
+                    />
+                  </Grid>
+                  
+                  <Grid item xs={6} sm={3} md={2}>
+                    <Button
+                      variant="contained"
+                      size="small"
+                      onClick={handleAddPlant}
+                      startIcon={<AddIcon />}
+                      sx={{ height: 40 }}
+                    >
+                      Add
+                    </Button>
+                  </Grid>
+                </Grid>
+              </Box>
+              
+              {/* Plants List */}
+              {selectedPlants.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2, textAlign: 'center', border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
+                  No plants added yet. Use the form above to record plants used in this work activity.
+                </Typography>
+              ) : (
+                <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
+                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                      Plant List ({selectedPlants.length} items)
+                    </Typography>
+                  </Box>
+                  
+                  <List dense>
+                    {selectedPlants.map((plant, index) => (
+                      <ListItem key={index} divider={index < selectedPlants.length - 1}>
+                        <ListItemText
+                          primary={
+                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                              {plant.name}
+                            </Typography>
+                          }
+                          secondary={
+                            <Typography variant="caption" color="text.secondary">
+                              Quantity: {plant.quantity}
+                            </Typography>
+                          }
+                        />
+                        <ListItemSecondaryAction>
+                          <IconButton 
+                            onClick={() => handleRemovePlant(index)}
+                            size="small"
+                            color="error"
+                            title="Remove Plant"
                           >
                             <RemoveIcon />
                           </IconButton>

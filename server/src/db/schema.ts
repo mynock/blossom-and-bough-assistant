@@ -100,6 +100,16 @@ export const otherCharges = pgTable('other_charges', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// Plant List table
+export const plantList = pgTable('plant_list', {
+  id: serial('id').primaryKey(),
+  workActivityId: integer('work_activity_id').notNull().references(() => workActivities.id),
+  name: text('name').notNull(), // e.g., "Native Mock Orange", "Achillea Terracotta"
+  quantity: real('quantity').notNull(), // e.g., 2, 3.5
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
 // Client Notes table
 export const clientNotes = pgTable('client_notes', {
   id: serial('id').primaryKey(),
@@ -130,6 +140,9 @@ export type NewWorkActivityEmployee = typeof workActivityEmployees.$inferInsert;
 
 export type OtherCharge = typeof otherCharges.$inferSelect;
 export type NewOtherCharge = typeof otherCharges.$inferInsert;
+
+export type PlantListItem = typeof plantList.$inferSelect;
+export type NewPlantListItem = typeof plantList.$inferInsert;
 
 export type ClientNote = typeof clientNotes.$inferSelect;
 export type NewClientNote = typeof clientNotes.$inferInsert; 

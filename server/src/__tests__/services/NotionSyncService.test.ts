@@ -73,6 +73,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
     projectName: null,
     employeesList: [{ employeeId: 1, employeeName: 'Test Employee', hours: 4 }],
     chargesList: [],
+    plantsList: [],
     totalCharges: 0,
   };
 
