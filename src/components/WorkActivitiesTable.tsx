@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -14,6 +14,7 @@ import {
   IconButton,
   Grid,
   Paper,
+  TableSortLabel,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -59,6 +60,9 @@ interface WorkActivitiesTableProps {
   emptyMessage?: string;
 }
 
+type SortColumn = 'date' | 'workType' | 'status' | 'clientName' | 'totalHours' | 'totalCharges' | 'updatedAt';
+type SortDirection = 'asc' | 'desc';
+
 export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
   activities,
   onEdit,
@@ -68,6 +72,8 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
 }) => {
   const navigate = useNavigate();
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+  const [sortColumn, setSortColumn] = useState<SortColumn>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -121,6 +127,62 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
     setExpandedRows(newExpanded);
   };
 
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedActivities = useMemo(() => {
+    const sorted = [...activities].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortColumn) {
+        case 'date':
+          aValue = new Date(a.date);
+          bValue = new Date(b.date);
+          break;
+        case 'workType':
+          aValue = a.workType;
+          bValue = b.workType;
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case 'clientName':
+          aValue = a.clientName || '';
+          bValue = b.clientName || '';
+          break;
+        case 'totalHours':
+          aValue = a.totalHours;
+          bValue = b.totalHours;
+          break;
+        case 'totalCharges':
+          aValue = a.totalCharges;
+          bValue = b.totalCharges;
+          break;
+        case 'updatedAt':
+          aValue = new Date(a.updatedAt || 0);
+          bValue = new Date(b.updatedAt || 0);
+          break;
+        default:
+          aValue = '';
+          bValue = '';
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return sorted;
+  }, [activities, sortColumn, sortDirection]);
+
   if (activities.length === 0) {
     return (
       <Paper sx={{ p: 3, textAlign: 'center' }}>
@@ -136,17 +198,73 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
       <Table sx={{ minWidth: 800 }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ width: '10%' }}>Date</TableCell>
-            <TableCell sx={{ width: '10%' }}>Type</TableCell>
-            <TableCell sx={{ width: '10%' }}>Status</TableCell>
+            <TableCell sx={{ width: '10%' }}>
+              <TableSortLabel
+                active={sortColumn === 'date'}
+                direction={sortColumn === 'date' ? sortDirection : 'asc'}
+                onClick={() => handleSort('date')}
+              >
+                Date
+              </TableSortLabel>
+            </TableCell>
+            <TableCell sx={{ width: '10%' }}>
+              <TableSortLabel
+                active={sortColumn === 'workType'}
+                direction={sortColumn === 'workType' ? sortDirection : 'asc'}
+                onClick={() => handleSort('workType')}
+              >
+                Type
+              </TableSortLabel>
+            </TableCell>
+            <TableCell sx={{ width: '10%' }}>
+              <TableSortLabel
+                active={sortColumn === 'status'}
+                direction={sortColumn === 'status' ? sortDirection : 'asc'}
+                onClick={() => handleSort('status')}
+              >
+                Status
+              </TableSortLabel>
+            </TableCell>
             {showClientColumn && (
-              <TableCell sx={{ width: '12%' }}>Client</TableCell>
+              <TableCell sx={{ width: '12%' }}>
+                <TableSortLabel
+                  active={sortColumn === 'clientName'}
+                  direction={sortColumn === 'clientName' ? sortDirection : 'asc'}
+                  onClick={() => handleSort('clientName')}
+                >
+                  Client
+                </TableSortLabel>
+              </TableCell>
             )}
             <TableCell sx={{ width: '12%' }}>Time</TableCell>
-            <TableCell sx={{ width: '8%' }}>Hours</TableCell>
+            <TableCell sx={{ width: '8%' }}>
+              <TableSortLabel
+                active={sortColumn === 'totalHours'}
+                direction={sortColumn === 'totalHours' ? sortDirection : 'asc'}
+                onClick={() => handleSort('totalHours')}
+              >
+                Hours
+              </TableSortLabel>
+            </TableCell>
             <TableCell sx={{ width: '20%' }}>Employees</TableCell>
-            <TableCell sx={{ width: '10%' }}>Charges</TableCell>
-            <TableCell sx={{ width: '15%' }}>Last Updated</TableCell>
+            <TableCell sx={{ width: '10%' }}>
+              <TableSortLabel
+                active={sortColumn === 'totalCharges'}
+                direction={sortColumn === 'totalCharges' ? sortDirection : 'asc'}
+                onClick={() => handleSort('totalCharges')}
+              >
+                Charges
+              </TableSortLabel>
+            </TableCell>
+            <TableCell sx={{ width: '15%' }}>
+              <TableSortLabel
+                active={sortColumn === 'updatedAt'}
+                direction={sortColumn === 'updatedAt' ? sortDirection : 'asc'}
+                onClick={() => handleSort('updatedAt')}
+              >
+                Last Updated
+              </TableSortLabel>
+            </TableCell>
             <TableCell sx={{ width: '10%' }}>Notes/Tasks</TableCell>
             {(onEdit || onDelete) && (
               <TableCell sx={{ width: '10%', textAlign: 'center' }}>Actions</TableCell>
@@ -154,7 +272,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
           </TableRow>
         </TableHead>
         <TableBody>
-          {activities.map((activity) => (
+          {sortedActivities.map((activity) => (
             <React.Fragment key={activity.id}>
               <TableRow sx={{ '&:nth-of-type(odd)': { backgroundColor: 'action.hover' } }}>
                 <TableCell>{formatDate(activity.date)}</TableCell>
