@@ -22,45 +22,41 @@ import {
   ListItemText,
   ListItemSecondaryAction,
   Autocomplete,
+  Paper,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
   Add as AddIcon,
   Assignment as AssignmentIcon,
-  AccessTime as TimeIcon,
-  Person as PersonIcon,
   Remove as RemoveIcon,
-  Update as UpdateIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Editor } from 'react-draft-wysiwyg';
 import { EditorState, convertToRaw, ContentState } from 'draft-js';
 import draftToHtml from 'draftjs-to-html';
 import htmlToDraft from 'html-to-draftjs';
 import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
-import FilterableTable, { FilterConfig, ColumnConfig } from './FilterableTable';
+import { WorkActivitiesTable } from './WorkActivitiesTable';
 
 interface WorkActivity {
   id: number;
   workType: string;
   date: string;
   status: string;
-  startTime?: string;
-  endTime?: string;
-  billableHours?: number;
+  startTime: string | null;
+  endTime: string | null;
+  billableHours: number | null;
   totalHours: number;
-  hourlyRate?: number;
+  hourlyRate: number | null;
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
   breakTimeMinutes?: number;
-  notes?: string;
-  tasks?: string;
-  createdAt: string;
-  updatedAt: string;
+  notes: string | null;
+  tasks: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   notionPageId?: string;
   lastNotionSyncAt?: string;
   lastUpdatedBy?: 'web_app' | 'notion_sync';
@@ -114,7 +110,6 @@ const WORK_STATUSES = [
 
 const WorkActivityManagement: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
   const [workActivities, setWorkActivities] = useState<WorkActivity[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -478,296 +473,21 @@ const WorkActivityManagement: React.FC = () => {
     });
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'planned': return 'info';
-      case 'in_progress': return 'primary';
-      case 'completed': return 'success';
-      case 'invoiced': return 'secondary';
-      case 'cancelled': return 'error';
-      default: return 'default';
-    }
-  };
 
-  const formatDate = (dateString: string) => {
-    // Parse the date string as a local date to avoid timezone conversion
-    // dateString is in YYYY-MM-DD format from the database
-    const [year, month, day] = dateString.split('-').map(Number);
-    const date = new Date(year, month - 1, day); // month is 0-indexed
-    return date.toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles', // Force Pacific Time
-      year: 'numeric',
-      month: 'numeric',
-      day: 'numeric'
-    });
-  };
 
-  const formatTimestamp = (timestamp?: string) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles',
-      month: 'short',
-      day: 'numeric',
-      year: '2-digit'
-    })} ${date.toLocaleTimeString('en-US', { 
-      timeZone: 'America/Los_Angeles',
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })}`;
-  };
 
-  // Configure table columns
-  const columns: ColumnConfig<WorkActivity>[] = [
-    {
-      key: 'date',
-      label: 'Date',
-      sortable: true,
-      render: (activity) => formatDate(activity.date),
-    },
-    {
-      key: 'workType',
-      label: 'Type',
-      sortable: true,
-      render: (activity) => (
-        <Chip 
-          label={activity.workType.replace('_', ' ').toUpperCase()} 
-          size="small" 
-          variant="outlined"
-        />
-      ),
-    },
-    {
-      key: 'clientName',
-      label: 'Client/Project',
-      sortable: true,
-      render: (activity) => (
-        <Box>
-          {activity.clientName && activity.clientId ? (
-            <Button 
-              variant="text" 
-              onClick={() => navigate(`/clients/${activity.clientId}`)}
-              sx={{ 
-                textAlign: 'left', 
-                justifyContent: 'flex-start', 
-                textTransform: 'none',
-                fontWeight: 600,
-                minHeight: 'auto',
-                p: 0
-              }}
-            >
-              {activity.clientName}
-            </Button>
-          ) : (
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {activity.clientName || 'No Client'}
-            </Typography>
-          )}
-          {activity.projectName && (
-            <Typography variant="caption" color="text.secondary">
-              {activity.projectName}
-            </Typography>
-          )}
-        </Box>
-      ),
-    },
-    {
-      key: 'employeesList',
-      label: 'Employees',
-      render: (activity) => (
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-          {activity.employeesList.map((emp) => (
-            <Chip 
-              key={emp.employeeId}
-              label={`${emp.employeeName || 'Unknown'} (${emp.hours.toFixed(2)}h)`}
-              size="small"
-              icon={<PersonIcon />}
-            />
-          ))}
-        </Box>
-      ),
-    },
-    {
-      key: 'totalHours',
-      label: 'Hours',
-      sortable: true,
-      render: (activity) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <TimeIcon fontSize="small" />
-          <Typography variant="body2">
-            {activity.totalHours.toFixed(2)}h
-            {activity.billableHours && activity.billableHours !== activity.totalHours && (
-              <Typography component="span" variant="caption" color="text.secondary">
-                {' '}({activity.billableHours.toFixed(2)}h billable)
-              </Typography>
-            )}
-          </Typography>
-        </Box>
-      ),
-    },
-    {
-      key: 'totalCharges',
-      label: 'Charges',
-      sortable: true,
-      render: (activity) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            ${activity.totalCharges.toFixed(2)}
-          </Typography>
-          {activity.chargesList.length > 0 && (
-            <Typography variant="caption" color="text.secondary">
-              ({activity.chargesList.length} item{activity.chargesList.length !== 1 ? 's' : ''})
-            </Typography>
-          )}
-        </Box>
-      ),
-    },
-    {
-      key: 'updatedAt',
-      label: 'Last Updated',
-      sortable: true,
-      render: (activity) => (
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-          <UpdateIcon sx={{ fontSize: '0.875rem', color: 'text.secondary', mt: 0.1 }} />
-          <Box>
-            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-              {formatTimestamp(activity.updatedAt)}
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                by {activity.lastUpdatedBy === 'web_app' ? 'User' : 'Notion Sync'}
-              </Typography>
-              {activity.lastUpdatedBy === 'web_app' && (
-                <Chip 
-                  label="🛡️ Protected" 
-                  size="small" 
-                  variant="outlined"
-                  sx={{ 
-                    fontSize: '0.6rem', 
-                    height: '16px',
-                    '& .MuiChip-label': { px: 0.5 },
-                    color: 'warning.main',
-                    borderColor: 'warning.main'
-                  }}
-                />
-              )}
-            </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-              Created: {formatTimestamp(activity.createdAt)}
-            </Typography>
-          </Box>
-        </Box>
-      ),
-    },
-    {
-      key: 'status',
-      label: 'Status',
-      sortable: true,
-      render: (activity) => (
-        <Chip
-          label={activity.status.replace('_', ' ').toUpperCase()}
-          color={getStatusColor(activity.status) as any}
-          size="small"
-        />
-      ),
-    },
-  ];
 
-  // Configure filters
-  const filters: FilterConfig[] = [
-    {
-      key: 'date',
-      label: 'Date Range',
-      type: 'daterange',
-    },
-    {
-      key: 'clientName',
-      label: 'Client',
-      type: 'autocomplete',
-      options: clients.map(client => ({ value: client.name, label: client.name })),
-      getOptionLabel: (option) => option || 'No Client',
-    },
-    {
-      key: 'status',
-      label: 'Status',
-      type: 'multiselect',
-      options: WORK_STATUSES.map(status => ({
-        value: status,
-        label: status.replace('_', ' ').toUpperCase()
-      })),
-    },
-    {
-      key: 'employeesList',
-      label: 'Employees',
-      type: 'autocomplete',
-      options: employees.map(emp => ({ value: { employeeName: emp.name, employeeId: emp.id }, label: emp.name })),
-      getOptionLabel: (option) => option?.employeeName || 'Unknown',
-    },
-    {
-      key: 'workType',
-      label: 'Work Type',
-      type: 'multiselect',
-      options: WORK_TYPES.map(type => ({
-        value: type,
-        label: type.replace('_', ' ').toUpperCase()
-      })),
-    },
-    {
-      key: 'notionPageId',
-      label: 'Notion Page ID',
-      type: 'text',
-    },
-  ];
-
-  // Handle table actions
-  const handleRowAction = (action: string, activity: WorkActivity) => {
-    switch (action) {
-      case 'edit':
-        handleEdit(activity);
-        break;
-      case 'delete':
-        handleDelete(activity);
-        break;
-      default:
-        break;
-    }
-  };
-
-  const tableActions = [
-    {
-      key: 'edit',
-      label: 'Edit',
-      icon: <EditIcon />,
-      color: 'default' as const,
-    },
-    {
-      key: 'delete',
-      label: 'Delete',
-      icon: <DeleteIcon />,
-      color: 'error' as const,
-    },
-  ];
 
   if (loading) return <Typography>Loading work activities...</Typography>;
 
   return (
     <Box sx={{ p: 3 }}>
-      <FilterableTable
-        data={workActivities}
-        columns={columns}
-        filters={filters}
-        onRowAction={handleRowAction}
-        actions={tableActions}
-        initialSortBy="date"
-        initialSortOrder="desc"
-        rowKeyField="id"
-        emptyMessage="No work activities found"
-        title={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {/* Header */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <AssignmentIcon /> Work Activity Management
-          </Box>
-        }
-        headerActions={
+          </Typography>
           <Button
             variant="contained"
             startIcon={<AddIcon />}
@@ -775,7 +495,16 @@ const WorkActivityManagement: React.FC = () => {
           >
             Log Work Activity
           </Button>
-        }
+        </Box>
+      </Paper>
+
+      {/* Work Activities Table */}
+      <WorkActivitiesTable
+        activities={workActivities}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        showClientColumn={true}
+        emptyMessage="No work activities found"
       />
 
       {/* Edit/Create Dialog */}
