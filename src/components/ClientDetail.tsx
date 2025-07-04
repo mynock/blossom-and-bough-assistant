@@ -34,12 +34,14 @@ import {
   Person as PersonIcon,
   Work as WorkIcon,
   Schedule as ScheduleIcon,
-  AttachMoney as MoneyIcon,
   ExpandMore as ExpandMoreIcon,
   Edit as EditIcon,
   LocationOn as LocationIcon,
   Flag as PriorityIcon,
   CalendarToday as CalendarIcon,
+  Note as NoteIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
@@ -103,6 +105,48 @@ interface Summary {
   yearToDateHours: number;
 }
 
+interface CalendarEvent {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location?: string;
+  description?: string;
+  eventType?: string;
+}
+
+interface ClientNote {
+  id: number;
+  clientId: number;
+  noteType: string;
+  title: string;
+  content: string;
+  date: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface NewClientNote {
+  noteType: string;
+  title: string;
+  content: string;
+  date?: string;
+}
+
+interface UpcomingScheduleData {
+  upcomingEvents: CalendarEvent[];
+  client: {
+    id: number;
+    name: string;
+    clientId: string;
+  };
+  dateRange: {
+    startDate: string;
+    endDate: string;
+    daysAhead: number;
+  };
+}
+
 const WORK_TYPES = [
   'maintenance',
   'installation',
@@ -123,12 +167,26 @@ const WORK_STATUSES = [
   'cancelled'
 ];
 
+const NOTE_TYPES = [
+  { value: 'general', label: 'General' },
+  { value: 'meeting', label: 'Meeting Notes' },
+  { value: 'property_info', label: 'Property Information' },
+  { value: 'client_preferences', label: 'Client Preferences' },
+  { value: 'maintenance_notes', label: 'Maintenance Notes' },
+  { value: 'issue_report', label: 'Issue Report' },
+  { value: 'follow_up', label: 'Follow Up' },
+  { value: 'contact_info', label: 'Contact Information' },
+  { value: 'special_instructions', label: 'Special Instructions' },
+];
+
 const ClientDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [client, setClient] = useState<Client | null>(null);
   const [workActivities, setWorkActivities] = useState<WorkActivity[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [upcomingSchedule, setUpcomingSchedule] = useState<UpcomingScheduleData | null>(null);
+  const [clientNotes, setClientNotes] = useState<ClientNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -139,7 +197,15 @@ const ClientDetail: React.FC = () => {
   const [workActivityEditOpen, setWorkActivityEditOpen] = useState(false);
   const [selectedWorkActivity, setSelectedWorkActivity] = useState<WorkActivity | null>(null);
   
-
+  // Notes state
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [noteFormData, setNoteFormData] = useState<NewClientNote>({
+    noteType: 'general',
+    title: '',
+    content: '',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [editingNote, setEditingNote] = useState<ClientNote | null>(null);
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -159,6 +225,24 @@ const ClientDetail: React.FC = () => {
         const activitiesData = await activitiesResponse.json();
         setWorkActivities(activitiesData.activities);
         setSummary(activitiesData.summary);
+
+        // Fetch upcoming schedule
+        const scheduleResponse = await fetch(`/api/clients/${id}/upcoming-schedule?days=30`);
+        if (scheduleResponse.ok) {
+          const scheduleData = await scheduleResponse.json();
+          setUpcomingSchedule(scheduleData);
+        } else {
+          console.warn('Failed to fetch upcoming schedule, continuing without it');
+        }
+
+        // Fetch client notes
+        const notesResponse = await fetch(`/api/clients/${id}/notes`);
+        if (notesResponse.ok) {
+          const notesData = await notesResponse.json();
+          setClientNotes(notesData.notes);
+        } else {
+          console.warn('Failed to fetch client notes, continuing without them');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -176,18 +260,27 @@ const ClientDetail: React.FC = () => {
     return new Date(dateString).toLocaleDateString();
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
-
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'High': return 'error';
       case 'Medium': return 'warning';
       case 'Low': return 'success';
+      default: return 'default';
+    }
+  };
+
+  const getNoteTypeLabel = (noteType: string) => {
+    const type = NOTE_TYPES.find(t => t.value === noteType);
+    return type ? type.label : noteType;
+  };
+
+  const getNoteTypeColor = (noteType: string) => {
+    switch (noteType) {
+      case 'issue_report': return 'error';
+      case 'follow_up': return 'warning';
+      case 'meeting': return 'info';
+      case 'maintenance_notes': return 'success';
+      case 'client_preferences': return 'secondary';
       default: return 'default';
     }
   };
@@ -289,7 +382,107 @@ const ClientDetail: React.FC = () => {
     }
   };
 
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString);
+    return {
+      date: date.toLocaleDateString('en-US', { 
+        weekday: 'short',
+        month: 'short', 
+        day: 'numeric' 
+      }),
+      time: date.toLocaleTimeString('en-US', { 
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
+    };
+  };
 
+  const handleNoteEdit = (note: ClientNote) => {
+    setEditingNote(note);
+    setNoteFormData({
+      noteType: note.noteType,
+      title: note.title,
+      content: note.content,
+      date: note.date || new Date().toISOString().split('T')[0]
+    });
+    setNoteDialogOpen(true);
+  };
+
+  const handleNoteDelete = async (noteId: number) => {
+    if (window.confirm('Are you sure you want to delete this note?')) {
+      try {
+        const response = await fetch(`/api/clients/${id}/notes/${noteId}`, {
+          method: 'DELETE',
+        });
+
+        if (response.ok) {
+          setClientNotes(clientNotes.filter(note => note.id !== noteId));
+          setSnackbar({ open: true, message: 'Note deleted successfully', severity: 'success' });
+        } else {
+          throw new Error('Failed to delete note');
+        }
+      } catch (error) {
+        setSnackbar({ open: true, message: 'Failed to delete note', severity: 'error' });
+      }
+    }
+  };
+
+  const handleNoteSave = async () => {
+    try {
+      const url = editingNote 
+        ? `/api/clients/${id}/notes/${editingNote.id}`
+        : `/api/clients/${id}/notes`;
+      
+      const method = editingNote ? 'PUT' : 'POST';
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(noteFormData),
+      });
+
+      if (response.ok) {
+        const savedNote = await response.json();
+        
+        if (editingNote) {
+          setClientNotes(clientNotes.map(note => 
+            note.id === editingNote.id ? savedNote : note
+          ));
+          setSnackbar({ open: true, message: 'Note updated successfully', severity: 'success' });
+        } else {
+          setClientNotes([savedNote, ...clientNotes]);
+          setSnackbar({ open: true, message: 'Note created successfully', severity: 'success' });
+        }
+        
+        setNoteDialogOpen(false);
+        setEditingNote(null);
+        setNoteFormData({
+          noteType: 'general',
+          title: '',
+          content: '',
+          date: new Date().toISOString().split('T')[0]
+        });
+      } else {
+        throw new Error('Failed to save note');
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to save note', severity: 'error' });
+    }
+  };
+
+  const handleAddNote = () => {
+    setEditingNote(null);
+    setNoteFormData({
+      noteType: 'general',
+      title: '',
+      content: '',
+      date: new Date().toISOString().split('T')[0]
+    });
+    setNoteDialogOpen(true);
+  };
 
   if (loading) {
     return (
@@ -422,7 +615,7 @@ const ClientDetail: React.FC = () => {
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <MoneyIcon color="action" />
+                      <ScheduleIcon color="action" />
                       <Typography variant="body2" color="text.secondary">Rate:</Typography>
                       <Typography variant="body1">{client.maintenanceRate || '-'}</Typography>
                     </Box>
@@ -479,9 +672,9 @@ const ClientDetail: React.FC = () => {
             <Grid item xs={12} sm={6} md={3}>
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
-                  <MoneyIcon sx={{ fontSize: 40, color: 'success.main' }} />
-                  <Typography variant="h4">{formatCurrency(summary?.totalCharges || 0)}</Typography>
-                  <Typography variant="body2" color="text.secondary">Total Charges</Typography>
+                  <ScheduleIcon sx={{ fontSize: 40, color: 'info.main' }} />
+                  <Typography variant="h4">{summary?.totalBillableHours.toFixed(1) || 0}</Typography>
+                  <Typography variant="body2" color="text.secondary">Total Billable Hours</Typography>
                 </CardContent>
               </Card>
             </Grid>
@@ -496,6 +689,164 @@ const ClientDetail: React.FC = () => {
               </Card>
             </Grid>
           </Grid>
+        </Grid>
+
+        {/* Upcoming Schedule */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CalendarIcon color="primary" />
+                Upcoming Schedule
+                {upcomingSchedule && (
+                  <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                    ({upcomingSchedule.upcomingEvents.length} event{upcomingSchedule.upcomingEvents.length !== 1 ? 's' : ''} in next 30 days)
+                  </Typography>
+                )}
+              </Typography>
+              
+              {upcomingSchedule && upcomingSchedule.upcomingEvents.length > 0 ? (
+                <Stack spacing={1}>
+                  {upcomingSchedule.upcomingEvents.slice(0, 5).map((event) => {
+                    const { date, time } = formatDateTime(event.start);
+                    return (
+                      <Box key={event.id} sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: 2,
+                        p: 1,
+                        border: 1,
+                        borderColor: 'divider',
+                        borderRadius: 1,
+                        backgroundColor: 'background.default'
+                      }}>
+                        <Box sx={{ minWidth: 80 }}>
+                          <Typography variant="body2" color="primary" fontWeight="bold">
+                            {date}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {time}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="body1" fontWeight="medium">
+                            {event.title}
+                          </Typography>
+                          {event.location && (
+                            <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <LocationIcon fontSize="small" />
+                              {event.location}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    );
+                  })}
+                  {upcomingSchedule.upcomingEvents.length > 5 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
+                      ... and {upcomingSchedule.upcomingEvents.length - 5} more events
+                    </Typography>
+                  )}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No upcoming scheduled events found for this client.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Client Notes */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <NoteIcon color="primary" />
+                  Client Notes
+                  {clientNotes.length > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                      ({clientNotes.length})
+                    </Typography>
+                  )}
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={handleAddNote}
+                  size="small"
+                >
+                  Add Note
+                </Button>
+              </Box>
+              
+              {clientNotes.length > 0 ? (
+                <Stack spacing={2}>
+                  {clientNotes.map((note) => (
+                    <Box key={note.id} sx={{ 
+                      p: 2,
+                      border: 1,
+                      borderColor: 'divider',
+                      borderRadius: 1,
+                      backgroundColor: 'background.default'
+                    }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                        <Box sx={{ flexGrow: 1 }}>
+                          <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                            {note.title}
+                          </Typography>
+                          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+                            <Chip 
+                              label={getNoteTypeLabel(note.noteType)} 
+                              size="small" 
+                              variant="outlined" 
+                              color={getNoteTypeColor(note.noteType) as any}
+                            />
+                            {note.date && (
+                              <Typography variant="body2" color="text.secondary">
+                                {formatDate(note.date)}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Button
+                            size="small"
+                            startIcon={<EditIcon />}
+                            onClick={() => handleNoteEdit(note)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="small"
+                            startIcon={<DeleteIcon />}
+                            onClick={() => handleNoteDelete(note.id)}
+                            color="error"
+                          >
+                            Delete
+                          </Button>
+                        </Box>
+                      </Box>
+                      <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                        {note.content}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        Created: {formatDate(note.createdAt)}
+                        {note.updatedAt !== note.createdAt && (
+                          <span> • Updated: {formatDate(note.updatedAt)}</span>
+                        )}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Stack>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No notes found for this client. Click "Add Note" to create one.
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
         </Grid>
 
         {/* Work Activities */}
@@ -665,7 +1016,73 @@ const ClientDetail: React.FC = () => {
         onShowSnackbar={(message, severity) => setSnackbar({ open: true, message, severity: severity === 'warning' ? 'error' : severity })}
       />
 
-
+      {/* Notes Dialog */}
+      <Dialog open={noteDialogOpen} onClose={() => setNoteDialogOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {editingNote ? 'Edit Note' : 'Add New Note'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Note Type</InputLabel>
+                <Select
+                  value={noteFormData.noteType}
+                  onChange={(e) => setNoteFormData(prev => ({ ...prev, noteType: e.target.value }))}
+                >
+                  {NOTE_TYPES.map((type) => (
+                    <MenuItem key={type.value} value={type.value}>
+                      {type.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Date"
+                type="date"
+                fullWidth
+                value={noteFormData.date}
+                onChange={(e) => setNoteFormData(prev => ({ ...prev, date: e.target.value }))}
+                InputLabelProps={{
+                  shrink: true,
+                }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Title"
+                fullWidth
+                value={noteFormData.title}
+                onChange={(e) => setNoteFormData(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="Brief description of the note"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                label="Content"
+                fullWidth
+                multiline
+                rows={6}
+                value={noteFormData.content}
+                onChange={(e) => setNoteFormData(prev => ({ ...prev, content: e.target.value }))}
+                placeholder="Detailed notes, observations, or information..."
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNoteDialogOpen(false)}>Cancel</Button>
+          <Button 
+            onClick={handleNoteSave} 
+            variant="contained"
+            disabled={!noteFormData.title.trim() || !noteFormData.content.trim()}
+          >
+            {editingNote ? 'Update' : 'Save'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar for notifications */}
       <Snackbar
