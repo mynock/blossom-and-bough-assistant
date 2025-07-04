@@ -123,6 +123,52 @@ export const clientNotes = pgTable('client_notes', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// QuickBooks Online Items table
+export const qboItems = pgTable('qbo_items', {
+  id: serial('id').primaryKey(),
+  qboId: text('qbo_id').unique().notNull(), // QuickBooks Item ID
+  name: text('name').notNull(), // Item name in QuickBooks
+  description: text('description'), // Item description
+  type: text('type').notNull(), // Service, Inventory, NonInventory
+  unitPrice: real('unit_price'), // Current unit price from QBO
+  incomeAccountRef: text('income_account_ref'), // QBO Income Account reference
+  active: boolean('active').notNull().default(true), // Active status in QBO
+  lastSyncAt: timestamp('last_sync_at').notNull().defaultNow(), // Last sync from QBO
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
+// Invoices table
+export const invoices = pgTable('invoices', {
+  id: serial('id').primaryKey(),
+  qboInvoiceId: text('qbo_invoice_id').unique().notNull(), // QuickBooks Invoice ID
+  qboCustomerId: text('qbo_customer_id').notNull(), // QuickBooks Customer ID
+  clientId: integer('client_id').notNull().references(() => clients.id),
+  invoiceNumber: text('invoice_number').notNull(), // QBO Invoice Number
+  status: text('status').notNull(), // draft, sent, paid, overdue, void, etc.
+  totalAmount: real('total_amount').notNull(),
+  invoiceDate: text('invoice_date').notNull(), // ISO date string
+  dueDate: text('due_date'), // ISO date string
+  qboSyncAt: timestamp('qbo_sync_at').notNull().defaultNow(), // Last sync from QBO
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
+// Invoice Line Items table
+export const invoiceLineItems = pgTable('invoice_line_items', {
+  id: serial('id').primaryKey(),
+  invoiceId: integer('invoice_id').notNull().references(() => invoices.id),
+  workActivityId: integer('work_activity_id').references(() => workActivities.id), // For work activity charges
+  otherChargeId: integer('other_charge_id').references(() => otherCharges.id), // For material/other charges
+  qboItemId: text('qbo_item_id').references(() => qboItems.qboId), // Reference to QBO Item
+  description: text('description').notNull(),
+  quantity: real('quantity').notNull(),
+  rate: real('rate').notNull(), // Rate at time of invoice
+  amount: real('amount').notNull(), // Total line amount
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
 // Export types for use in the application
 export type Client = typeof clients.$inferSelect;
 export type NewClient = typeof clients.$inferInsert;
@@ -146,4 +192,13 @@ export type PlantListItem = typeof plantList.$inferSelect;
 export type NewPlantListItem = typeof plantList.$inferInsert;
 
 export type ClientNote = typeof clientNotes.$inferSelect;
-export type NewClientNote = typeof clientNotes.$inferInsert; 
+export type NewClientNote = typeof clientNotes.$inferInsert;
+
+export type QboItem = typeof qboItems.$inferSelect;
+export type NewQboItem = typeof qboItems.$inferInsert;
+
+export type Invoice = typeof invoices.$inferSelect;
+export type NewInvoice = typeof invoices.$inferInsert;
+
+export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
+export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert; 
