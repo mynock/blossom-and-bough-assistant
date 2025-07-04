@@ -147,26 +147,6 @@ interface UpcomingScheduleData {
   };
 }
 
-const WORK_TYPES = [
-  'maintenance',
-  'installation',
-  'repair',
-  'consultation',
-  'design',
-  'cleanup',
-  'office_work',
-  'travel',
-  'other'
-];
-
-const WORK_STATUSES = [
-  'planned',
-  'in_progress',
-  'completed',
-  'invoiced',
-  'cancelled'
-];
-
 const NOTE_TYPES = [
   { value: 'general', label: 'General' },
   { value: 'meeting', label: 'Meeting Notes' },

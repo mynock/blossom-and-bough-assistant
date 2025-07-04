@@ -6,11 +6,56 @@ const workActivityService = new WorkActivityService();
 
 /**
  * GET /api/work-activities
- * Get all work activities
+ * Get all work activities with optional filtering
+ * Query parameters:
+ * - startDate: YYYY-MM-DD format
+ * - endDate: YYYY-MM-DD format  
+ * - workType: string (maintenance, installation, etc.)
+ * - status: string (planned, in_progress, completed, etc.)
+ * - clientId: number
+ * - employeeId: number
  */
 router.get('/', async (req, res) => {
   try {
-    const workActivities = await workActivityService.getAllWorkActivities();
+    const { startDate, endDate, workType, status, clientId, employeeId } = req.query;
+    
+    const filters: any = {};
+    
+    // Date range filtering
+    if (startDate) {
+      filters.startDate = startDate as string;
+    }
+    if (endDate) {
+      filters.endDate = endDate as string;
+    }
+    
+    // Work type filtering
+    if (workType) {
+      filters.workType = workType as string;
+    }
+    
+    // Status filtering
+    if (status) {
+      filters.status = status as string;
+    }
+    
+    // Client filtering
+    if (clientId) {
+      const clientIdNum = parseInt(clientId as string);
+      if (!isNaN(clientIdNum)) {
+        filters.clientId = clientIdNum;
+      }
+    }
+    
+    // Employee filtering
+    if (employeeId) {
+      const employeeIdNum = parseInt(employeeId as string);
+      if (!isNaN(employeeIdNum)) {
+        filters.employeeId = employeeIdNum;
+      }
+    }
+
+    const workActivities = await workActivityService.getAllWorkActivities(filters);
     res.json(workActivities);
   } catch (error) {
     console.error('Error fetching work activities:', error);

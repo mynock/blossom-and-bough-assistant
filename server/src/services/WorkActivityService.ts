@@ -14,13 +14,22 @@ import {
   type PlantListItem,
   type NewPlantListItem
 } from '../db';
-import { eq, desc, like, and } from 'drizzle-orm';
+import { eq, desc, like, and, gte, lte, inArray, exists } from 'drizzle-orm';
 
 export interface CreateWorkActivityData {
   workActivity: NewWorkActivity;
   employees: Array<{ employeeId: number; hours: number }>;
   charges?: Array<Omit<NewOtherCharge, 'workActivityId'>>;
   plants?: Array<Omit<NewPlantListItem, 'workActivityId'>>;
+}
+
+export interface WorkActivityFilters {
+  startDate?: string;
+  endDate?: string;
+  workType?: string;
+  status?: string;
+  clientId?: number;
+  employeeId?: number;
 }
 
 export interface WorkActivityWithDetails extends WorkActivity {
@@ -35,10 +44,51 @@ export interface WorkActivityWithDetails extends WorkActivity {
 export class WorkActivityService extends DatabaseService {
   
   /**
-   * Get all work activities with related data
+   * Get all work activities with related data, optionally filtered
    */
-  async getAllWorkActivities(): Promise<WorkActivityWithDetails[]> {
-    const activities = await this.db
+  async getAllWorkActivities(filters?: WorkActivityFilters): Promise<WorkActivityWithDetails[]> {
+    // Build WHERE conditions based on filters
+    const whereConditions = [];
+    
+    if (filters?.startDate) {
+      whereConditions.push(gte(workActivities.date, filters.startDate));
+    }
+    
+    if (filters?.endDate) {
+      whereConditions.push(lte(workActivities.date, filters.endDate));
+    }
+    
+    if (filters?.workType) {
+      whereConditions.push(eq(workActivities.workType, filters.workType));
+    }
+    
+    if (filters?.status) {
+      whereConditions.push(eq(workActivities.status, filters.status));
+    }
+    
+    if (filters?.clientId) {
+      whereConditions.push(eq(workActivities.clientId, filters.clientId));
+    }
+    
+    // Add employee filter using EXISTS subquery
+    if (filters?.employeeId) {
+      whereConditions.push(
+        exists(
+          this.db
+            .select({ id: workActivityEmployees.id })
+            .from(workActivityEmployees)
+            .where(
+              and(
+                eq(workActivityEmployees.workActivityId, workActivities.id),
+                eq(workActivityEmployees.employeeId, filters.employeeId)
+              )
+            )
+        )
+      );
+    }
+
+    // Build the base query
+    const baseQuery = this.db
       .select({
         id: workActivities.id,
         workType: workActivities.workType,
@@ -65,8 +115,15 @@ export class WorkActivityService extends DatabaseService {
       })
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
-      .leftJoin(projects, eq(workActivities.projectId, projects.id))
-      .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
+      .leftJoin(projects, eq(workActivities.projectId, projects.id));
+
+    // Apply WHERE conditions if any exist, otherwise use base query
+    const activities = whereConditions.length > 0 
+      ? await baseQuery
+          .where(whereConditions.length === 1 ? whereConditions[0] : and(...whereConditions))
+          .orderBy(desc(workActivities.date), desc(workActivities.createdAt))
+      : await baseQuery
+          .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
 
     // Get employees and charges for each activity
     const activitiesWithDetails: WorkActivityWithDetails[] = [];

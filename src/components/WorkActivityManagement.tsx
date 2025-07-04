@@ -5,11 +5,24 @@ import {
   Button,
   Alert,
   Snackbar,
-  Paper,
+  Grid,
+  TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  Chip,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Autocomplete,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Assignment as AssignmentIcon,
+  FilterList as FilterListIcon,
+  Clear as ClearIcon,
+  ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
@@ -74,6 +87,15 @@ interface Employee {
   name: string;
 }
 
+interface WorkActivityFilters {
+  startDate?: string;
+  endDate?: string;
+  workType?: string;
+  status?: string;
+  clientId?: number;
+  employeeId?: number;
+}
+
 const WORK_TYPES = [
   'maintenance',
   'installation',
@@ -105,10 +127,10 @@ const WorkActivityManagement: React.FC = () => {
   const [selectedActivity, setSelectedActivity] = useState<WorkActivity | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
-
-
   
-
+  // Filter state
+  const [filters, setFilters] = useState<WorkActivityFilters>({});
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning') => {
     setSnackbar({ open: true, message, severity: severity as 'success' | 'error' });
@@ -116,7 +138,30 @@ const WorkActivityManagement: React.FC = () => {
 
   const fetchWorkActivities = useCallback(async () => {
     try {
-      const response = await apiClient.get(API_ENDPOINTS.WORK_ACTIVITIES);
+      // Build query parameters from filters
+      const queryParams = new URLSearchParams();
+      
+      if (filters.startDate) {
+        queryParams.append('startDate', filters.startDate);
+      }
+      if (filters.endDate) {
+        queryParams.append('endDate', filters.endDate);
+      }
+      if (filters.workType) {
+        queryParams.append('workType', filters.workType);
+      }
+      if (filters.status) {
+        queryParams.append('status', filters.status);
+      }
+      if (filters.clientId) {
+        queryParams.append('clientId', filters.clientId.toString());
+      }
+      if (filters.employeeId) {
+        queryParams.append('employeeId', filters.employeeId.toString());
+      }
+
+      const url = `${API_ENDPOINTS.WORK_ACTIVITIES}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const response = await apiClient.get(url);
       const data = await response.json();
       
       // Debug logging to see what we're receiving
@@ -137,7 +182,7 @@ const WorkActivityManagement: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [showSnackbar]);
+  }, [showSnackbar, filters]);
 
   useEffect(() => {
     fetchWorkActivities();
@@ -259,30 +304,172 @@ const WorkActivityManagement: React.FC = () => {
     fetchWorkActivities();
   };
 
+  const handleFilterChange = (field: keyof WorkActivityFilters, value: any) => {
+    setFilters(prev => ({
+      ...prev,
+      [field]: value || undefined // Convert empty strings to undefined
+    }));
+  };
 
+  const clearFilters = () => {
+    setFilters({});
+  };
 
-
-
+  const getActiveFilterCount = () => {
+    return Object.values(filters).filter(value => value !== undefined && value !== '').length;
+  };
 
   if (loading) return <Typography>Loading work activities...</Typography>;
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Paper sx={{ p: 3, mb: 3 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <AssignmentIcon /> Work Activity Management
-          </Typography>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleCreate}
-          >
-            Log Work Activity
-          </Button>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <AssignmentIcon sx={{ fontSize: 40 }} />
+          <Typography variant="h4">Work Activities</Typography>
+          {getActiveFilterCount() > 0 && (
+            <Chip 
+              label={`${getActiveFilterCount()} filter${getActiveFilterCount() === 1 ? '' : 's'}`} 
+              color="primary" 
+              size="small" 
+            />
+          )}
         </Box>
-      </Paper>
+        <Button
+          variant="contained"
+          startIcon={<AddIcon />}
+          onClick={handleCreate}
+        >
+          Add Work Activity
+        </Button>
+      </Box>
+
+      {/* Filters */}
+      <Accordion 
+        expanded={filtersExpanded} 
+        onChange={(_, isExpanded) => setFiltersExpanded(isExpanded)}
+        sx={{ mb: 3 }}
+      >
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FilterListIcon />
+            <Typography variant="h6">Filters</Typography>
+            {getActiveFilterCount() > 0 && (
+              <Chip 
+                label={getActiveFilterCount()} 
+                color="primary" 
+                size="small" 
+              />
+            )}
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Grid container spacing={2}>
+            {/* Date Range */}
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="Start Date"
+                type="date"
+                fullWidth
+                value={filters.startDate || ''}
+                onChange={(e) => handleFilterChange('startDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                label="End Date"
+                type="date"
+                fullWidth
+                value={filters.endDate || ''}
+                onChange={(e) => handleFilterChange('endDate', e.target.value)}
+                InputLabelProps={{ shrink: true }}
+                size="small"
+              />
+            </Grid>
+
+            {/* Work Type */}
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Work Type</InputLabel>
+                <Select
+                  value={filters.workType || ''}
+                  onChange={(e) => handleFilterChange('workType', e.target.value)}
+                  label="Work Type"
+                >
+                  <MenuItem value="">All Types</MenuItem>
+                  {WORK_TYPES.map((type) => (
+                    <MenuItem key={type} value={type}>
+                      {type.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Status */}
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  value={filters.status || ''}
+                  onChange={(e) => handleFilterChange('status', e.target.value)}
+                  label="Status"
+                >
+                  <MenuItem value="">All Statuses</MenuItem>
+                  {WORK_STATUSES.map((status) => (
+                    <MenuItem key={status} value={status}>
+                      {status.replace('_', ' ').toUpperCase()}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Client */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Autocomplete
+                size="small"
+                options={clients}
+                getOptionLabel={(option) => option.name}
+                value={clients.find(c => c.id === filters.clientId) || null}
+                onChange={(_, newValue) => handleFilterChange('clientId', newValue?.id)}
+                renderInput={(params) => (
+                  <TextField {...params} label="Client" fullWidth />
+                )}
+              />
+            </Grid>
+
+            {/* Employee */}
+            <Grid item xs={12} sm={6} md={3}>
+              <Autocomplete
+                size="small"
+                options={employees}
+                getOptionLabel={(option) => option.name}
+                value={employees.find(e => e.id === filters.employeeId) || null}
+                onChange={(_, newValue) => handleFilterChange('employeeId', newValue?.id)}
+                renderInput={(params) => (
+                  <TextField {...params} label="Employee" fullWidth />
+                )}
+              />
+            </Grid>
+
+            {/* Clear Filters */}
+            <Grid item xs={12} sm={6} md={3} sx={{ display: 'flex', alignItems: 'center' }}>
+              <Button
+                variant="outlined"
+                startIcon={<ClearIcon />}
+                onClick={clearFilters}
+                disabled={getActiveFilterCount() === 0}
+                fullWidth
+              >
+                Clear Filters
+              </Button>
+            </Grid>
+          </Grid>
+        </AccordionDetails>
+      </Accordion>
 
       {/* Work Activities Table */}
       <WorkActivitiesTable
