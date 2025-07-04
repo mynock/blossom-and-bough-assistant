@@ -223,17 +223,28 @@ describe('NotionSyncService - Conflict Prevention', () => {
       });
     });
 
-    test('should skip sync when local changes are protected', async () => {
-      // Setup: Activity with user changes that should be protected
-      const activityWithUserChanges = {
+    test('should skip sync when Notion page has not been updated since last sync', async () => {
+      // Setup: Activity that was synced after the Notion page was last edited
+      const activityWithRecentSync = {
         ...mockExistingActivity,
-        lastNotionSyncAt: new Date('2025-06-29T08:00:00Z'), // Last synced at 08:00
+        lastNotionSyncAt: new Date('2025-06-29T11:00:00Z'), // Last synced at 11:00
         lastUpdatedBy: 'web_app' as const, // User made changes through web app
-        updatedAt: new Date('2025-06-29T11:00:00Z'), // Updated at 11:00
+        updatedAt: new Date('2025-06-29T12:00:00Z'), // Updated at 12:00
       };
 
+      // Mock Notion page that was edited before the last sync
+      const staleNotionPage = {
+        ...mockNotionPage,
+        last_edited_time: '2025-06-29T10:00:00Z', // Notion edited at 10:00 (before last sync)
+      };
+
+      mockNotionMethods.databases.query.mockResolvedValue({
+        results: [staleNotionPage],
+        has_more: false,
+      });
+
       mockWorkActivityService.getWorkActivityByNotionPageId = jest.fn()
-        .mockResolvedValue(activityWithUserChanges);
+        .mockResolvedValue(activityWithRecentSync);
 
       const result = await notionSyncService.syncNotionPages();
 
@@ -485,8 +496,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
       expect(mockWorkActivityService.getWorkActivityByNotionPageId).toHaveBeenCalled();
     });
 
-    test('should not sync when user has newer changes (lastUpdatedBy: web_app)', async () => {
-      // Mock existing activity that was last updated by web_app AFTER the last sync
+    test('should not sync when Notion page has not been updated since last sync', async () => {
+      // Mock existing activity that was synced after the Notion page was last edited
       const userUpdatedActivity = {
         ...mockExistingActivity,
         lastUpdatedBy: 'web_app' as const,
@@ -496,10 +507,10 @@ describe('NotionSyncService - Conflict Prevention', () => {
 
       mockWorkActivityService.getWorkActivityByNotionPageId.mockResolvedValue(userUpdatedActivity);
 
-      // Mock Notion page edited before user's changes
+      // Mock Notion page edited before last sync (so it hasn't been updated since sync)
       const oldNotionPage = {
         ...mockNotionPage,
-        last_edited_time: '2025-06-29T07:30:00Z', // Edited before user's changes
+        last_edited_time: '2025-06-29T07:30:00Z', // Edited before last sync
       };
 
       mockNotionMethods.databases.query.mockResolvedValue({
