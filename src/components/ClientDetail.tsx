@@ -42,6 +42,7 @@ import {
   CalendarToday as CalendarIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
+import WorkActivityEditDialog from './WorkActivityEditDialog';
 
 interface Client {
   id: number;
@@ -137,7 +138,6 @@ const ClientDetail: React.FC = () => {
   // Work Activity edit state
   const [workActivityEditOpen, setWorkActivityEditOpen] = useState(false);
   const [selectedWorkActivity, setSelectedWorkActivity] = useState<WorkActivity | null>(null);
-  const [workActivityFormData, setWorkActivityFormData] = useState<Partial<WorkActivity>>({});
   
 
 
@@ -228,41 +228,37 @@ const ClientDetail: React.FC = () => {
 
   const handleWorkActivityEdit = (activity: WorkActivity) => {
     setSelectedWorkActivity(activity);
-    setWorkActivityFormData(activity);
     setWorkActivityEditOpen(true);
   };
 
-  const handleWorkActivityInputChange = (field: keyof WorkActivity, value: any) => {
-    setWorkActivityFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleWorkActivitySave = async (
+    activity: WorkActivity, 
+    employees: Array<{ employeeId: number; hours: number }>, 
+    charges: Array<any>, 
+    plants: Array<any>
+  ) => {
+    const response = await fetch(`/api/work-activities/${selectedWorkActivity?.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(activity),
+    });
 
-  const handleWorkActivitySave = async () => {
-    try {
-      const response = await fetch(`/api/work-activities/${selectedWorkActivity?.id}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(workActivityFormData),
-      });
+    if (!response.ok) {
+      throw new Error('Failed to save work activity');
+    }
 
-      if (response.ok) {
-        setSnackbar({ open: true, message: 'Work activity updated successfully', severity: 'success' });
-        setWorkActivityEditOpen(false);
-        // Refresh work activities data
-        if (id) {
-          const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
-          if (activitiesResponse.ok) {
-            const activitiesData = await activitiesResponse.json();
-            setWorkActivities(activitiesData.activities);
-            setSummary(activitiesData.summary);
-          }
-        }
-      } else {
-        throw new Error('Failed to save work activity');
+    setSnackbar({ open: true, message: 'Work activity updated successfully', severity: 'success' });
+    setWorkActivityEditOpen(false);
+    // Refresh work activities data
+    if (id) {
+      const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+      if (activitiesResponse.ok) {
+        const activitiesData = await activitiesResponse.json();
+        setWorkActivities(activitiesData.activities);
+        setSummary(activitiesData.summary);
       }
-    } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to save work activity', severity: 'error' });
     }
   };
 
@@ -657,127 +653,17 @@ const ClientDetail: React.FC = () => {
       </Dialog>
 
       {/* Work Activity Edit Dialog */}
-      <Dialog open={workActivityEditOpen} onClose={() => setWorkActivityEditOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Edit Work Activity</DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Date"
-                type="date"
-                fullWidth
-                value={workActivityFormData.date || ''}
-                onChange={(e) => handleWorkActivityInputChange('date', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Work Type</InputLabel>
-                <Select
-                  value={workActivityFormData.workType || ''}
-                  onChange={(e) => handleWorkActivityInputChange('workType', e.target.value)}
-                >
-                  {WORK_TYPES.map((type) => (
-                    <MenuItem key={type} value={type}>
-                      {type.replace('_', ' ').toUpperCase()}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Status</InputLabel>
-                <Select
-                  value={workActivityFormData.status || ''}
-                  onChange={(e) => handleWorkActivityInputChange('status', e.target.value)}
-                >
-                  {WORK_STATUSES.map((status) => (
-                    <MenuItem key={status} value={status}>
-                      {status.replace('_', ' ').toUpperCase()}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Total Hours"
-                type="number"
-                fullWidth
-                value={workActivityFormData.totalHours || ''}
-                onChange={(e) => handleWorkActivityInputChange('totalHours', parseFloat(e.target.value) || 0)}
-                inputProps={{ step: 0.25, min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Start Time"
-                type="time"
-                fullWidth
-                value={workActivityFormData.startTime || ''}
-                onChange={(e) => handleWorkActivityInputChange('startTime', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="End Time"
-                type="time"
-                fullWidth
-                value={workActivityFormData.endTime || ''}
-                onChange={(e) => handleWorkActivityInputChange('endTime', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Billable Hours"
-                type="number"
-                fullWidth
-                value={workActivityFormData.billableHours || ''}
-                onChange={(e) => handleWorkActivityInputChange('billableHours', parseFloat(e.target.value) || 0)}
-                inputProps={{ step: 0.25, min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                label="Travel Time (minutes)"
-                type="number"
-                fullWidth
-                value={workActivityFormData.travelTimeMinutes || ''}
-                onChange={(e) => handleWorkActivityInputChange('travelTimeMinutes', parseInt(e.target.value) || 0)}
-                inputProps={{ min: 0 }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Notes"
-                fullWidth
-                multiline
-                rows={3}
-                value={workActivityFormData.notes || ''}
-                onChange={(e) => handleWorkActivityInputChange('notes', e.target.value)}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                label="Tasks"
-                fullWidth
-                multiline
-                rows={3}
-                value={workActivityFormData.tasks || ''}
-                onChange={(e) => handleWorkActivityInputChange('tasks', e.target.value)}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setWorkActivityEditOpen(false)}>Cancel</Button>
-          <Button onClick={handleWorkActivitySave} variant="contained">Save</Button>
-        </DialogActions>
-      </Dialog>
+      <WorkActivityEditDialog
+        open={workActivityEditOpen}
+        onClose={() => setWorkActivityEditOpen(false)}
+        activity={selectedWorkActivity}
+        isCreating={false}
+        onSave={handleWorkActivitySave}
+        clients={client ? [{ id: client.id, clientId: client.clientId, name: client.name }] : []}
+        projects={[]}
+        employees={[]}
+        onShowSnackbar={(message, severity) => setSnackbar({ open: true, message, severity: severity === 'warning' ? 'error' : severity })}
+      />
 
 
 

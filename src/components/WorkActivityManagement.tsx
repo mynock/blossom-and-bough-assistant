@@ -3,41 +3,20 @@ import {
   Box,
   Typography,
   Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Chip,
-  IconButton,
   Alert,
   Snackbar,
-  Grid,
-  MenuItem,
-  Select,
-  FormControl,
-  InputLabel,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  Autocomplete,
   Paper,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Assignment as AssignmentIcon,
-  Remove as RemoveIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
 import { useSearchParams } from 'react-router-dom';
-import { Editor } from 'react-draft-wysiwyg';
-import { EditorState, convertToRaw, ContentState } from 'draft-js';
-import draftToHtml from 'draftjs-to-html';
-import htmlToDraft from 'html-to-draftjs';
-import 'react-draft-wysiwyg/dist/react-draft-wysiwyg.css';
+
 import { WorkActivitiesTable } from './WorkActivitiesTable';
+import WorkActivityEditDialog from './WorkActivityEditDialog';
 
 interface WorkActivity {
   id: number;
@@ -127,62 +106,12 @@ const WorkActivityManagement: React.FC = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
-  // Form state
-  const [formData, setFormData] = useState<Partial<WorkActivity>>({
-    workType: 'maintenance',
-    date: new Date().toISOString().split('T')[0],
-    status: 'planned',
-    totalHours: 8,
-    billableHours: 8,
-    travelTimeMinutes: 0,
-    breakTimeMinutes: 30,
-  });
 
-  const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number }>>([]);
   
-  // State for employee selection dropdown
-  const [employeeToAdd, setEmployeeToAdd] = useState<number | ''>('');
-  
-  // Charges state
-  const [selectedCharges, setSelectedCharges] = useState<Omit<OtherCharge, 'id'>[]>([]);
-  const [chargeFormData, setChargeFormData] = useState({
-    chargeType: 'material',
-    description: '',
-    quantity: 1,
-    unitRate: 0,
-    totalCost: 0,
-    billable: true
-  });
-  
-  // Plant list state
-  const [selectedPlants, setSelectedPlants] = useState<Omit<PlantListItem, 'id'>[]>([]);
-  const [plantFormData, setPlantFormData] = useState({
-    name: '',
-    quantity: 1
-  });
-  
-  // Editor states for WYSIWYG
-  const [notesEditorState, setNotesEditorState] = useState(() => EditorState.createEmpty());
-  const [tasksEditorState, setTasksEditorState] = useState(() => EditorState.createEmpty());
 
-  // Helper function to convert HTML to EditorState
-  const htmlToEditorState = (html: string) => {
-    if (!html) return EditorState.createEmpty();
-    const contentBlock = htmlToDraft(html);
-    if (contentBlock) {
-      const contentState = ContentState.createFromBlockArray(contentBlock.contentBlocks);
-      return EditorState.createWithContent(contentState);
-    }
-    return EditorState.createEmpty();
-  };
 
-  // Helper function to convert EditorState to HTML
-  const editorStateToHtml = (editorState: EditorState) => {
-    return draftToHtml(convertToRaw(editorState.getCurrentContent()));
-  };
-
-  const showSnackbar = useCallback((message: string, severity: 'success' | 'error') => {
-    setSnackbar({ open: true, message, severity });
+  const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning') => {
+    setSnackbar({ open: true, message, severity: severity as 'success' | 'error' });
   }, []);
 
   const fetchWorkActivities = useCallback(async () => {
@@ -217,42 +146,12 @@ const WorkActivityManagement: React.FC = () => {
     fetchEmployees();
   }, [fetchWorkActivities]);
 
-  // Check for create parameter and auto-open dialog
+    // Check for create parameter and auto-open dialog
   useEffect(() => {
     if (searchParams.get('create') === 'true') {
-      // Set a flag to open the dialog on next render
       setIsCreating(true);
       setEditDialogOpen(true);
       setSelectedActivity(null);
-      setFormData({
-        workType: 'maintenance',
-        date: new Date().toISOString().split('T')[0],
-        status: 'planned',
-        totalHours: 8,
-        billableHours: 8,
-        travelTimeMinutes: 0,
-        breakTimeMinutes: 30,
-      });
-          setSelectedEmployees([]);
-    setSelectedCharges([]);
-    setSelectedPlants([]);
-    // Reset editor states
-    setNotesEditorState(EditorState.createEmpty());
-    setTasksEditorState(EditorState.createEmpty());
-    // Reset employee dropdown and charge form
-    setEmployeeToAdd('');
-    setChargeFormData({
-      chargeType: 'material',
-      description: '',
-      quantity: 1,
-      unitRate: 0,
-      totalCost: 0,
-      billable: true
-    });
-    setPlantFormData({
-      name: '',
-      quantity: 1
-    });
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
@@ -290,110 +189,13 @@ const WorkActivityManagement: React.FC = () => {
 
   const handleEdit = (activity: WorkActivity) => {
     setSelectedActivity(activity);
-    setFormData(activity);
-    setSelectedEmployees(activity.employeesList.map(emp => ({
-      employeeId: emp.employeeId,
-      hours: emp.hours
-    })));
-    // Initialize charges
-    setSelectedCharges(activity.chargesList.map(charge => ({
-      chargeType: charge.chargeType,
-      description: charge.description,
-      quantity: charge.quantity,
-      unitRate: charge.unitRate,
-      totalCost: charge.totalCost,
-      billable: charge.billable
-    })));
-    // Initialize plants
-    setSelectedPlants(activity.plantsList.map(plant => ({
-      name: plant.name,
-      quantity: plant.quantity
-    })));
-    // Initialize editor states with existing content
-    setNotesEditorState(htmlToEditorState(activity.notes || ''));
-    setTasksEditorState(htmlToEditorState(activity.tasks || ''));
-    // Reset employee dropdown and charge form
-    setEmployeeToAdd('');
-    setChargeFormData({
-      chargeType: 'material',
-      description: '',
-      quantity: 1,
-      unitRate: 0,
-      totalCost: 0,
-      billable: true
-    });
-    setIsCreating(false);
     setEditDialogOpen(true);
   };
 
   const handleCreate = () => {
     setSelectedActivity(null);
-    setFormData({
-      workType: 'maintenance',
-      date: new Date().toISOString().split('T')[0],
-      status: 'planned',
-      totalHours: 8,
-      billableHours: 8,
-      travelTimeMinutes: 0,
-      breakTimeMinutes: 30,
-    });
-    setSelectedEmployees([]);
-    setSelectedCharges([]);
-    // Reset editor states
-    setNotesEditorState(EditorState.createEmpty());
-    setTasksEditorState(EditorState.createEmpty());
-    // Reset employee dropdown and charge form
-    setEmployeeToAdd('');
-    setChargeFormData({
-      chargeType: 'material',
-      description: '',
-      quantity: 1,
-      unitRate: 0,
-      totalCost: 0,
-      billable: true
-    });
     setIsCreating(true);
     setEditDialogOpen(true);
-  };
-
-  const handleSave = async () => {
-    try {
-      if (selectedEmployees.length === 0) {
-        showSnackbar('At least one employee must be assigned', 'error');
-        return;
-      }
-
-      const requestData = {
-        workActivity: formData,
-        employees: selectedEmployees,
-        charges: selectedCharges,
-        plants: selectedPlants
-      };
-
-      const url = isCreating ? '/api/work-activities' : `/api/work-activities/${selectedActivity?.id}`;
-      const method = isCreating ? 'POST' : 'PUT';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(isCreating ? requestData : formData),
-      });
-
-      if (response.ok) {
-        showSnackbar(
-          isCreating ? 'Work activity created successfully' : 'Work activity updated successfully',
-          'success'
-        );
-        setEditDialogOpen(false);
-        fetchWorkActivities();
-      } else {
-        throw new Error('Failed to save work activity');
-      }
-    } catch (error) {
-      showSnackbar('Failed to save work activity', 'error');
-    }
   };
 
   const handleDelete = async (activity: WorkActivity) => {
@@ -415,116 +217,46 @@ const WorkActivityManagement: React.FC = () => {
     }
   };
 
-  const handleInputChange = (field: keyof WorkActivity, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // Add date validation warning (using Pacific Time)
-    if (field === 'date' && value) {
-      // Create dates in Pacific Time to avoid timezone issues
-      const selectedDate = new Date(value + 'T00:00:00-08:00'); // Force Pacific Time
-      const currentDatePT = new Date().toLocaleString('en-US', {timeZone: 'America/Los_Angeles'});
-      const currentYear = new Date(currentDatePT).getFullYear();
-      const selectedYear = selectedDate.getFullYear();
-      
-      if (selectedYear < currentYear) {
-        showSnackbar(`Warning: Selected date is from ${selectedYear}. Did you mean ${currentYear}?`, 'error');
-      }
-    }
-  };
-
-  const handleAddEmployee = () => {
-    if (employeeToAdd && !selectedEmployees.some(sel => sel.employeeId === employeeToAdd)) {
-      setSelectedEmployees(prev => [...prev, { 
-        employeeId: employeeToAdd as number, 
-        hours: formData.totalHours || 8 
-      }]);
-      setEmployeeToAdd(''); // Reset the dropdown
-    }
-  };
-
-  const handleRemoveEmployee = (employeeId: number) => {
-    setSelectedEmployees(prev => prev.filter(emp => emp.employeeId !== employeeId));
-  };
-
-  const handleEmployeeHoursChange = (employeeId: number, hours: number) => {
-    setSelectedEmployees(prev => prev.map(emp => 
-      emp.employeeId === employeeId ? { ...emp, hours } : emp
-    ));
-  };
-
-  // Charge management functions
-  const handleAddCharge = () => {
-    if (!chargeFormData.description.trim()) {
-      showSnackbar('Please enter a charge description', 'error');
+  // New save handler for shared dialog
+  const handleSharedDialogSave = async (
+    activity: WorkActivity, 
+    employees: Array<{ employeeId: number; hours: number }>, 
+    charges: Array<OtherCharge>, 
+    plants: Array<PlantListItem>
+  ) => {
+    if (employees.length === 0) {
+      showSnackbar('At least one employee must be assigned', 'error');
       return;
     }
 
-    const newCharge: Omit<OtherCharge, 'id'> = {
-      chargeType: chargeFormData.chargeType,
-      description: chargeFormData.description.trim(),
-      quantity: chargeFormData.quantity || 1,
-      unitRate: chargeFormData.unitRate || 0,
-      totalCost: chargeFormData.totalCost || 0,
-      billable: chargeFormData.billable
+    const requestData = {
+      workActivity: activity,
+      employees: employees,
+      charges: charges,
+      plants: plants
     };
 
-    setSelectedCharges(prev => [...prev, newCharge]);
+    const url = isCreating ? '/api/work-activities' : `/api/work-activities/${selectedActivity?.id}`;
+    const method = isCreating ? 'POST' : 'PUT';
     
-    // Reset form
-    setChargeFormData({
-      chargeType: 'material',
-      description: '',
-      quantity: 1,
-      unitRate: 0,
-      totalCost: 0,
-      billable: true
+    const response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(isCreating ? requestData : activity),
     });
-  };
 
-  const handleRemoveCharge = (index: number) => {
-    setSelectedCharges(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handleChargeFormChange = (field: keyof typeof chargeFormData, value: any) => {
-    setChargeFormData(prev => {
-      const updated = { ...prev, [field]: value };
-      
-      // Auto-calculate total cost when quantity or unit rate changes
-      if (field === 'quantity' || field === 'unitRate') {
-        updated.totalCost = (updated.quantity || 0) * (updated.unitRate || 0);
-      }
-      
-      return updated;
-    });
-  };
-
-  // Plant management functions
-  const handleAddPlant = () => {
-    if (!plantFormData.name.trim()) {
-      showSnackbar('Please enter a plant name', 'error');
-      return;
+    if (!response.ok) {
+      throw new Error('Failed to save work activity');
     }
 
-    const newPlant: Omit<PlantListItem, 'id'> = {
-      name: plantFormData.name.trim(),
-      quantity: plantFormData.quantity || 1
-    };
-
-    setSelectedPlants(prev => [...prev, newPlant]);
-    
-    // Reset form
-    setPlantFormData({
-      name: '',
-      quantity: 1
-    });
-  };
-
-  const handleRemovePlant = (index: number) => {
-    setSelectedPlants(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const handlePlantFormChange = (field: keyof typeof plantFormData, value: any) => {
-    setPlantFormData(prev => ({ ...prev, [field]: value }));
+    showSnackbar(
+      isCreating ? 'Work activity created successfully' : 'Work activity updated successfully',
+      'success'
+    );
+    setEditDialogOpen(false);
+    fetchWorkActivities();
   };
 
 
@@ -561,636 +293,18 @@ const WorkActivityManagement: React.FC = () => {
         emptyMessage="No work activities found"
       />
 
-      {/* Edit/Create Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="lg" fullWidth>
-        <DialogTitle>
-          {isCreating ? 'Log New Work Activity' : `Edit Work Activity`}
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={3} sx={{ mt: 1 }}>
-            {/* Basic Information Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 1 }}>
-                📋 Basic Information
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Date *"
-                type="date"
-                fullWidth
-                value={formData.date || ''}
-                onChange={(e) => handleInputChange('date', e.target.value)}
-                required
-                InputLabelProps={{ shrink: true }}
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth required>
-                <InputLabel>Work Type *</InputLabel>
-                <Select
-                  value={formData.workType || 'maintenance'}
-                  onChange={(e) => handleInputChange('workType', e.target.value)}
-                  label="Work Type *"
-                >
-                  {WORK_TYPES.map((type) => (
-                    <MenuItem key={type} value={type}>
-                      {type.replace('_', ' ').toUpperCase()}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <FormControl fullWidth required>
-                <InputLabel>Status *</InputLabel>
-                <Select
-                  value={formData.status || 'planned'}
-                  onChange={(e) => handleInputChange('status', e.target.value)}
-                  label="Status *"
-                >
-                  {WORK_STATUSES.map((status) => (
-                    <MenuItem key={status} value={status}>
-                      {status.replace('_', ' ').toUpperCase()}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            {/* Client & Project Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                🏢 Client & Project
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Autocomplete
-                value={formData.clientId ? clients.find(c => c.id === formData.clientId) || null : null}
-                onChange={(event, newValue) => {
-                  const newClientId = newValue ? newValue.id : null;
-                  handleInputChange('clientId', newClientId);
-                  
-                  // Clear project if it doesn't belong to the new client
-                  if (formData.projectId && newClientId) {
-                    const currentProject = projects.find(p => p.id === formData.projectId);
-                    if (currentProject && currentProject.clientId !== newClientId) {
-                      handleInputChange('projectId', null);
-                    }
-                  } else if (!newClientId) {
-                    // Clear project if no client is selected
-                    handleInputChange('projectId', null);
-                  }
-                }}
-                options={clients}
-                getOptionLabel={(option) => option.name || ''}
-                renderInput={(params) => (
-                  <TextField {...params} label="Client (Optional)" fullWidth />
-                )}
-                clearText="Clear Selection"
-                noOptionsText="No clients found"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={6}>
-              <Autocomplete
-                value={formData.projectId ? projects.find(p => p.id === formData.projectId) || null : null}
-                onChange={(event, newValue) => {
-                  handleInputChange('projectId', newValue ? newValue.id : null);
-                }}
-                options={projects.filter(project => !formData.clientId || project.clientId === formData.clientId)}
-                getOptionLabel={(option) => option.name || ''}
-                renderInput={(params) => (
-                  <TextField {...params} label="Project (Optional)" fullWidth />
-                )}
-                clearText="Clear Selection"
-                noOptionsText={formData.clientId ? "No projects found for this client" : "Select a client first"}
-                disabled={!formData.clientId}
-              />
-            </Grid>
-
-            {/* Time & Billing Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                ⏱️ Time & Billing
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={3}>
-              <TextField
-                label="Total Hours *"
-                type="number"
-                fullWidth
-                value={formData.totalHours || ''}
-                onChange={(e) => handleInputChange('totalHours', parseFloat(e.target.value))}
-                inputProps={{ min: 0, step: 0.25 }}
-                required
-                helperText="Total time worked"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={3}>
-              <TextField
-                label="Billable Hours"
-                type="number"
-                fullWidth
-                value={formData.billableHours || ''}
-                onChange={(e) => handleInputChange('billableHours', parseFloat(e.target.value))}
-                inputProps={{ min: 0, step: 0.25 }}
-                helperText="Hours to bill client"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={3}>
-              <TextField
-                label="Hourly Rate"
-                type="number"
-                fullWidth
-                value={formData.hourlyRate || ''}
-                onChange={(e) => handleInputChange('hourlyRate', parseFloat(e.target.value))}
-                inputProps={{ min: 0, step: 0.5 }}
-                InputProps={{
-                  startAdornment: <Typography sx={{ mr: 1, color: 'text.secondary' }}>$</Typography>
-                }}
-                helperText="Rate per hour"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={3}>
-              <TextField
-                label="Break Time"
-                type="number"
-                fullWidth
-                value={formData.breakTimeMinutes || 0}
-                onChange={(e) => handleInputChange('breakTimeMinutes', parseInt(e.target.value))}
-                inputProps={{ min: 0 }}
-                InputProps={{
-                  endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
-                }}
-                helperText="Break duration"
-              />
-            </Grid>
-
-            {/* Schedule Details Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                📅 Schedule Details
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Start Time"
-                type="time"
-                fullWidth
-                value={formData.startTime || ''}
-                onChange={(e) => handleInputChange('startTime', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                helperText="When work started"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="End Time"
-                type="time"
-                fullWidth
-                value={formData.endTime || ''}
-                onChange={(e) => handleInputChange('endTime', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                helperText="When work ended"
-              />
-            </Grid>
-            
-            <Grid item xs={12} sm={4}>
-              <TextField
-                label="Travel Time"
-                type="number"
-                fullWidth
-                value={formData.travelTimeMinutes || 0}
-                onChange={(e) => handleInputChange('travelTimeMinutes', parseInt(e.target.value))}
-                inputProps={{ min: 0 }}
-                InputProps={{
-                  endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
-                }}
-                helperText="Travel to/from job"
-              />
-            </Grid>
-
-            {/* Employee Assignment Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                👥 Assigned Employees
-              </Typography>
-              
-              <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-end' }}>
-                <FormControl sx={{ minWidth: 250 }}>
-                  <InputLabel>Select Employee to Add</InputLabel>
-                  <Select
-                    value={employeeToAdd}
-                    onChange={(e) => setEmployeeToAdd(e.target.value as number)}
-                    label="Select Employee to Add"
-                  >
-                    {employees
-                      .filter(emp => !selectedEmployees.some(sel => sel.employeeId === emp.id))
-                      .map((employee) => (
-                        <MenuItem key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </MenuItem>
-                      ))}
-                  </Select>
-                </FormControl>
-                
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  onClick={handleAddEmployee}
-                  disabled={!employeeToAdd}
-                  sx={{ height: 56 }}
-                >
-                  Add Employee
-                </Button>
-              </Box>
-              
-              {selectedEmployees.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', mb: 2 }}>
-                  No employees assigned yet. Please add at least one employee.
-                </Typography>
-              ) : (
-                <List sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  {selectedEmployees.map((selectedEmp) => {
-                    const employee = employees.find(emp => emp.id === selectedEmp.employeeId);
-                    return (
-                      <ListItem key={selectedEmp.employeeId} divider>
-                        <ListItemText
-                          primary={employee?.name || 'Unknown Employee'}
-                          secondary={`${selectedEmp.hours.toFixed(2)} hours assigned`}
-                        />
-                        <ListItemSecondaryAction>
-                          <TextField
-                            label="Hours"
-                            type="number"
-                            value={selectedEmp.hours}
-                            onChange={(e) => handleEmployeeHoursChange(selectedEmp.employeeId, parseFloat(e.target.value))}
-                            size="small"
-                            sx={{ width: 100, mr: 1 }}
-                            inputProps={{ min: 0, step: 0.25 }}
-                          />
-                          <IconButton 
-                            onClick={() => handleRemoveEmployee(selectedEmp.employeeId)}
-                            size="small"
-                            color="error"
-                            title="Remove Employee"
-                          >
-                            <RemoveIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    );
-                  })}
-                </List>
-              )}
-            </Grid>
-
-            {/* Other Charges Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                💰 Other Charges
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Add materials, services, debris removal, or other billable charges for this work activity.
-              </Typography>
-              
-              {/* Add Charge Form */}
-              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
-                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                  Add New Charge
-                </Typography>
-                
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={12} sm={6} md={2}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Type</InputLabel>
-                      <Select
-                        value={chargeFormData.chargeType}
-                        onChange={(e) => handleChargeFormChange('chargeType', e.target.value)}
-                        label="Type"
-                      >
-                        <MenuItem value="material">Material</MenuItem>
-                        <MenuItem value="service">Service</MenuItem>
-                        <MenuItem value="debris">Debris</MenuItem>
-                        <MenuItem value="delivery">Delivery</MenuItem>
-                        <MenuItem value="equipment">Equipment</MenuItem>
-                        <MenuItem value="other">Other</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Grid>
-                  
-                  <Grid item xs={12} sm={6} md={4}>
-                    <TextField
-                      label="Description *"
-                      fullWidth
-                      size="small"
-                      value={chargeFormData.description}
-                      onChange={(e) => handleChargeFormChange('description', e.target.value)}
-                      placeholder="e.g., 1 bag debris, 3 astrantia plants, mulch delivery"
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={2}>
-                    <TextField
-                      label="Quantity"
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={chargeFormData.quantity}
-                      onChange={(e) => handleChargeFormChange('quantity', parseFloat(e.target.value) || 0)}
-                      inputProps={{ min: 0, step: 0.1 }}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={2}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={handleAddCharge}
-                      startIcon={<AddIcon />}
-                      sx={{ height: 40 }}
-                    >
-                      Add
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Box>
-              
-              {/* Charges List */}
-              {selectedCharges.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2, textAlign: 'center', border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-                  No charges added yet. Use the form above to add materials, services, or other billable items.
-                </Typography>
-              ) : (
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      Added Charges ({selectedCharges.length} items)
-                    </Typography>
-                  </Box>
-                  
-                  <List dense>
-                    {selectedCharges.map((charge, index) => (
-                      <ListItem key={index} divider={index < selectedCharges.length - 1}>
-                        <ListItemText
-                          primary={
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Chip 
-                                label={charge.chargeType.replace('_', ' ').toUpperCase()} 
-                                size="small" 
-                                variant="outlined"
-                                color="primary"
-                              />
-                              <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                                {charge.description}
-                              </Typography>
-                            </Box>
-                          }
-                          secondary={
-                            <Typography variant="caption" color="text.secondary">
-                              {(charge.quantity && charge.quantity > 0) ? `Quantity: ${charge.quantity}` : 'No quantity specified'}
-                            </Typography>
-                          }
-                        />
-                        <ListItemSecondaryAction>
-                          <IconButton 
-                            onClick={() => handleRemoveCharge(index)}
-                            size="small"
-                            color="error"
-                            title="Remove Charge"
-                          >
-                            <RemoveIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-            </Grid>
-
-            {/* Plant List Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                🌱 Plant List
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Record plants installed or used in this work activity.
-              </Typography>
-              
-              {/* Add Plant Form */}
-              <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1, mb: 2 }}>
-                <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                  Add New Plant
-                </Typography>
-                
-                <Grid container spacing={2} alignItems="flex-end">
-                  <Grid item xs={12} sm={6} md={4}>
-                    <TextField
-                      label="Plant Name *"
-                      fullWidth
-                      size="small"
-                      value={plantFormData.name}
-                      onChange={(e) => handlePlantFormChange('name', e.target.value)}
-                      placeholder="e.g., Native Mock Orange, Achillea Terracotta"
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={2}>
-                    <TextField
-                      label="Quantity"
-                      type="number"
-                      fullWidth
-                      size="small"
-                      value={plantFormData.quantity}
-                      onChange={(e) => handlePlantFormChange('quantity', parseFloat(e.target.value) || 1)}
-                      inputProps={{ min: 0, step: 0.1 }}
-                    />
-                  </Grid>
-                  
-                  <Grid item xs={6} sm={3} md={2}>
-                    <Button
-                      variant="contained"
-                      size="small"
-                      onClick={handleAddPlant}
-                      startIcon={<AddIcon />}
-                      sx={{ height: 40 }}
-                    >
-                      Add
-                    </Button>
-                  </Grid>
-                </Grid>
-              </Box>
-              
-              {/* Plants List */}
-              {selectedPlants.length === 0 ? (
-                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic', p: 2, textAlign: 'center', border: '1px dashed', borderColor: 'divider', borderRadius: 1 }}>
-                  No plants added yet. Use the form above to record plants used in this work activity.
-                </Typography>
-              ) : (
-                <Box sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
-                  <Box sx={{ p: 2, bgcolor: 'grey.50', borderBottom: '1px solid', borderColor: 'divider' }}>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                      Plant List ({selectedPlants.length} items)
-                    </Typography>
-                  </Box>
-                  
-                  <List dense>
-                    {selectedPlants.map((plant, index) => (
-                      <ListItem key={index} divider={index < selectedPlants.length - 1}>
-                        <ListItemText
-                          primary={
-                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                              {plant.name}
-                            </Typography>
-                          }
-                          secondary={
-                            <Typography variant="caption" color="text.secondary">
-                              Quantity: {plant.quantity}
-                            </Typography>
-                          }
-                        />
-                        <ListItemSecondaryAction>
-                          <IconButton 
-                            onClick={() => handleRemovePlant(index)}
-                            size="small"
-                            color="error"
-                            title="Remove Plant"
-                          >
-                            <RemoveIcon />
-                          </IconButton>
-                        </ListItemSecondaryAction>
-                      </ListItem>
-                    ))}
-                  </List>
-                </Box>
-              )}
-            </Grid>
-
-            {/* Notes & Tasks Section */}
-            <Grid item xs={12}>
-              <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
-                📝 Documentation
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Add detailed notes about the work performed and any tasks or follow-up items.
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                Work Notes
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Describe the work that was performed, any issues encountered, materials used, etc.
-              </Typography>
-              <Box sx={{ 
-                '& .rdw-editor-wrapper': {
-                  border: '1px solid rgba(0, 0, 0, 0.23)',
-                  borderRadius: 1,
-                  backgroundColor: '#fff',
-                  minHeight: '150px'
-                },
-                '& .rdw-editor-toolbar': {
-                  borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '4px 4px 0 0',
-                  padding: '8px'
-                },
-                '& .rdw-editor-main': {
-                  minHeight: '120px',
-                  padding: '12px',
-                  fontSize: '14px'
-                }
-              }}>
-                <Editor
-                  editorState={notesEditorState}
-                  onEditorStateChange={(state) => {
-                    handleInputChange('notes', editorStateToHtml(state));
-                    setNotesEditorState(state);
-                  }}
-                  toolbar={{
-                    options: ['inline', 'list', 'link', 'history'],
-                    inline: { options: ['bold', 'italic', 'underline'] },
-                    list: { options: ['unordered', 'ordered'] }
-                  }}
-                  placeholder="Describe the work performed..."
-                />
-              </Box>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Typography variant="subtitle1" gutterBottom sx={{ fontWeight: 600 }}>
-                Tasks & Follow-up
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                List any pending tasks, follow-up items, or next steps required.
-              </Typography>
-              <Box sx={{ 
-                '& .rdw-editor-wrapper': {
-                  border: '1px solid rgba(0, 0, 0, 0.23)',
-                  borderRadius: 1,
-                  backgroundColor: '#fff',
-                  minHeight: '150px'
-                },
-                '& .rdw-editor-toolbar': {
-                  borderBottom: '1px solid rgba(0, 0, 0, 0.12)',
-                  backgroundColor: '#f8f9fa',
-                  borderRadius: '4px 4px 0 0',
-                  padding: '8px'
-                },
-                '& .rdw-editor-main': {
-                  minHeight: '120px',
-                  padding: '12px',
-                  fontSize: '14px'
-                }
-              }}>
-                <Editor
-                  editorState={tasksEditorState}
-                  onEditorStateChange={(state) => {
-                    handleInputChange('tasks', editorStateToHtml(state));
-                    setTasksEditorState(state);
-                  }}
-                  toolbar={{
-                    options: ['inline', 'list', 'link', 'history'],
-                    inline: { options: ['bold', 'italic', 'underline'] },
-                    list: { options: ['unordered', 'ordered'] }
-                  }}
-                  placeholder="List tasks, follow-up items, or next steps..."
-                />
-              </Box>
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2, bgcolor: 'grey.50', borderTop: '1px solid', borderColor: 'divider' }}>
-          <Button 
-            onClick={() => setEditDialogOpen(false)}
-            variant="outlined"
-            size="large"
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            variant="contained"
-            size="large"
-            sx={{ minWidth: 120 }}
-          >
-            {isCreating ? 'Create Activity' : 'Save Changes'}
-          </Button>
-        </DialogActions>
-      </Dialog>
+      {/* Work Activity Edit Dialog */}
+      <WorkActivityEditDialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        activity={selectedActivity}
+        isCreating={isCreating}
+        onSave={handleSharedDialogSave}
+        clients={clients.map(c => ({ id: c.id, clientId: c.clientId, name: c.name }))}
+        projects={projects}
+        employees={employees}
+        onShowSnackbar={showSnackbar}
+      />
 
       {/* Snackbar for notifications */}
       <Snackbar
