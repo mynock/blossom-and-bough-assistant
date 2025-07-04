@@ -11,15 +11,19 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   /**
    * POST /api/notion-sync/sync
    * Manually trigger a sync of Notion pages to work activities using AI parsing
+   * Body params:
+   *   - forceSync (boolean): Optional. If true, bypasses timestamp checks and syncs all pages
    */
   router.post('/sync', async (req, res) => {
     try {
-      debugLog.info('Manual Notion sync with AI parsing triggered via API');
-      const stats = await notionSyncService.syncNotionPages();
+      const { forceSync = false } = req.body;
+      
+      debugLog.info(`Manual Notion sync with AI parsing triggered via API${forceSync ? ' (FORCE SYNC)' : ''}`);
+      const stats = await notionSyncService.syncNotionPages(undefined, undefined, forceSync);
       
       res.json({
         success: true,
-        message: 'Notion sync completed with AI parsing',
+        message: `Notion sync completed with AI parsing${forceSync ? ' (forced all pages)' : ''}`,
         stats,
         warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
       });
@@ -35,10 +39,13 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   /**
    * POST /api/notion-sync/sync-page/:pageId
    * Sync a specific Notion page by ID
+   * Body params:
+   *   - forceSync (boolean): Optional. If true, bypasses timestamp checks
    */
   router.post('/sync-page/:pageId', async (req, res) => {
     try {
       const { pageId } = req.params;
+      const { forceSync = false } = req.body;
       
       if (!pageId) {
         return res.status(400).json({
@@ -47,12 +54,12 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
         });
       }
 
-      debugLog.info(`Manual sync of specific Notion page ${pageId} triggered via API`);
-      const stats = await notionSyncService.syncSpecificNotionPage(pageId);
+      debugLog.info(`Manual sync of specific Notion page ${pageId} triggered via API${forceSync ? ' (FORCE SYNC)' : ''}`);
+      const stats = await notionSyncService.syncSpecificNotionPage(pageId, undefined, forceSync);
       
       res.json({
         success: true,
-        message: `Notion page sync completed`,
+        message: `Notion page sync completed${forceSync ? ' (forced)' : ''}`,
         stats,
         warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
       });
@@ -68,9 +75,12 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   /**
    * GET /api/notion-sync/sync-page-stream/:pageId
    * Sync a specific Notion page with real-time progress updates via Server-Sent Events
+   * Query params:
+   *   - forceSync (boolean): Optional. If true, bypasses timestamp checks
    */
   router.get('/sync-page-stream/:pageId', async (req, res) => {
     const { pageId } = req.params;
+    const forceSync = req.query.forceSync === 'true';
     
     if (!pageId) {
       return res.status(400).json({
@@ -95,20 +105,20 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
     };
 
     try {
-      debugLog.info(`Manual sync of specific Notion page ${pageId} with progress streaming triggered via API`);
+      debugLog.info(`Manual sync of specific Notion page ${pageId} with progress streaming triggered via API${forceSync ? ' (FORCE SYNC)' : ''}`);
       
       // Send initial event
-      sendEvent('start', { message: `Starting sync for page ${pageId}...` });
+      sendEvent('start', { message: `Starting sync for page ${pageId}${forceSync ? ' (force sync enabled)' : ''}...` });
 
       const stats = await notionSyncService.syncSpecificNotionPage(pageId, (message: string) => {
         // Send progress update via SSE
         sendEvent('progress', { message });
-      });
+      }, forceSync);
       
       // Send completion event
       sendEvent('complete', {
         success: true,
-        message: 'Notion page sync completed',
+        message: `Notion page sync completed${forceSync ? ' (forced)' : ''}`,
         stats,
         warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
       });
@@ -130,8 +140,11 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   /**
    * GET /api/notion-sync/sync-stream
    * Manually trigger a sync with real-time progress updates via Server-Sent Events
+   * Query params:
+   *   - forceSync (boolean): Optional. If true, bypasses timestamp checks and syncs all pages
    */
   router.get('/sync-stream', async (req, res) => {
+    const forceSync = req.query.forceSync === 'true';
     // Set up Server-Sent Events headers
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -163,10 +176,10 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
     });
 
     try {
-      debugLog.info('Manual Notion sync with progress streaming triggered via API');
+      debugLog.info(`Manual Notion sync with progress streaming triggered via API${forceSync ? ' (FORCE SYNC)' : ''}`);
       
       // Send initial event
-      sendEvent('start', { message: 'Starting Notion sync...' });
+      sendEvent('start', { message: `Starting Notion sync${forceSync ? ' (force sync enabled)' : ''}...` });
 
       const stats = await notionSyncService.syncNotionPages(
         (current, total, message, incrementalStats) => {
@@ -179,13 +192,14 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
             stats: incrementalStats // Include running totals
           });
         },
-        abortController.signal // Pass abort signal
+        abortController.signal, // Pass abort signal
+        forceSync // Pass force sync flag
       );
       
       // Send completion event
       sendEvent('complete', {
         success: true,
-        message: 'Notion sync completed with AI parsing',
+        message: `Notion sync completed with AI parsing${forceSync ? ' (forced all pages)' : ''}`,
         stats,
         warnings: stats.warnings && stats.warnings.length > 0 ? stats.warnings : undefined
       });
