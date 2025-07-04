@@ -18,18 +18,15 @@ import {
 } from '@mui/material';
 import { 
   Assignment,
-  CloudUpload,
   Schedule,
   People,
   Business,
   Add,
-  FileUpload,
   Analytics,
   Today,
   AccessTime,
   AttachMoney,
   ArrowForward,
-  Sync,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS } from '../config/api';
@@ -48,12 +45,22 @@ interface WorkActivityStats {
     totalHours: number;
     status: string;
   }>;
+  upcomingActivities: Array<{
+    id: number;
+    date: string;
+    workType: string;
+    clientName: string;
+    clientId?: number;
+    totalHours: number;
+    status: string;
+  }>;
 }
 
 interface QuickStats {
   activeClients: number;
-  activeEmployees: number;
-  pendingActivities: number;
+  hoursThisWeek: number;
+  billableHoursThisWeek: number;
+  visitsThisWeek: number;
 }
 
 const Dashboard: React.FC = () => {
@@ -64,14 +71,17 @@ const Dashboard: React.FC = () => {
     totalHours: 0,
     billableHours: 0,
     recentActivities: [],
+    upcomingActivities: [],
   });
   const [quickStats, setQuickStats] = useState<QuickStats>({
     activeClients: 0,
-    activeEmployees: 0,
-    pendingActivities: 0,
+    hoursThisWeek: 0,
+    billableHoursThisWeek: 0,
+    visitsThisWeek: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeFilter, setActiveFilter] = useState<string>('all');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -79,15 +89,13 @@ const Dashboard: React.FC = () => {
         setLoading(true);
         
         // Fetch work activities and other data
-        const [workActivitiesRes, clientsRes, employeesRes] = await Promise.all([
+        const [workActivitiesRes, clientsRes] = await Promise.all([
           fetch(API_ENDPOINTS.WORK_ACTIVITIES),
           fetch(API_ENDPOINTS.CLIENTS),
-          fetch(API_ENDPOINTS.EMPLOYEES),
         ]);
 
         const workActivities = await workActivitiesRes.json();
         const clientsData = await clientsRes.json();
-        const employeesData = await employeesRes.json();
 
         // Calculate work activity stats
         const now = new Date();
@@ -119,18 +127,44 @@ const Dashboard: React.FC = () => {
             status: activity.status,
           }));
 
+        // Get upcoming activities (next 5 planned activities)
+        const upcomingActivities = workActivities
+          .filter((activity: any) => activity.status === 'planned')
+          .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+          .slice(0, 5)
+          .map((activity: any) => ({
+            id: activity.id,
+            date: activity.date,
+            workType: activity.workType,
+            clientName: activity.clientName || 'No Client',
+            clientId: activity.clientId,
+            totalHours: activity.totalHours,
+            status: activity.status,
+          }));
+
         setWorkStats({
           totalActivities: workActivities.length,
           thisWeekActivities: thisWeekActivities.length,
           totalHours,
           billableHours,
           recentActivities,
+          upcomingActivities,
         });
+
+        // Calculate weekly metrics
+        const thisWeekHours = thisWeekActivities.reduce((sum: number, activity: any) => 
+          sum + (activity.totalHours || 0), 0
+        );
+        const thisWeekBillableHours = thisWeekActivities.reduce((sum: number, activity: any) => 
+          sum + (activity.billableHours || 0), 0
+        );
+        const thisWeekVisits = thisWeekActivities.length;
 
         setQuickStats({
           activeClients: clientsData.clients?.filter((c: any) => c.activeStatus === 'active').length || 0,
-          activeEmployees: employeesData?.filter((e: any) => e.activeStatus === 'active').length || 0,
-          pendingActivities: workActivities.filter((a: any) => a.status === 'planned').length,
+          hoursThisWeek: thisWeekHours,
+          billableHoursThisWeek: thisWeekBillableHours,
+          visitsThisWeek: thisWeekVisits,
         });
 
       } catch (err) {
@@ -198,63 +232,9 @@ const Dashboard: React.FC = () => {
         </Typography>
       </Box>
 
-      {/* Primary Action Cards */}
+      {/* Primary Action Card */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box display="flex" alignItems="center" mb={2}>
-                <FileUpload sx={{ fontSize: 40, mr: 2 }} />
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Import Work Notes
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Upload PDF work notes and extract structured activity data
-                  </Typography>
-                </Box>
-              </Box>
-              <Button 
-                variant="contained" 
-                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
-                startIcon={<CloudUpload />}
-                onClick={() => navigate('/work-notes-import')}
-                fullWidth
-              >
-                Import PDF Notes
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #0d7377 0%, #2a9d8f 100%)', color: 'white' }}>
-            <CardContent sx={{ p: 3 }}>
-              <Box display="flex" alignItems="center" mb={2}>
-                <Sync sx={{ fontSize: 40, mr: 2 }} />
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Sync from Notion
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Import work activities directly from your configured Notion database
-                  </Typography>
-                </Box>
-              </Box>
-              <Button 
-                variant="contained" 
-                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
-                startIcon={<Sync />}
-                onClick={() => navigate('/notion-sync')}
-                fullWidth
-              >
-                Sync from Notion
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} md={4}>
+        <Grid item xs={12} md={6}>
           <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>
@@ -276,6 +256,34 @@ const Dashboard: React.FC = () => {
                 fullWidth
               >
                 Log Activity
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        {/* Upcoming Schedule Card */}
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box display="flex" alignItems="center" mb={2}>
+                <Schedule sx={{ fontSize: 40, mr: 2 }} />
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Upcoming Schedule
+                  </Typography>
+                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    View and manage your upcoming work activities and appointments
+                  </Typography>
+                </Box>
+              </Box>
+              <Button 
+                variant="contained" 
+                sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
+                startIcon={<Schedule />}
+                onClick={() => navigate('/schedule')}
+                fullWidth
+              >
+                View Schedule
               </Button>
             </CardContent>
           </Card>
@@ -376,6 +384,50 @@ const Dashboard: React.FC = () => {
                 </Button>
               </Box>
               
+              {/* Quick Filters */}
+              <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'all' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('all')}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  All
+                </Button>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'completed' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('completed')}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Completed
+                </Button>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'in_progress' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('in_progress')}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  In Progress
+                </Button>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'planned' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('planned')}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Planned
+                </Button>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'maintenance' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('maintenance')}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Maintenance
+                </Button>
+              </Box>
+              
               {workStats.recentActivities.length === 0 ? (
                 <Box sx={{ textAlign: 'center', py: 4 }}>
                   <Assignment sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
@@ -393,11 +445,31 @@ const Dashboard: React.FC = () => {
                     Log First Activity
                   </Button>
                 </Box>
-              ) : (
+                              ) : (
                 <List>
-                  {workStats.recentActivities.map((activity, index) => (
+                  {workStats.recentActivities.filter(activity => {
+                    if (activeFilter === 'all') return true;
+                    if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned') {
+                      return activity.status === activeFilter;
+                    }
+                    if (activeFilter === 'maintenance') {
+                      return activity.workType === 'maintenance';
+                    }
+                    return true;
+                  }).map((activity, index) => (
                     <React.Fragment key={activity.id}>
-                      <ListItem>
+                      <ListItem 
+                        button 
+                        onClick={() => navigate(`/work-activities/${activity.id}`)}
+                        sx={{ 
+                          '&:hover': { 
+                            backgroundColor: 'action.hover' 
+                          },
+                          cursor: 'pointer',
+                          borderRadius: 1,
+                          mb: 0.5
+                        }}
+                      >
                         <ListItemIcon>
                           <Assignment color="primary" />
                         </ListItemIcon>
@@ -419,7 +491,10 @@ const Dashboard: React.FC = () => {
                               {activity.clientId && activity.clientName !== 'No Client' ? (
                                 <Button 
                                   variant="text" 
-                                  onClick={() => navigate(`/clients/${activity.clientId}`)}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/clients/${activity.clientId}`);
+                                  }}
                                   sx={{ 
                                     minHeight: 'auto',
                                     p: 0,
@@ -446,7 +521,16 @@ const Dashboard: React.FC = () => {
                           }
                         />
                       </ListItem>
-                      {index < workStats.recentActivities.length - 1 && <Divider />}
+                      {index < workStats.recentActivities.filter(activity => {
+                        if (activeFilter === 'all') return true;
+                        if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned') {
+                          return activity.status === activeFilter;
+                        }
+                        if (activeFilter === 'maintenance') {
+                          return activity.workType === 'maintenance';
+                        }
+                        return true;
+                      }).length - 1 && <Divider />}
                     </React.Fragment>
                   ))}
                 </List>
@@ -475,19 +559,89 @@ const Dashboard: React.FC = () => {
                     </Box>
                     <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
                       <Box display="flex" alignItems="center">
-                        <People sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
-                        <Typography variant="body2">Active Employees</Typography>
+                        <AccessTime sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">Hours This Week</Typography>
                       </Box>
-                      <Typography variant="h6">{quickStats.activeEmployees}</Typography>
+                      <Typography variant="h6">{quickStats.hoursThisWeek.toFixed(1)}</Typography>
+                    </Box>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+                      <Box display="flex" alignItems="center">
+                        <AttachMoney sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Typography variant="body2">Billable Hours This Week</Typography>
+                      </Box>
+                      <Typography variant="h6">{quickStats.billableHoursThisWeek.toFixed(1)}</Typography>
                     </Box>
                     <Box display="flex" alignItems="center" justifyContent="space-between">
                       <Box display="flex" alignItems="center">
                         <Schedule sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
-                        <Typography variant="body2">Pending Activities</Typography>
+                        <Typography variant="body2">Visits This Week</Typography>
                       </Box>
-                      <Typography variant="h6">{quickStats.pendingActivities}</Typography>
+                      <Typography variant="h6">{quickStats.visitsThisWeek}</Typography>
                     </Box>
                   </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            {/* Upcoming Activities */}
+            <Grid item xs={12}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Upcoming Activities
+                  </Typography>
+                  {workStats.upcomingActivities.length === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 3 }}>
+                      <Schedule sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                      <Typography variant="body2" color="text.secondary">
+                        No upcoming activities scheduled
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <List dense>
+                      {workStats.upcomingActivities.map((activity) => (
+                        <ListItem
+                          key={activity.id}
+                          button
+                          onClick={() => navigate(`/work-activities/${activity.id}`)}
+                          sx={{ 
+                            borderRadius: 1,
+                            mb: 0.5,
+                            '&:hover': { backgroundColor: 'action.hover' }
+                          }}
+                        >
+                          <ListItemIcon>
+                            <Schedule color="info" />
+                          </ListItemIcon>
+                          <ListItemText
+                            primary={
+                              <Box display="flex" alignItems="center" gap={1}>
+                                <Typography variant="body2" fontWeight="medium">
+                                  {activity.workType.replace('_', ' ').toUpperCase()}
+                                </Typography>
+                                <Chip label="Planned" size="small" color="info" />
+                              </Box>
+                            }
+                            secondary={
+                              <Box>
+                                <Typography variant="caption" color="text.secondary">
+                                  {formatDate(activity.date)}
+                                </Typography>
+                                {activity.clientName !== 'No Client' && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    {' • '}{activity.clientName}
+                                  </Typography>
+                                )}
+                                <Typography variant="caption" color="text.secondary">
+                                  {' • '}{activity.totalHours}h
+                                </Typography>
+                              </Box>
+                            }
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  )}
                 </CardContent>
               </Card>
             </Grid>

@@ -200,7 +200,20 @@ const WorkActivityManagement: React.FC = () => {
       // Remove the parameter from URL without triggering navigation
       setSearchParams({});
     }
-  }, [searchParams, setSearchParams]);
+    
+    // Check for edit parameter and auto-open dialog
+    const editId = searchParams.get('edit');
+    if (editId && workActivities.length > 0) {
+      const activityToEdit = workActivities.find(a => a.id === parseInt(editId));
+      if (activityToEdit) {
+        setIsCreating(false);
+        setSelectedActivity(activityToEdit);
+        setEditDialogOpen(true);
+        // Remove the parameter from URL without triggering navigation
+        setSearchParams({});
+      }
+    }
+  }, [searchParams, setSearchParams, workActivities]);
 
   const fetchClients = async () => {
     try {

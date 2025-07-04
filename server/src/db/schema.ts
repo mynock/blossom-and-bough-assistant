@@ -67,6 +67,7 @@ export const workActivities = pgTable('work_activities', {
   clientId: integer('client_id').references(() => clients.id), // required if billable_hours > 0
   travelTimeMinutes: integer('travel_time_minutes'),
   breakTimeMinutes: integer('break_time_minutes'),
+  nonBillableTimeMinutes: integer('non_billable_time_minutes'),
   notes: text('notes'),
   tasks: text('tasks'), // future work items/to-do notes
   notionPageId: text('notion_page_id').unique(), // Notion page ID for syncing

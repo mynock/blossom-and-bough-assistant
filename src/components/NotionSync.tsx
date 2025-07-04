@@ -24,6 +24,8 @@ import {
   Divider,
   TextField,
   InputAdornment,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Sync,
@@ -104,6 +106,10 @@ export const NotionSync: React.FC = () => {
   const [isPageStreamingSync, setIsPageStreamingSync] = useState(false);
   const [pageRecentActivity, setPageRecentActivity] = useState<string[]>([]);
 
+  // Force sync options
+  const [forceSync, setForceSync] = useState<boolean>(false);
+  const [pageForceSync, setPageForceSync] = useState<boolean>(false);
+
   useEffect(() => {
     loadSyncStatus();
     loadImportStats();
@@ -145,7 +151,7 @@ export const NotionSync: React.FC = () => {
     setLastSyncWarnings([]);
     
     try {
-      const response = await api.post('/notion-sync/sync');
+      const response = await api.post('/notion-sync/sync', { forceSync });
       setLastSyncStats(response.data.stats);
       setMessage(response.data.message);
       
@@ -176,7 +182,7 @@ export const NotionSync: React.FC = () => {
     setRecentActivity([]);
     
     try {
-      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-stream`);
+      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-stream${forceSync ? '?forceSync=true' : ''}`);
       setCurrentEventSource(eventSource);
       
       eventSource.onopen = () => {
@@ -299,7 +305,7 @@ export const NotionSync: React.FC = () => {
     setPageLastSyncStats(null);
     
     try {
-      const response = await api.post(`/notion-sync/sync-page/${pageId.trim()}`);
+      const response = await api.post(`/notion-sync/sync-page/${pageId.trim()}`, { forceSync: pageForceSync });
       setPageLastSyncStats(response.data.stats);
       setPageMessage(response.data.message);
       
@@ -332,7 +338,7 @@ export const NotionSync: React.FC = () => {
     setPageRecentActivity([]);
     
     try {
-      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-page-stream/${pageId.trim()}`);
+      const eventSource = new EventSource(`${API_BASE}/notion-sync/sync-page-stream/${pageId.trim()}${pageForceSync ? '?forceSync=true' : ''}`);
       
       eventSource.onopen = () => {
         console.log('Page sync SSE connection opened');
@@ -683,6 +689,29 @@ export const NotionSync: React.FC = () => {
               </Box>
             )}
             
+            {/* Force Sync Option */}
+            <Box sx={{ mb: 3 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={forceSync}
+                    onChange={(e) => setForceSync(e.target.checked)}
+                    color="warning"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                      🔄 Force Sync (Override Timestamp Checks)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Sync all pages regardless of when they were last updated
+                    </Typography>
+                  </Box>
+                }
+              />
+            </Box>
+            
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
@@ -690,6 +719,7 @@ export const NotionSync: React.FC = () => {
                 onClick={handleSyncWithProgress}
                 disabled={!syncStatus.configured || isStreamingSync || isLoading}
                 size="large"
+                color={forceSync ? 'warning' : 'primary'}
               >
                 {isStreamingSync ? 'Syncing with Progress...' : 'Sync with Progress'}
               </Button>
@@ -700,6 +730,7 @@ export const NotionSync: React.FC = () => {
                 onClick={handleSync}
                 disabled={!syncStatus.configured || isLoading || isStreamingSync}
                 size="large"
+                color={forceSync ? 'warning' : 'primary'}
               >
                 {isLoading ? 'Syncing...' : 'Quick Sync'}
               </Button>
@@ -707,7 +738,8 @@ export const NotionSync: React.FC = () => {
             
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               • <strong>Sync with Progress:</strong> Real-time updates showing "1/10 processed, 2/10 processed" etc.<br/>
-              • <strong>Quick Sync:</strong> Traditional sync without progress updates
+              • <strong>Quick Sync:</strong> Traditional sync without progress updates<br/>
+              • <strong>Force Sync:</strong> Bypasses timestamp checks and syncs all pages regardless of modification dates
             </Typography>
             
             {!syncStatus.configured && (
@@ -787,10 +819,33 @@ export const NotionSync: React.FC = () => {
               </Box>
             )}
 
+            {/* Page Force Sync Option */}
+            <Box sx={{ mb: 3 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={pageForceSync}
+                    onChange={(e) => setPageForceSync(e.target.checked)}
+                    color="warning"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                      🔄 Force Sync Page (Override Timestamp Checks)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Sync this page regardless of when it was last updated
+                    </Typography>
+                  </Box>
+                }
+              />
+            </Box>
+
             <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
-                color="secondary"
+                color={pageForceSync ? 'warning' : 'secondary'}
                 startIcon={isPageStreamingSync ? <CircularProgress size={20} /> : <Sync />}
                 onClick={handlePageSyncWithProgress}
                 disabled={!syncStatus.configured || !pageId.trim() || isPageStreamingSync || isPageSyncLoading}
@@ -801,7 +856,7 @@ export const NotionSync: React.FC = () => {
               
               <Button
                 variant="outlined"
-                color="secondary"
+                color={pageForceSync ? 'warning' : 'secondary'}
                 startIcon={isPageSyncLoading ? <CircularProgress size={20} /> : <Sync />}
                 onClick={handlePageSync}
                 disabled={!syncStatus.configured || !pageId.trim() || isPageSyncLoading || isPageStreamingSync}
