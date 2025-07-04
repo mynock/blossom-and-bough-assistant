@@ -642,11 +642,56 @@ const Admin: React.FC = () => {
         </CardContent>
       </Card>
 
+      {/* Data Import Tools */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader 
+          title="Data Import Tools" 
+          subheader="Import work activities from various sources"
+        />
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="primary"
+                onClick={() => window.open('/work-notes-import', '_blank')}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">Import Work Notes</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Upload PDF work notes and extract structured activity data
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+            
+            <Grid item xs={12} md={6}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="secondary"
+                onClick={() => window.open('/notion-sync', '_blank')}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">Sync from Notion</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Import work activities directly from your configured Notion database
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
       {/* Notion Integration */}
       <Card sx={{ mb: 3 }}>
         <CardHeader 
           title="Notion Integration" 
-          subheader="Manage Notion database integration and sync work activities"
+          subheader="Manage Notion database integration"
         />
         <CardContent>
           <Grid container spacing={2}>
@@ -654,7 +699,7 @@ const Admin: React.FC = () => {
               <Button
                 fullWidth
                 variant="contained"
-                color="secondary"
+                color="info"
                 onClick={() => window.open(process.env.REACT_APP_NOTION_DATABASE_URL || '#', '_blank')}
                 sx={{ p: 2, height: 80 }}
               >
@@ -685,20 +730,11 @@ const Admin: React.FC = () => {
             </Grid>
             
             <Grid item xs={12} md={4}>
-              <Button
-                fullWidth
-                variant="contained"
-                color="primary"
-                onClick={() => window.open('/notion-sync', '_blank')}
-                sx={{ p: 2, height: 80 }}
-              >
-                <Box sx={{ textAlign: 'left', width: '100%' }}>
-                  <Typography variant="subtitle1">Notion Sync</Typography>
-                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
-                    Sync Notion pages to CRM
-                  </Typography>
-                </Box>
-              </Button>
+              <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Access your Notion database directly or use the embedded quick entry form for field data entry.
+                </Typography>
+              </Box>
             </Grid>
           </Grid>
         </CardContent>
