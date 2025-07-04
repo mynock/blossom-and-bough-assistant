@@ -71,10 +71,23 @@ private shouldSyncFromNotion(
 
 ## Usage
 
-The sync behavior is now automatic and transparent:
-- Pages that haven't been modified in Notion since the last sync will be skipped
-- Pages with newer Notion edits will be synced as before
-- First-time syncs will always proceed (when `lastNotionSyncAt` is null)
-- Debug logs provide clear information about sync decisions
+The sync behavior is now automatic and transparent with user-friendly warnings:
 
-This optimization makes the Notion sync process much more efficient while maintaining all existing functionality.
+### Sync Decision Logic
+- **Skipped**: Pages that haven't been modified in Notion since the last sync will be skipped
+- **Synced**: Pages with newer Notion edits will be synced as before
+- **Always Synced**: First-time syncs will always proceed (when `lastNotionSyncAt` is null)
+
+### Collaborative Editing Warnings
+- **Silent Protection**: When user has local changes but Notion hasn't been updated, local changes are protected without warning
+- **Collaborative Warning**: When both user and Notion have changes (Notion is newer), the system warns: 
+  > `"Client Name" on Date: Your local changes have been overwritten by newer Notion updates (collaborative editing)`
+- **Debug Logs**: Provide detailed information about all sync decisions
+
+### Benefits
+- Users are always informed when their changes are overwritten
+- Collaborative editing is supported with clear communication
+- Performance is optimized by only processing changed pages
+- All sync decisions are logged for debugging
+
+This optimization makes the Notion sync process much more efficient while maintaining all existing functionality and improving user experience through better communication.

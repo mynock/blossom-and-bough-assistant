@@ -156,7 +156,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by web app
       );
 
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
 
     test('should sync when last update was from notion sync and Notion is newer', () => {
@@ -168,7 +169,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'notion_sync'  // Last updated by Notion sync
       );
 
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
 
     test('should NOT sync when last update was from web app and Notion has not changed since sync', () => {
@@ -180,10 +182,11 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by user (protect user changes!)
       );
 
-      expect(result).toBe(false);
+      expect(result.shouldSync).toBe(false);
+      expect(result.warning).toBeUndefined();
     });
 
-    test('should sync when user made changes but Notion is newer than last sync', () => {
+    test('should sync when user made changes but Notion is newer than last sync with warning', () => {
       const shouldSync = getShouldSyncMethod(notionSyncService);
       
       const result = shouldSync(
@@ -192,7 +195,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by user
       );
 
-      expect(result).toBe(true); // Notion wins conflicts when both have changed
+      expect(result.shouldSync).toBe(true); // Notion wins conflicts when both have changed
+      expect(result.warning).toBe('Your local changes have been overwritten by newer Notion updates (collaborative editing)');
     });
 
     test('should NOT sync when Notion has not changed since last sync', () => {
@@ -204,7 +208,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'notion_sync'  // Last updated by Notion sync
       );
 
-      expect(result).toBe(false);
+      expect(result.shouldSync).toBe(false);
+      expect(result.warning).toBeUndefined();
     });
   });
 
@@ -255,7 +260,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
       );
     });
 
-    test('should sync when user made changes but Notion is newer than last sync', async () => {
+    test('should sync when user made changes but Notion is newer than last sync and generate warning', async () => {
       // Setup: User made changes but Notion was edited even more recently
       const notionPageNewerThanSync = {
         ...mockNotionPage,
@@ -285,6 +290,9 @@ describe('NotionSyncService - Conflict Prevention', () => {
       expect(result.updated).toBe(1);
       expect(result.warnings).not.toContain(
         expect.stringContaining('Skipped sync')
+      );
+      expect(result.warnings).toContain(
+        '"Test Client" on 2025-06-29: Your local changes have been overwritten by newer Notion updates (collaborative editing)'
       );
       expect(mockWorkActivityService.updateWorkActivity).toHaveBeenCalledWith(
         1,
@@ -396,7 +404,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
       );
 
       // Should default to syncing when record timestamp is invalid
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
   });
 
