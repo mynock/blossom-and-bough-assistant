@@ -156,7 +156,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by web app
       );
 
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
 
     test('should sync when last update was from notion sync and Notion is newer', () => {
@@ -168,7 +169,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'notion_sync'  // Last updated by Notion sync
       );
 
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
 
     test('should NOT sync when last update was from web app and Notion has not changed since sync', () => {
@@ -180,10 +182,11 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by user (protect user changes!)
       );
 
-      expect(result).toBe(false);
+      expect(result.shouldSync).toBe(false);
+      expect(result.warning).toBeUndefined();
     });
 
-    test('should sync when user made changes but Notion is newer than last sync', () => {
+    test('should sync when user made changes but Notion is newer than last sync with warning', () => {
       const shouldSync = getShouldSyncMethod(notionSyncService);
       
       const result = shouldSync(
@@ -192,7 +195,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'web_app'  // Last updated by user
       );
 
-      expect(result).toBe(true); // Notion wins conflicts when both have changed
+      expect(result.shouldSync).toBe(true); // Notion wins conflicts when both have changed
+      expect(result.warning).toBe('Your local changes have been overwritten by newer Notion updates (collaborative editing)');
     });
 
     test('should NOT sync when Notion has not changed since last sync', () => {
@@ -204,7 +208,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
         'notion_sync'  // Last updated by Notion sync
       );
 
-      expect(result).toBe(false);
+      expect(result.shouldSync).toBe(false);
+      expect(result.warning).toBeUndefined();
     });
   });
 
@@ -223,17 +228,28 @@ describe('NotionSyncService - Conflict Prevention', () => {
       });
     });
 
-    test('should skip sync when local changes are protected', async () => {
-      // Setup: Activity with user changes that should be protected
-      const activityWithUserChanges = {
+    test('should skip sync when Notion page has not been updated since last sync', async () => {
+      // Setup: Activity that was synced after the Notion page was last edited
+      const activityWithRecentSync = {
         ...mockExistingActivity,
-        lastNotionSyncAt: new Date('2025-06-29T08:00:00Z'), // Last synced at 08:00
+        lastNotionSyncAt: new Date('2025-06-29T11:00:00Z'), // Last synced at 11:00
         lastUpdatedBy: 'web_app' as const, // User made changes through web app
-        updatedAt: new Date('2025-06-29T11:00:00Z'), // Updated at 11:00
+        updatedAt: new Date('2025-06-29T12:00:00Z'), // Updated at 12:00
       };
 
+      // Mock Notion page that was edited before the last sync
+      const staleNotionPage = {
+        ...mockNotionPage,
+        last_edited_time: '2025-06-29T10:00:00Z', // Notion edited at 10:00 (before last sync)
+      };
+
+      mockNotionMethods.databases.query.mockResolvedValue({
+        results: [staleNotionPage],
+        has_more: false,
+      });
+
       mockWorkActivityService.getWorkActivityByNotionPageId = jest.fn()
-        .mockResolvedValue(activityWithUserChanges);
+        .mockResolvedValue(activityWithRecentSync);
 
       const result = await notionSyncService.syncNotionPages();
 
@@ -244,7 +260,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
       );
     });
 
-    test('should sync when user made changes but Notion is newer than last sync', async () => {
+    test('should sync when user made changes but Notion is newer than last sync and generate warning', async () => {
       // Setup: User made changes but Notion was edited even more recently
       const notionPageNewerThanSync = {
         ...mockNotionPage,
@@ -274,6 +290,9 @@ describe('NotionSyncService - Conflict Prevention', () => {
       expect(result.updated).toBe(1);
       expect(result.warnings).not.toContain(
         expect.stringContaining('Skipped sync')
+      );
+      expect(result.warnings).toContain(
+        '"Test Client" on 2025-06-29: Your local changes have been overwritten by newer Notion updates (collaborative editing)'
       );
       expect(mockWorkActivityService.updateWorkActivity).toHaveBeenCalledWith(
         1,
@@ -385,7 +404,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
       );
 
       // Should default to syncing when record timestamp is invalid
-      expect(result).toBe(true);
+      expect(result.shouldSync).toBe(true);
+      expect(result.warning).toBeUndefined();
     });
   });
 
@@ -485,8 +505,8 @@ describe('NotionSyncService - Conflict Prevention', () => {
       expect(mockWorkActivityService.getWorkActivityByNotionPageId).toHaveBeenCalled();
     });
 
-    test('should not sync when user has newer changes (lastUpdatedBy: web_app)', async () => {
-      // Mock existing activity that was last updated by web_app AFTER the last sync
+    test('should not sync when Notion page has not been updated since last sync', async () => {
+      // Mock existing activity that was synced after the Notion page was last edited
       const userUpdatedActivity = {
         ...mockExistingActivity,
         lastUpdatedBy: 'web_app' as const,
@@ -496,10 +516,10 @@ describe('NotionSyncService - Conflict Prevention', () => {
 
       mockWorkActivityService.getWorkActivityByNotionPageId.mockResolvedValue(userUpdatedActivity);
 
-      // Mock Notion page edited before user's changes
+      // Mock Notion page edited before last sync (so it hasn't been updated since sync)
       const oldNotionPage = {
         ...mockNotionPage,
-        last_edited_time: '2025-06-29T07:30:00Z', // Edited before user's changes
+        last_edited_time: '2025-06-29T07:30:00Z', // Edited before last sync
       };
 
       mockNotionMethods.databases.query.mockResolvedValue({

@@ -205,13 +205,13 @@ export class NotionSyncService {
 
       if (existingActivity) {
         // Check if we should sync this record BEFORE doing expensive AI processing
-        const shouldSync = this.shouldSyncFromNotion(
+        const syncDecision = this.shouldSyncFromNotion(
           page.last_edited_time,
           existingActivity.lastNotionSyncAt?.toISOString(),
           existingActivity.lastUpdatedBy
         );
         
-        if (!shouldSync) {
+        if (!syncDecision.shouldSync) {
           // Skip AI processing entirely - we already know we won't sync
           debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
           
@@ -223,6 +223,13 @@ export class NotionSyncService {
             onProgress(`⚠️ Skipped: ${clientName} - local changes newer`);
           }
           return { action: 'skipped', message: skipMessage };
+        }
+        
+        // If there's a warning from the sync decision, collect it for later with page reference
+        if (syncDecision.warning) {
+          const clientName = this.extractClientNameFromNotionPage(page);
+          const date = this.extractDateFromNotionPage(page);
+          warnings.push(`"${clientName}" on ${date}: ${syncDecision.warning}`);
         }
       }
 
@@ -514,7 +521,7 @@ export class NotionSyncService {
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
         notionPageId: parsedActivity.notionPageId, // Set Notion page ID directly
-        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastNotionSyncAt: new Date(parsedActivity.lastEditedTime), // Store Notion page's last_edited_time
         lastUpdatedBy: 'notion_sync' as const // Correctly mark as Notion sync from the start
       };
 
@@ -621,7 +628,7 @@ export class NotionSyncService {
         breakTimeMinutes: parsedActivity.lunchTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
-        lastNotionSyncAt: new Date(), // Mark when we synced from Notion
+        lastNotionSyncAt: new Date(parsedActivity.lastEditedTime), // Store Notion page's last_edited_time
         lastUpdatedBy: 'notion_sync' as const, // Mark that this update came from Notion sync
       };
 
@@ -919,24 +926,43 @@ export class NotionSyncService {
   }
 
   /**
-   * Determine if a record should be synced from Notion based on who made the last update
-   * Prevents overwriting user changes made through the web app
+   * Determine if a record should be synced from Notion based on when it was last edited
+   * Only sync if the Notion page has been updated since our last sync
+   * Returns an object with sync decision and optional warning message
    */
   private shouldSyncFromNotion(
     notionLastEdited: string,
     lastNotionSyncAt: string | null | undefined,
     lastUpdatedBy: string | null | undefined
-  ): boolean {
-    // Simple rule: Only protect records that were last updated by the web app
-    // If lastUpdatedBy is 'web_app', don't sync to protect user changes
+  ): { shouldSync: boolean; warning?: string } {
+    // If we've never synced this page before, always sync
+    if (!lastNotionSyncAt) {
+      debugLog.debug(`Allowing sync - no previous sync timestamp (lastNotionSyncAt: ${lastNotionSyncAt})`);
+      return { shouldSync: true };
+    }
+
+    // Check if the Notion page has been updated since our last sync
+    const notionEditedDate = new Date(notionLastEdited);
+    const lastSyncDate = new Date(lastNotionSyncAt);
+    
+    const notionIsNewer = notionEditedDate > lastSyncDate;
+    
+    if (!notionIsNewer) {
+      debugLog.debug(`Skipping sync - Notion page hasn't been updated since last sync (Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt})`);
+      return { shouldSync: false };
+    }
+
+    // If the record was last updated by the web app, warn about collaborative editing
     if (lastUpdatedBy === 'web_app') {
-      debugLog.debug(`Skipping sync - record was last updated by web app (lastUpdatedBy: ${lastUpdatedBy})`);
-      return false;
+      debugLog.debug(`Notion page is newer than last sync, but record was last updated by web app - will sync anyway as Notion changes take precedence`);
+      return { 
+        shouldSync: true, 
+        warning: 'Your local changes have been overwritten by newer Notion updates (collaborative editing)' 
+      };
     }
     
-    // For all other cases (lastUpdatedBy === 'notion_sync' or null/undefined), allow sync
-    debugLog.debug(`Allowing sync - record was last updated by ${lastUpdatedBy || 'unknown'} (not web app)`);
-    return true;
+    debugLog.debug(`Allowing sync - Notion page is newer than last sync (Notion: ${notionLastEdited}, Last sync: ${lastNotionSyncAt})`);
+    return { shouldSync: true };
   }
 
   /**
