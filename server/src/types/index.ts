@@ -198,4 +198,6 @@ export const WORK_TYPE_COLORS = {
   'Design': { id: '3', name: 'Grape/Mauve', description: 'consultation/planning work' },
   'Office Work': { id: '8', name: 'Graphite/Gray', description: 'internal business tasks' },
   'Errands': { id: '6', name: 'Tangerine/Orange', description: 'supply runs, equipment service, truck/tool maintenance' },
-}; 
+};
+
+// End of file - QuickBooks types moved to service file 

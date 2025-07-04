@@ -20,6 +20,7 @@ import Admin from './components/Admin';
 import Navigation from './components/Navigation';
 import Login from './components/Login';
 import NotionEmbedPage from './components/NotionEmbedPage';
+import QuickBooksIntegration from './components/QuickBooksIntegration';
 
 const theme = createTheme({
   palette: {
@@ -72,6 +73,7 @@ function App() {
                       <Route path="/work-activities" element={<WorkActivityManagement />} />
                       <Route path="/work-notes-import" element={<WorkNotesImport />} />
                       <Route path="/notion-sync" element={<NotionSync />} />
+                      <Route path="/quickbooks" element={<QuickBooksIntegration />} />
                       <Route path="/debug" element={<Debug />} />
                       <Route path="/admin" element={<Admin />} />
                     </Routes>

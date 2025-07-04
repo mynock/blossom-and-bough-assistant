@@ -32,7 +32,8 @@ import {
   LocalFlorist,
   Work,
   Analytics,
-  Settings
+  Settings,
+  Receipt
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -70,6 +71,7 @@ const Navigation: React.FC = () => {
     { path: '/clients', label: 'Clients', icon: <Business /> },
     { path: '/employees', label: 'Employees', icon: <People /> },
     { path: '/projects', label: 'Projects', icon: <Assignment /> },
+    { path: '/quickbooks', label: 'QuickBooks', icon: <Receipt /> },
     { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
     { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
     // { path: '/chat', label: 'AI Assistant', icon: <Chat /> }, // Hidden for now
