@@ -194,6 +194,7 @@ export class WorkNotesParserService {
           projectId: null, // TODO: Add project matching
           travelTimeMinutes: activity.driveTime || 0,
           breakTimeMinutes: activity.lunchTime || 0,
+          nonBillableTimeMinutes: 0, // Default to 0 for work notes import
           notes: activity.notes,
           tasks: activity.tasks.join('\n'),
           lastUpdatedBy: 'web_app' as const // Explicitly mark as web app import

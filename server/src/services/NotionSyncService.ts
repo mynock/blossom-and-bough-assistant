@@ -355,7 +355,8 @@ export class NotionSyncService {
       const startTime = this.getTextProperty(properties, 'Start Time');
       const endTime = this.getTextProperty(properties, 'End Time');
       const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
-      const travelTime = this.getNumberProperty(properties, 'Travel Time');
+      const travelTime = this.parseTravelTime(properties, 'Travel Time');
+      const nonBillableTime = this.parseNonBillableTime(properties, 'Non Billable Time');
 
       // Get page content
       const pageContent = await this.getPageContent(page.id);
@@ -501,7 +502,8 @@ export class NotionSyncService {
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
         parsedActivity.driveTime, 
-        parsedActivity.lunchTime
+        parsedActivity.lunchTime,
+        parsedActivity.nonBillableTime
       );
 
       // Create work activity directly with correct lastUpdatedBy for Notion sync
@@ -518,6 +520,7 @@ export class NotionSyncService {
         projectId: null,
         travelTimeMinutes: parsedActivity.driveTime || 0,
         breakTimeMinutes: parsedActivity.lunchTime || 0,
+        nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
         notionPageId: parsedActivity.notionPageId, // Set Notion page ID directly
@@ -613,7 +616,8 @@ export class NotionSyncService {
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
         parsedActivity.driveTime, 
-        parsedActivity.lunchTime
+        parsedActivity.lunchTime,
+        parsedActivity.nonBillableTime
       );
 
       // For updates, we'll use a more direct approach since we already have an ID
@@ -626,6 +630,7 @@ export class NotionSyncService {
         totalHours: parsedActivity.totalHours || 0,
         travelTimeMinutes: parsedActivity.driveTime || 0,
         breakTimeMinutes: parsedActivity.lunchTime || 0,
+        nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
         lastNotionSyncAt: new Date(parsedActivity.lastEditedTime), // Store Notion page's last_edited_time
@@ -813,6 +818,81 @@ export class NotionSyncService {
   private getNumberProperty(properties: any, propertyName: string): number | null {
     const prop = properties[propertyName];
     return prop?.number || null;
+  }
+
+  /**
+   * Parse travel time in "25x3" format (minutes × people)
+   * Returns total travel time in minutes
+   */
+  private parseTravelTime(properties: any, propertyName: string): number | null {
+    const prop = properties[propertyName];
+    if (!prop) return null;
+    
+    // First try to get as number (legacy format)
+    if (prop.number) {
+      return prop.number;
+    }
+    
+    // Try to get as text and parse "25x3" format
+    let travelTimeText = null;
+    if (prop.rich_text?.length > 0) {
+      travelTimeText = prop.rich_text.map((text: any) => text.plain_text).join('');
+    } else if (prop.title?.length > 0) {
+      travelTimeText = prop.title.map((text: any) => text.plain_text).join('');
+    }
+    
+    if (travelTimeText) {
+      // Parse "25x3" format
+      const match = travelTimeText.match(/(\d+)\s*x\s*(\d+)/i);
+      if (match) {
+        const minutes = parseInt(match[1], 10);
+        const people = parseInt(match[2], 10);
+        return minutes * people; // Total travel time
+      }
+      
+      // Try to parse as plain number
+      const plainNumber = parseInt(travelTimeText, 10);
+      if (!isNaN(plainNumber)) {
+        return plainNumber;
+      }
+    }
+    
+    return null;
+  }
+
+  /**
+   * Parse non-billable time in "0:15" format (HH:MM)
+   * Returns time in minutes
+   */
+  private parseNonBillableTime(properties: any, propertyName: string): number | null {
+    const prop = properties[propertyName];
+    if (!prop) return null;
+    
+    // Try to get as text
+    let timeText = null;
+    if (prop.rich_text?.length > 0) {
+      timeText = prop.rich_text.map((text: any) => text.plain_text).join('');
+    } else if (prop.title?.length > 0) {
+      timeText = prop.title.map((text: any) => text.plain_text).join('');
+    }
+    
+    if (timeText) {
+      // Parse "0:15" format (HH:MM)
+      const match = timeText.match(/(\d+):(\d+)/);
+      if (match) {
+        const hours = parseInt(match[1], 10);
+        const minutes = parseInt(match[2], 10);
+        return hours * 60 + minutes; // Convert to total minutes
+      }
+      
+      // Try to parse as plain number (assume minutes)
+      const plainNumber = parseInt(timeText, 10);
+      if (!isNaN(plainNumber)) {
+        return plainNumber;
+      }
+    }
+    
+    return null;
   }
 
   private getDateProperty(properties: any, propertyName: string): string | null {
@@ -1018,7 +1098,7 @@ export class NotionSyncService {
   /**
    * Calculate billable hours from total hours minus non-billable time
    */
-  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number): number {
+  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number, nonBillableTime?: number): number {
     let nonBillableHours = 0;
     
     if (driveTime) {
@@ -1027,6 +1107,10 @@ export class NotionSyncService {
     
     if (lunchTime) {
       nonBillableHours += lunchTime / 60; // Convert minutes to hours
+    }
+    
+    if (nonBillableTime) {
+      nonBillableHours += nonBillableTime / 60; // Convert minutes to hours
     }
     
     const billableHours = totalHours - nonBillableHours;

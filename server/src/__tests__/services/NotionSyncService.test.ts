@@ -62,6 +62,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
     clientId: 1,
     travelTimeMinutes: 0,
     breakTimeMinutes: 0,
+    nonBillableTimeMinutes: 0,
     notes: null,
     tasks: null,
     notionPageId: 'notion-page-123',

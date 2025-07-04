@@ -1,0 +1,1 @@
+ALTER TABLE "work_activities" ADD COLUMN "non_billable_time_minutes" integer;
