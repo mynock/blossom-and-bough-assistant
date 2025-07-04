@@ -220,7 +220,7 @@ const WorkActivityManagement: React.FC = () => {
   // New save handler for shared dialog
   const handleSharedDialogSave = async (
     activity: WorkActivity, 
-    employees: Array<{ employeeId: number; hours: number }>, 
+    employees: Array<{ employeeId: number; hours: number; employeeName?: string | null }>, 
     charges: Array<OtherCharge>, 
     plants: Array<PlantListItem>
   ) => {

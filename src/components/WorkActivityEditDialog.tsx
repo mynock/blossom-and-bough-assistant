@@ -22,7 +22,6 @@ import {
   Paper,
   Switch,
   FormControlLabel,
-  Divider,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -102,7 +101,7 @@ interface WorkActivityEditDialogProps {
   onClose: () => void;
   activity: WorkActivity | null;
   isCreating: boolean;
-  onSave: (activity: WorkActivity, employees: Array<{ employeeId: number; hours: number }>, charges: Array<OtherCharge>, plants: Array<PlantListItem>) => Promise<void>;
+  onSave: (activity: WorkActivity, employees: Array<{ employeeId: number; hours: number; employeeName?: string | null }>, charges: Array<OtherCharge>, plants: Array<PlantListItem>) => Promise<void>;
   clients: Client[];
   projects: Project[];
   employees: Employee[];
@@ -121,7 +120,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
   onShowSnackbar,
 }) => {
   const [formData, setFormData] = useState<Partial<WorkActivity>>({});
-  const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number }>>([]);
+  const [selectedEmployees, setSelectedEmployees] = useState<Array<{ employeeId: number; hours: number; employeeName?: string | null }>>([]);
   const [selectedCharges, setSelectedCharges] = useState<Array<OtherCharge>>([]);
   const [selectedPlants, setSelectedPlants] = useState<Array<PlantListItem>>([]);
   const [employeeToAdd, setEmployeeToAdd] = useState<number | ''>('');
@@ -179,11 +178,12 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
       setSelectedPlants([]);
       setNotesEditorState(EditorState.createEmpty());
       setTasksEditorState(EditorState.createEmpty());
-    } else if (activity) {
+                } else if (activity) {
       setFormData(activity);
       setSelectedEmployees(activity.employeesList.map(emp => ({
         employeeId: emp.employeeId,
-        hours: emp.hours
+        hours: emp.hours,
+        employeeName: emp.employeeName // Store the employee name from the activity
       })));
       setSelectedCharges(activity.chargesList.map(charge => ({
         chargeType: charge.chargeType,
@@ -236,9 +236,11 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
   // Employee management
   const handleAddEmployee = () => {
     if (employeeToAdd && !selectedEmployees.some(sel => sel.employeeId === employeeToAdd)) {
+      const employee = employees.find(emp => emp.id === employeeToAdd);
       setSelectedEmployees(prev => [...prev, { 
         employeeId: employeeToAdd as number, 
-        hours: formData.totalHours || 8 
+        hours: formData.totalHours || 8,
+        employeeName: employee?.name || null
       }]);
       setEmployeeToAdd('');
     }
@@ -607,11 +609,14 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
             ) : (
               <List sx={{ bgcolor: 'background.paper', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}>
                 {selectedEmployees.map((selectedEmp) => {
-                  const employee = employees.find(emp => emp.id === selectedEmp.employeeId);
+                  // Use stored employee name first, fallback to lookup if needed
+                  const displayName = selectedEmp.employeeName || 
+                    employees.find(emp => emp.id === selectedEmp.employeeId)?.name || 
+                    'Unknown Employee';
                   return (
                     <ListItem key={selectedEmp.employeeId} divider>
                       <ListItemText
-                        primary={employee?.name || 'Unknown Employee'}
+                        primary={displayName}
                         secondary={`${selectedEmp.hours.toFixed(2)} hours assigned`}
                       />
                       <ListItemSecondaryAction>
