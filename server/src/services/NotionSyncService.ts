@@ -57,7 +57,8 @@ export class NotionSyncService {
    */
   async syncNotionPages(
     onProgress?: (current: number, total: number, message: string, incrementalStats?: { created: number; updated: number; errors: number; warnings: string[] }) => void,
-    abortSignal?: AbortSignal
+    abortSignal?: AbortSignal,
+    forceSync: boolean = false
   ): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
     try {
       debugLog.info('Starting Notion pages sync with AI parsing...');
@@ -101,7 +102,7 @@ export class NotionSyncService {
           if (onProgress) {
             onProgress(currentPage, notionPages.length, message, { ...stats });
           }
-        });
+        }, forceSync);
         
         // Update stats based on result
         if (result.action === 'created') {
@@ -138,7 +139,8 @@ export class NotionSyncService {
    */
   async syncSpecificNotionPage(
     pageId: string,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    forceSync: boolean = false
   ): Promise<{ created: number; updated: number; errors: number; warnings: string[] }> {
     try {
       debugLog.info(`Starting sync for specific Notion page: ${pageId}`);
@@ -157,7 +159,7 @@ export class NotionSyncService {
       }
 
       // Process the single page using the extracted logic
-      const result = await this.processSingleNotionPage(page, onProgress);
+      const result = await this.processSingleNotionPage(page, onProgress, forceSync);
       
       // Update stats based on result
       if (result.action === 'created') {
@@ -190,7 +192,8 @@ export class NotionSyncService {
    */
   private async processSingleNotionPage(
     page: any,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    forceSync: boolean = false
   ): Promise<{
     action: 'created' | 'updated' | 'skipped';
     message?: string;
@@ -204,32 +207,39 @@ export class NotionSyncService {
       const existingActivity = await this.workActivityService.getWorkActivityByNotionPageId(page.id);
 
       if (existingActivity) {
-        // Check if we should sync this record BEFORE doing expensive AI processing
-        const syncDecision = this.shouldSyncFromNotion(
-          page.last_edited_time,
-          existingActivity.lastNotionSyncAt?.toISOString(),
-          existingActivity.lastUpdatedBy
-        );
-        
-        if (!syncDecision.shouldSync) {
-          // Skip AI processing entirely - we already know we won't sync
-          debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
+        // Check if we should sync this record BEFORE doing expensive AI processing (unless force sync is enabled)
+        if (!forceSync) {
+          const syncDecision = this.shouldSyncFromNotion(
+            page.last_edited_time,
+            existingActivity.lastNotionSyncAt?.toISOString(),
+            existingActivity.lastUpdatedBy
+          );
           
-          const clientName = this.extractClientNameFromNotionPage(page);
-          const date = this.extractDateFromNotionPage(page);
-          
-          const skipMessage = `"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`;
-          if (onProgress) {
-            onProgress(`⚠️ Skipped: ${clientName} - local changes newer`);
+          if (!syncDecision.shouldSync) {
+            // Skip AI processing entirely - we already know we won't sync
+            debugLog.info(`Skipping page ${page.id} - local changes are newer than last Notion sync (avoiding AI processing)`);
+            
+            const clientName = this.extractClientNameFromNotionPage(page);
+            const date = this.extractDateFromNotionPage(page);
+            
+            const skipMessage = `"${clientName}" on ${date}: Skipped sync - you have newer local changes that would be overwritten`;
+            if (onProgress) {
+              onProgress(`⚠️ Skipped: ${clientName} - local changes newer`);
+            }
+            return { action: 'skipped', message: skipMessage };
           }
-          return { action: 'skipped', message: skipMessage };
-        }
-        
-        // If there's a warning from the sync decision, collect it for later with page reference
-        if (syncDecision.warning) {
-          const clientName = this.extractClientNameFromNotionPage(page);
-          const date = this.extractDateFromNotionPage(page);
-          warnings.push(`"${clientName}" on ${date}: ${syncDecision.warning}`);
+          
+          // If there's a warning from the sync decision, collect it for later with page reference
+          if (syncDecision.warning) {
+            const clientName = this.extractClientNameFromNotionPage(page);
+            const date = this.extractDateFromNotionPage(page);
+            warnings.push(`"${clientName}" on ${date}: ${syncDecision.warning}`);
+          }
+        } else {
+          debugLog.info(`Force sync enabled - bypassing timestamp checks for page ${page.id}`);
+          if (onProgress) {
+            onProgress(`🔄 Force sync enabled - processing regardless of timestamps`);
+          }
         }
       }
 
