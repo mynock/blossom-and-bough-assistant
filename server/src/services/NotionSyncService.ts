@@ -548,13 +548,13 @@ export class NotionSyncService {
 
       // Prepare charges
       const charges = parsedActivity.charges?.map((charge: any) => ({
-        chargeType: charge.type || 'MATERIAL',
-        description: charge.description,
-        quantity: 1,
+        chargeType: charge.type || 'material',
+        description: charge.description || 'Unknown charge',
+        quantity: charge.quantity || 1,
         unitRate: charge.cost || 0,
         totalCost: charge.cost || 0,
-        billable: true
-      })) || [];
+        billable: charge.billable !== undefined ? charge.billable : true
+      })).filter((charge: any) => charge.description && charge.description !== 'Unknown charge') || [];
 
       // Create work activity directly using WorkActivityService
       const createData: CreateWorkActivityData = {

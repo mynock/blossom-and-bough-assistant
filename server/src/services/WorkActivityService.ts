@@ -1,4 +1,5 @@
 import { DatabaseService } from './DatabaseService';
+import { debugLog } from '../utils/logger';
 import { 
   workActivities, 
   workActivityEmployees, 
@@ -284,12 +285,29 @@ export class WorkActivityService extends DatabaseService {
 
     // Add charges if provided
     if (data.charges && data.charges.length > 0) {
-      const chargeData = data.charges.map(charge => ({
-        ...charge,
-        workActivityId,
-      }));
+      debugLog.debug(`Processing ${data.charges.length} charges for work activity ${workActivityId}`);
+      
+      const chargeData = data.charges.map((charge, index) => {
+        const processedCharge = {
+          workActivityId,
+          chargeType: charge.chargeType || 'material',
+          description: charge.description || 'Unknown charge',
+          quantity: charge.quantity || 1,
+          unitRate: typeof charge.unitRate === 'number' ? charge.unitRate : 0,
+          totalCost: typeof charge.totalCost === 'number' ? charge.totalCost : 0,
+          billable: charge.billable !== undefined ? charge.billable : true
+        };
+        
+        debugLog.debug(`Charge ${index + 1}:`, processedCharge);
+        return processedCharge;
+      }).filter(charge => charge.description && charge.description !== 'Unknown charge');
 
-      await this.db.insert(otherCharges).values(chargeData);
+      if (chargeData.length > 0) {
+        debugLog.debug(`Inserting ${chargeData.length} valid charges into database`);
+        await this.db.insert(otherCharges).values(chargeData);
+      } else {
+        debugLog.warn('No valid charges to insert after filtering');
+      }
     }
 
     // Add plants if provided
