@@ -47,7 +47,9 @@ interface WorkActivity {
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
   createdAt?: string;
@@ -171,7 +173,9 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         totalHours: 8,
         billableHours: 8,
         travelTimeMinutes: 0,
+        adjustedTravelTimeMinutes: null,
         breakTimeMinutes: 30,
+        nonBillableTimeMinutes: 0,
       });
       setSelectedEmployees([]);
       setSelectedCharges([]);
@@ -333,6 +337,11 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         notes: editorStateToHtml(notesEditorState),
         tasks: editorStateToHtml(tasksEditorState),
       } as WorkActivity;
+
+      console.log('🔍 [DEBUG] Saving activity data:', {
+        nonBillableTimeMinutes: updatedFormData.nonBillableTimeMinutes,
+        fullFormData: updatedFormData
+      });
 
       await onSave(updatedFormData, selectedEmployees, selectedCharges, selectedPlants);
       onClose();
@@ -521,6 +530,21 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
             />
           </Grid>
 
+          <Grid item xs={12} sm={3}>
+            <TextField
+              label="Non-Billable Time"
+              type="number"
+              fullWidth
+              value={formData.nonBillableTimeMinutes || 0}
+              onChange={(e) => handleInputChange('nonBillableTimeMinutes', parseInt(e.target.value))}
+              inputProps={{ min: 0 }}
+              InputProps={{
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+              }}
+              helperText="Time not billable to client"
+            />
+          </Grid>
+
           {/* Schedule Details Section */}
           <Grid item xs={12}>
             <Typography variant="h6" color="primary" gutterBottom sx={{ mb: 2, mt: 3 }}>
@@ -564,6 +588,37 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                 endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
               }}
               helperText="Travel to/from job"
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Adjusted Travel Time"
+              type="number"
+              fullWidth
+              value={formData.adjustedTravelTimeMinutes || ''}
+              onChange={(e) => {
+                const value = e.target.value === '' ? null : parseInt(e.target.value);
+                handleInputChange('adjustedTravelTimeMinutes', value);
+              }}
+              inputProps={{ min: 0 }}
+              InputProps={{
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>,
+                startAdornment: formData.adjustedTravelTimeMinutes ? (
+                  <Typography sx={{ mr: 1, color: 'success.main', fontSize: '0.875rem' }}>⚡</Typography>
+                ) : null
+              }}
+              helperText="Proportionally allocated travel time"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '&:hover fieldset': {
+                    borderColor: formData.adjustedTravelTimeMinutes ? 'success.main' : undefined,
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: formData.adjustedTravelTimeMinutes ? 'success.main' : undefined,
+                  },
+                },
+              }}
             />
           </Grid>
 

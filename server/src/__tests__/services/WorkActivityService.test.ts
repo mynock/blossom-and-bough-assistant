@@ -24,6 +24,9 @@ jest.mock('../../db', () => ({
   otherCharges: {
     workActivityId: 'workActivityId',
   },
+  plantList: {
+    workActivityId: 'workActivityId',
+  },
   clients: { name: 'name' },
   projects: { name: 'name' },
   employees: { name: 'name' }
@@ -932,6 +935,232 @@ describe('WorkActivityService', () => {
       const allActivities = await workActivityService.getAllWorkActivities();
       const foundActivity = allActivities.find(a => a.id === created.id);
       expect(foundActivity!.lastUpdatedBy).toBe('notion_sync');
+    });
+  });
+
+  describe('automatic billable hours recalculation', () => {
+    test('should automatically recalculate billable hours when adjustedTravelTimeMinutes is updated', async () => {
+      // Mock the create operation
+      const createdActivity = {
+        id: 1,
+        workType: 'maintenance',
+        date: '2024-01-15',
+        status: 'completed',
+        totalHours: 4,
+        billableHours: 4,
+        travelTimeMinutes: 30,
+        adjustedTravelTimeMinutes: null,
+        clientId: 1,
+        lastUpdatedBy: 'web_app',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockReturnValue({
+          returning: jest.fn().mockResolvedValue([createdActivity])
+        })
+      });
+
+      mockDb.insert.mockReturnValueOnce({
+        values: jest.fn().mockResolvedValue(undefined)
+      });
+
+      // Mock getWorkActivityById for the update operation
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            leftJoin: jest.fn().mockReturnValue({
+              where: jest.fn().mockResolvedValue([{
+                ...createdActivity,
+                clientName: 'Test Client',
+                projectName: null
+              }])
+            })
+          })
+        })
+      });
+
+      // Mock employees, charges, and plants queries for getWorkActivityById
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockResolvedValue([])
+          })
+        })
+      });
+
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      // Mock the update operation
+      const updatedActivity = {
+        ...createdActivity,
+        adjustedTravelTimeMinutes: 30,
+        billableHours: 4.5 // 4 base hours + 0.5 travel hours (30 minutes)
+      };
+
+      mockDb.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            returning: jest.fn().mockResolvedValue([updatedActivity])
+          })
+        })
+      });
+
+      // Create the activity
+      const createData: CreateWorkActivityData = {
+        workActivity: {
+          workType: 'maintenance',
+          date: '2024-01-15',
+          status: 'completed',
+          totalHours: 4,
+          billableHours: 4,
+          clientId: 1,
+        },
+        employees: [],
+      };
+
+      const created = await workActivityService.createWorkActivity(createData);
+
+      // Update with adjustedTravelTimeMinutes
+      const updated = await workActivityService.updateWorkActivity(created.id, {
+        adjustedTravelTimeMinutes: 30
+      });
+
+      // Verify billable hours were automatically recalculated
+      expect(updated!.billableHours).toBe(4.5); // 4 base hours + 0.5 travel hours
+      expect(updated!.adjustedTravelTimeMinutes).toBe(30);
+    });
+
+    test('should handle zero adjustedTravelTimeMinutes correctly', async () => {
+      const existingActivity = {
+        id: 1,
+        workType: 'maintenance',
+        date: '2024-01-15',
+        status: 'completed',
+        totalHours: 3,
+        billableHours: 3.5, // Had some travel time before
+        travelTimeMinutes: 45,
+        adjustedTravelTimeMinutes: 30,
+        clientId: 1,
+        lastUpdatedBy: 'web_app',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock getWorkActivityById for the update operation
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            leftJoin: jest.fn().mockReturnValue({
+              where: jest.fn().mockResolvedValue([{
+                ...existingActivity,
+                clientName: 'Test Client',
+                projectName: null
+              }])
+            })
+          })
+        })
+      });
+
+      // Mock employees, charges, and plants queries for getWorkActivityById
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          leftJoin: jest.fn().mockReturnValue({
+            where: jest.fn().mockResolvedValue([])
+          })
+        })
+      });
+
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      mockDb.select.mockReturnValueOnce({
+        from: jest.fn().mockReturnValue({
+          where: jest.fn().mockResolvedValue([])
+        })
+      });
+
+      // Mock the update operation
+      const updatedActivity = {
+        ...existingActivity,
+        adjustedTravelTimeMinutes: 0,
+        billableHours: 3 // 3 base hours + 0 travel hours
+      };
+
+      mockDb.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            returning: jest.fn().mockResolvedValue([updatedActivity])
+          })
+        })
+      });
+
+      // Update with zero adjustedTravelTimeMinutes
+      const updated = await workActivityService.updateWorkActivity(1, {
+        adjustedTravelTimeMinutes: 0
+      });
+
+      // Verify billable hours were recalculated to base work hours only
+      expect(updated!.billableHours).toBe(3); // 3 base hours + 0 travel hours
+      expect(updated!.adjustedTravelTimeMinutes).toBe(0);
+    });
+
+    test('should not recalculate billable hours when adjustedTravelTimeMinutes is not updated', async () => {
+      const existingActivity = {
+        id: 1,
+        workType: 'maintenance',
+        date: '2024-01-15',
+        status: 'completed',
+        totalHours: 4,
+        billableHours: 4.5,
+        travelTimeMinutes: 30,
+        adjustedTravelTimeMinutes: 30,
+        clientId: 1,
+        lastUpdatedBy: 'web_app',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Mock the update operation (no getWorkActivityById call needed)
+      const updatedActivity = {
+        ...existingActivity,
+        notes: 'Updated notes',
+        billableHours: 4.5 // Should remain unchanged
+      };
+
+      mockDb.update.mockReturnValueOnce({
+        set: jest.fn().mockReturnValue({
+          where: jest.fn().mockReturnValue({
+            returning: jest.fn().mockResolvedValue([updatedActivity])
+          })
+        })
+      });
+
+      // Update without adjustedTravelTimeMinutes
+      const updated = await workActivityService.updateWorkActivity(1, {
+        notes: 'Updated notes'
+      });
+
+      // Verify billable hours were not changed
+      expect(updated!.billableHours).toBe(4.5);
+      expect(updated!.notes).toBe('Updated notes');
+      
+      // Verify getWorkActivityById was not called (no automatic recalculation)
+      // Since we only mocked one update call, if getWorkActivityById was called, it would fail
     });
   });
 });

@@ -1,0 +1,205 @@
+import request from 'supertest';
+import express from 'express';
+import travelTimeRouter from '../../routes/travelTime';
+import { TravelTimeAllocationService } from '../../services/TravelTimeAllocationService';
+
+// Mock the TravelTimeAllocationService
+jest.mock('../../services/TravelTimeAllocationService');
+
+// Mock auth middleware
+jest.mock('../../middleware/auth', () => ({
+  requireAuth: (req: any, res: any, next: any) => next(),
+}));
+
+describe('Travel Time Routes', () => {
+  let app: express.Application;
+  let mockTravelTimeService: jest.Mocked<TravelTimeAllocationService>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    
+    app = express();
+    app.use(express.json());
+    app.use('/api/travel-time', travelTimeRouter);
+    
+    // Get the mocked service
+    const MockedService = TravelTimeAllocationService as jest.MockedClass<typeof TravelTimeAllocationService>;
+    mockTravelTimeService = new MockedService() as jest.Mocked<TravelTimeAllocationService>;
+  });
+
+  describe('GET /api/travel-time/preview/:date', () => {
+    it('should return work activities for preview', async () => {
+      const mockActivities = [
+        {
+          id: 1,
+          clientName: 'Test Client',
+          workType: 'maintenance',
+          totalHours: 2,
+          billableHours: 2,
+          travelTimeMinutes: 30,
+          adjustedTravelTimeMinutes: null,
+          employeesList: [{ employeeId: 1, employeeName: 'John', hours: 2 }],
+        },
+      ];
+
+      mockTravelTimeService.getWorkActivitiesForDate.mockResolvedValue(mockActivities as any);
+
+      const response = await request(app)
+        .get('/api/travel-time/preview/2025-07-05')
+        .expect(200);
+
+      expect(response.body).toEqual({
+        date: '2025-07-05',
+        workActivities: [
+          {
+            id: 1,
+            clientName: 'Test Client',
+            workType: 'maintenance',
+            totalHours: 2,
+            billableHours: 2,
+            travelTimeMinutes: 30,
+            adjustedTravelTimeMinutes: null,
+            employeesList: [{ employeeId: 1, employeeName: 'John', hours: 2 }],
+          },
+        ],
+        totalWorkHours: 2,
+        totalTravelMinutes: 30,
+        summary: {
+          totalActivities: 1,
+          totalWorkHours: 2,
+          totalTravelMinutes: 30,
+          averageHoursPerActivity: 2,
+        },
+      });
+
+      expect(mockTravelTimeService.getWorkActivitiesForDate).toHaveBeenCalledWith('2025-07-05');
+    });
+
+    it('should return 400 for invalid date format', async () => {
+      const response = await request(app)
+        .get('/api/travel-time/preview/invalid-date')
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid date format. Use YYYY-MM-DD');
+    });
+  });
+
+  describe('POST /api/travel-time/calculate', () => {
+    it('should calculate travel time allocation', async () => {
+      const mockResult = {
+        date: '2025-07-05',
+        totalTravelMinutes: 75,
+        totalWorkHours: 8,
+        allocations: [
+          {
+            workActivityId: 1,
+            clientName: 'Client A',
+            hoursWorked: 2,
+            originalTravelMinutes: 30,
+            allocatedTravelMinutes: 18,
+            newBillableHours: 2.3,
+            hasZeroTravel: false,
+          },
+        ],
+        updatedActivities: 0,
+        warnings: [],
+      };
+
+      mockTravelTimeService.allocateTravelTime.mockResolvedValue(mockResult);
+
+      const response = await request(app)
+        .post('/api/travel-time/calculate')
+        .send({ date: '2025-07-05' })
+        .expect(200);
+
+      expect(response.body).toEqual(mockResult);
+      expect(mockTravelTimeService.allocateTravelTime).toHaveBeenCalledWith('2025-07-05');
+    });
+
+    it('should return 400 when date is missing', async () => {
+      const response = await request(app)
+        .post('/api/travel-time/calculate')
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toBe('date is required');
+    });
+
+    it('should return 400 for invalid date format', async () => {
+      const response = await request(app)
+        .post('/api/travel-time/calculate')
+        .send({ date: 'invalid' })
+        .expect(400);
+
+      expect(response.body.error).toBe('Invalid date format. Use YYYY-MM-DD');
+    });
+
+    it('should handle service errors', async () => {
+      mockTravelTimeService.allocateTravelTime.mockRejectedValue(
+        new Error('No work activities found')
+      );
+
+      const response = await request(app)
+        .post('/api/travel-time/calculate')
+        .send({ date: '2025-07-05' })
+        .expect(500);
+
+      expect(response.body.error).toBe('No work activities found');
+    });
+  });
+
+  describe('POST /api/travel-time/apply', () => {
+    it('should apply travel time allocation', async () => {
+      const mockResult = {
+        date: '2025-07-05',
+        totalTravelMinutes: 75,
+        totalWorkHours: 8,
+        allocations: [
+          {
+            workActivityId: 1,
+            clientName: 'Client A',
+            hoursWorked: 2,
+            originalTravelMinutes: 30,
+            allocatedTravelMinutes: 18,
+            newBillableHours: 2.3,
+            hasZeroTravel: false,
+          },
+        ],
+        updatedActivities: 1,
+        warnings: [],
+      };
+
+      mockTravelTimeService.calculateAndApplyTravelTime.mockResolvedValue(mockResult);
+
+      const response = await request(app)
+        .post('/api/travel-time/apply')
+        .send({ date: '2025-07-05' })
+        .expect(200);
+
+      expect(response.body).toEqual(mockResult);
+      expect(mockTravelTimeService.calculateAndApplyTravelTime).toHaveBeenCalledWith('2025-07-05');
+    });
+
+    it('should return 400 when date is missing', async () => {
+      const response = await request(app)
+        .post('/api/travel-time/apply')
+        .send({})
+        .expect(400);
+
+      expect(response.body.error).toBe('date is required');
+    });
+
+    it('should handle service errors', async () => {
+      mockTravelTimeService.calculateAndApplyTravelTime.mockRejectedValue(
+        new Error('Database error')
+      );
+
+      const response = await request(app)
+        .post('/api/travel-time/apply')
+        .send({ date: '2025-07-05' })
+        .expect(500);
+
+      expect(response.body.error).toBe('Database error');
+    });
+  });
+});

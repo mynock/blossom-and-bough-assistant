@@ -30,6 +30,7 @@ import { useSearchParams } from 'react-router-dom';
 
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
+import TravelTimeAllocation from './TravelTimeAllocation';
 
 interface WorkActivity {
   id: number;
@@ -44,7 +45,9 @@ interface WorkActivity {
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
   createdAt?: string;
@@ -481,6 +484,20 @@ const WorkActivityManagement: React.FC = () => {
               </Button>
             </Grid>
           </Grid>
+        </AccordionDetails>
+      </Accordion>
+
+      {/* Travel Time Allocation Section */}
+      <Accordion sx={{ mb: 3 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6">Travel Time Allocation</Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <TravelTimeAllocation 
+            onUpdate={fetchWorkActivities} 
+          />
         </AccordionDetails>
       </Accordion>
 

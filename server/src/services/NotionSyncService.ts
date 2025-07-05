@@ -398,6 +398,17 @@ export class NotionSyncService {
         naturalText += '\n';
       }
 
+      // Add non-billable time if present
+      if (nonBillableTime && nonBillableTime > 0) {
+        const hours = Math.floor(nonBillableTime / 60);
+        const minutes = nonBillableTime % 60;
+        if (hours > 0) {
+          naturalText += `Non-billable time: ${hours}:${minutes.toString().padStart(2, '0')}\n`;
+        } else {
+          naturalText += `Non-billable time: ${minutes} min\n`;
+        }
+      }
+
       // Add client name
       if (clientName) {
         naturalText += `${clientName}\n`;
@@ -509,13 +520,15 @@ export class NotionSyncService {
         }
       }
 
-      // Calculate billable hours
+      // Calculate billable hours - do NOT subtract raw travel time, only adjusted travel time
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
-        parsedActivity.driveTime, 
         parsedActivity.lunchTime,
         parsedActivity.nonBillableTime
       );
+
+      // Debug logging for billable hours calculation
+      debugLog.info(`🧮 Hours calculation for ${parsedActivity.clientName}: totalHours=${parsedActivity.totalHours}, billableHours=${billableHours}, driveTime=${parsedActivity.driveTime}min (stored but NOT subtracted), lunchTime=${parsedActivity.lunchTime}min, nonBillableTime=${parsedActivity.nonBillableTime}min`);
 
       // Create work activity directly with correct lastUpdatedBy for Notion sync
       const workActivity: NewWorkActivity = {
@@ -623,10 +636,9 @@ export class NotionSyncService {
         debugLog.info(`📊 Calculated total hours for update ${workActivityId}: ${calculatedTotalHours}h from ${parsedActivity.startTime}-${parsedActivity.endTime} with ${parsedActivity.employees?.length || 1} employee(s)`);
       }
 
-      // Calculate billable hours
+      // Calculate billable hours - do NOT subtract raw travel time, only adjusted travel time
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
-        parsedActivity.driveTime, 
         parsedActivity.lunchTime,
         parsedActivity.nonBillableTime
       );
@@ -1191,20 +1203,19 @@ export class NotionSyncService {
 
   /**
    * Calculate billable hours from total hours minus non-billable time
+   * Note: totalHours represents total person-hours (duration × employee count)
+   * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
+   * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
    */
-  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number, nonBillableTime?: number): number {
+  private calculateBillableHours(totalHours: number, lunchTime?: number, nonBillableTime?: number): number {
     let nonBillableHours = 0;
     
-    if (driveTime) {
-      nonBillableHours += driveTime / 60; // Convert minutes to hours
-    }
-    
     if (lunchTime) {
-      nonBillableHours += lunchTime / 60; // Convert minutes to hours
+      nonBillableHours += lunchTime / 60; // Convert minutes to hours (fixed amount, not per-person)
     }
     
     if (nonBillableTime) {
-      nonBillableHours += nonBillableTime / 60; // Convert minutes to hours
+      nonBillableHours += nonBillableTime / 60; // Convert minutes to hours (fixed amount, not per-person)
     }
     
     const billableHours = totalHours - nonBillableHours;
