@@ -237,7 +237,7 @@ class QBOSeedDataGenerator {
         await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
-        const errorObj = typeof error === 'object' ? error : {};
+        const errorObj = error as any;
         const errorDetail = errorObj?.Fault?.Error?.[0];
         
         if (errorDetail?.code === '6240') {
