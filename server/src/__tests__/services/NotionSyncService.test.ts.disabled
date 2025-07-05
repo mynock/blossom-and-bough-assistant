@@ -364,6 +364,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
           clientId: 1,
           totalHours: 4,
           notionPageId: null,
+          adjustedTravelTimeMinutes: null,
           createdAt: new Date(),
         }]);
 
