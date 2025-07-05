@@ -30,6 +30,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS } from '../config/api';
+import { formatDateBriefPacific } from '../utils/dateUtils';
 
 interface WorkActivityStats {
   totalActivities: number;
@@ -212,13 +213,7 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString([], {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
+
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -515,7 +510,7 @@ const Dashboard: React.FC = () => {
                                 </Typography>
                               )}
                               <Typography component="span" variant="body2" color="text.secondary">
-                                • {formatDate(activity.date)} • {activity.totalHours}h
+                                • {formatDateBriefPacific(activity.date)} • {activity.totalHours}h
                               </Typography>
                             </Box>
                           }
@@ -625,7 +620,7 @@ const Dashboard: React.FC = () => {
                             secondary={
                               <Box>
                                 <Typography variant="caption" color="text.secondary">
-                                  {formatDate(activity.date)}
+                                  {formatDateBriefPacific(activity.date)}
                                 </Typography>
                                 {activity.clientName !== 'No Client' && (
                                   <Typography variant="caption" color="text.secondary">
