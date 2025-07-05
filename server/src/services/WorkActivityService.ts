@@ -330,11 +330,38 @@ export class WorkActivityService extends DatabaseService {
    * Update a work activity
    */
   async updateWorkActivity(id: number, data: Partial<NewWorkActivity>): Promise<WorkActivity | undefined> {
+    // If adjustedTravelTimeMinutes is being updated, recalculate billable hours
+    let finalUpdateData = { ...data };
+    
+    if (data.adjustedTravelTimeMinutes !== undefined) {
+      // Get current work activity to access current billable/total hours
+      const currentActivity = await this.getWorkActivityById(id);
+      if (currentActivity) {
+        // Calculate base work hours (excluding any previous travel time)
+        const baseWorkHours = currentActivity.totalHours || 0;
+        
+        // Convert adjusted travel time to hours (handle null safely)
+        const adjustedTravelMinutes = data.adjustedTravelTimeMinutes || 0;
+        const adjustedTravelHours = adjustedTravelMinutes / 60;
+        
+        // Calculate new billable hours: base work hours + adjusted travel hours
+        const newBillableHours = baseWorkHours + adjustedTravelHours;
+        
+        // Add the recalculated billable hours to the update data
+        finalUpdateData = {
+          ...finalUpdateData,
+          billableHours: newBillableHours
+        };
+        
+        debugLog.info(`🧮 Recalculated billable hours for work activity ${id}: ${baseWorkHours} base hours + ${adjustedTravelHours} travel hours = ${newBillableHours} total billable hours`);
+      }
+    }
+    
     // Set lastUpdatedBy to 'web_app' by default unless explicitly provided (for Notion sync)
     const updateData = {
-      ...data,
+      ...finalUpdateData,
       updatedAt: this.formatTimestamp(new Date()),
-      lastUpdatedBy: data.lastUpdatedBy || 'web_app' as const
+      lastUpdatedBy: finalUpdateData.lastUpdatedBy || 'web_app' as const
     };
     
     const updated = await this.db

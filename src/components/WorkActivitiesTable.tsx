@@ -38,6 +38,7 @@ interface WorkActivity {
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -62,7 +63,7 @@ interface WorkActivitiesTableProps {
   emptyMessage?: string;
 }
 
-type SortColumn = 'date' | 'workType' | 'status' | 'clientName' | 'totalHours' | 'totalCharges' | 'updatedAt';
+type SortColumn = 'date' | 'workType' | 'status' | 'clientName' | 'totalHours' | 'adjustedTravelTimeMinutes' | 'totalCharges' | 'updatedAt';
 type SortDirection = 'asc' | 'desc';
 
 export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
@@ -226,6 +227,15 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Hours
               </TableSortLabel>
             </TableCell>
+            <TableCell sx={{ width: '8%' }}>
+              <TableSortLabel
+                active={sortColumn === 'adjustedTravelTimeMinutes'}
+                direction={sortColumn === 'adjustedTravelTimeMinutes' ? sortDirection : 'asc'}
+                onClick={() => handleSort('adjustedTravelTimeMinutes')}
+              >
+                Adj Travel
+              </TableSortLabel>
+            </TableCell>
             <TableCell sx={{ width: '20%' }}>Employees</TableCell>
             <TableCell sx={{ width: '10%' }}>
               <TableSortLabel
@@ -318,6 +328,35 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                       </Typography>
                     )}
                   </Box>
+                </TableCell>
+                <TableCell>
+                  {activity.adjustedTravelTimeMinutes !== null && activity.adjustedTravelTimeMinutes !== undefined ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                        {Math.floor(activity.adjustedTravelTimeMinutes / 60) > 0 
+                          ? `${Math.floor(activity.adjustedTravelTimeMinutes / 60)}h ${activity.adjustedTravelTimeMinutes % 60}m`
+                          : `${activity.adjustedTravelTimeMinutes}m`
+                        }
+                      </Typography>
+                      {activity.travelTimeMinutes && activity.travelTimeMinutes !== activity.adjustedTravelTimeMinutes && (
+                        <Typography variant="caption" color="text.secondary">
+                          (was {Math.floor(activity.travelTimeMinutes / 60) > 0 
+                            ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
+                            : `${activity.travelTimeMinutes}m`
+                          })
+                        </Typography>
+                      )}
+                    </Box>
+                  ) : activity.travelTimeMinutes ? (
+                    <Typography variant="body2" color="text.secondary">
+                      {Math.floor(activity.travelTimeMinutes / 60) > 0 
+                        ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
+                        : `${activity.travelTimeMinutes}m`
+                      }
+                    </Typography>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">-</Typography>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>

@@ -61,6 +61,7 @@ describe('NotionSyncService - Conflict Prevention', () => {
     projectId: null,
     clientId: 1,
     travelTimeMinutes: 0,
+    adjustedTravelTimeMinutes: null,
     breakTimeMinutes: 0,
     nonBillableTimeMinutes: 0,
     notes: null,

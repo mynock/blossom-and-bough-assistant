@@ -47,6 +47,7 @@ interface WorkActivity {
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -171,6 +172,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         totalHours: 8,
         billableHours: 8,
         travelTimeMinutes: 0,
+        adjustedTravelTimeMinutes: null,
         breakTimeMinutes: 30,
       });
       setSelectedEmployees([]);
@@ -564,6 +566,32 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                 endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
               }}
               helperText="Travel to/from job"
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={4}>
+            <TextField
+              label="Adjusted Travel Time"
+              type="number"
+              fullWidth
+              value={formData.adjustedTravelTimeMinutes || ''}
+              onChange={(e) => {
+                const value = e.target.value === '' ? null : parseInt(e.target.value);
+                handleInputChange('adjustedTravelTimeMinutes', value);
+              }}
+              inputProps={{ min: 0 }}
+              InputProps={{
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+              }}
+              helperText="Proportionally allocated travel time"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  backgroundColor: 'primary.light',
+                  '& fieldset': {
+                    borderColor: 'primary.main',
+                  },
+                },
+              }}
             />
           </Grid>
 
