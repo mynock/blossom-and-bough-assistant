@@ -603,14 +603,19 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
               }}
               inputProps={{ min: 0 }}
               InputProps={{
-                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>,
+                startAdornment: formData.adjustedTravelTimeMinutes ? (
+                  <Typography sx={{ mr: 1, color: 'success.main', fontSize: '0.875rem' }}>⚡</Typography>
+                ) : null
               }}
               helperText="Proportionally allocated travel time"
               sx={{
                 '& .MuiOutlinedInput-root': {
-                  backgroundColor: 'primary.light',
-                  '& fieldset': {
-                    borderColor: 'primary.main',
+                  '&:hover fieldset': {
+                    borderColor: formData.adjustedTravelTimeMinutes ? 'success.main' : undefined,
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: formData.adjustedTravelTimeMinutes ? 'success.main' : undefined,
                   },
                 },
               }}
