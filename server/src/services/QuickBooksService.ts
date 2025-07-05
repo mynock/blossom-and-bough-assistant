@@ -70,6 +70,13 @@ export class QuickBooksService extends DatabaseService {
     this.initializeClients();
   }
 
+  /**
+   * Reinitialize the QuickBooks clients (public method for token updates)
+   */
+  async reinitialize(): Promise<void> {
+    this.initializeClients();
+  }
+
   private initializeClients() {
     const credentials = this.getCredentials();
     
@@ -80,6 +87,22 @@ export class QuickBooksService extends DatabaseService {
       environment: credentials.environment,
       redirectUri: process.env.QBO_REDIRECT_URI || 'http://localhost:3001/api/qbo/callback',
     });
+
+    // If we have stored tokens, load them into the OAuth client
+    if (credentials.accessToken && credentials.refreshToken && credentials.realmId) {
+      try {
+        this.oauthClient.setToken({
+          token_type: 'bearer',
+          access_token: credentials.accessToken,
+          refresh_token: credentials.refreshToken,
+          expires_in: 3600, // Default expiry
+          x_refresh_token_expires_in: 8726400,
+          realmId: credentials.realmId
+        });
+      } catch (error) {
+        console.warn('Failed to set existing tokens in OAuth client:', error);
+      }
+    }
 
     // Initialize QuickBooks client if we have tokens
     if (credentials.accessToken && credentials.realmId) {
@@ -143,8 +166,9 @@ export class QuickBooksService extends DatabaseService {
       const authResponse = await this.oauthClient.createToken(callbackUrl);
       const token = authResponse.getToken();
       
-      // Update environment variables or store tokens securely
-      // For now, we'll just return them
+      // Store the token in the OAuth client for future use
+      this.oauthClient.setToken(authResponse);
+      
       return {
         accessToken: token.access_token,
         refreshToken: token.refresh_token,
@@ -168,6 +192,9 @@ export class QuickBooksService extends DatabaseService {
       // Update tokens - in production, store these securely
       process.env.QBO_ACCESS_TOKEN = token.access_token;
       process.env.QBO_REFRESH_TOKEN = token.refresh_token;
+      
+      // Update the OAuth client's token state
+      this.oauthClient.setToken(authResponse);
       
       // Reinitialize the QB client with new tokens
       this.initializeClients();
@@ -355,6 +382,25 @@ export class QuickBooksService extends DatabaseService {
           return;
         }
         resolve(customer);
+      });
+    });
+  }
+
+  /**
+   * Create item in QuickBooks
+   */
+  async createItem(itemData: any): Promise<any> {
+    if (!this.qbo) {
+      throw new Error('QuickBooks client not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.qbo.createItem(itemData, (err: any, item: any) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(item);
       });
     });
   }

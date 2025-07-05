@@ -22,6 +22,7 @@ import {
   Description,
   Settings,
   Sync,
+  Storage,
 } from '@mui/icons-material';
 
 interface QBOItem {
@@ -82,7 +83,38 @@ const QuickBooksIntegration: React.FC = () => {
       const data = await response.json();
       
       if (data.authUrl) {
-        window.open(data.authUrl, '_blank', 'width=600,height=600');
+        const popup = window.open(data.authUrl, 'qb_oauth', 'width=600,height=600');
+        
+        // Listen for the popup to complete OAuth
+        const checkClosed = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(checkClosed);
+            // Check auth status after popup closes
+            setTimeout(() => {
+              checkAuthStatus();
+            }, 1000);
+          }
+        }, 1000);
+        
+        // Set up message listener for successful auth
+        const messageListener = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return;
+          
+          if (event.data.type === 'QB_AUTH_SUCCESS') {
+            clearInterval(checkClosed);
+            popup?.close();
+            setSuccess('Successfully connected to QuickBooks!');
+            checkAuthStatus();
+            window.removeEventListener('message', messageListener);
+          } else if (event.data.type === 'QB_AUTH_ERROR') {
+            clearInterval(checkClosed);
+            popup?.close();
+            setError(event.data.error || 'QuickBooks authentication failed');
+            window.removeEventListener('message', messageListener);
+          }
+        };
+        
+        window.addEventListener('message', messageListener);
       } else {
         const errorMessage = data.error || 'Failed to get authorization URL';
         setError(errorMessage);
@@ -135,6 +167,32 @@ const QuickBooksIntegration: React.FC = () => {
     } catch (error) {
       console.error('Error syncing items:', error);
       setError('Failed to sync items from QuickBooks');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const seedQuickBooksData = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/qbo/seed', {
+        method: 'POST',
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        setSuccess(data.message);
+        // Refresh items after seeding
+        fetchQBOItems();
+      } else {
+        setError(data.error || 'Failed to seed QuickBooks data');
+      }
+    } catch (error) {
+      console.error('Error seeding QuickBooks data:', error);
+      setError('Failed to seed QuickBooks sandbox data');
     } finally {
       setIsLoading(false);
     }
@@ -356,7 +414,7 @@ const QuickBooksIntegration: React.FC = () => {
             />
             <CardContent>
               <Grid container spacing={2}>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -367,7 +425,7 @@ const QuickBooksIntegration: React.FC = () => {
                     <Typography>View Invoices</Typography>
                   </Button>
                 </Grid>
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12} md={4}>
                   <Button
                     variant="outlined"
                     fullWidth
@@ -376,6 +434,19 @@ const QuickBooksIntegration: React.FC = () => {
                   >
                     <AttachMoney sx={{ mb: 1 }} />
                     <Typography>Create Invoice</Typography>
+                  </Button>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    fullWidth
+                    sx={{ height: 80, flexDirection: 'column' }}
+                    onClick={seedQuickBooksData}
+                    disabled={isLoading || !authStatus?.isValid}
+                  >
+                    {isLoading ? <CircularProgress size={24} sx={{ mb: 1 }} /> : <Storage sx={{ mb: 1 }} />}
+                    <Typography>Seed Sample Data</Typography>
                   </Button>
                 </Grid>
               </Grid>

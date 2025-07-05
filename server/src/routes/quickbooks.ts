@@ -16,15 +16,67 @@ router.get('/callback', async (req, res) => {
   try {
     const callbackUrl = req.url;
     const tokens = await qbService.handleOAuthCallback(callbackUrl);
-    // In production, you might want to store these tokens securely
-    // For now, we'll just return them
-    res.json({ 
-      message: 'Authentication successful',
-      tokens: tokens 
-    });
+    
+    // Store tokens in environment variables for this session
+    // In production, you might want to store these in a database or secure vault
+    process.env.QBO_ACCESS_TOKEN = tokens.accessToken;
+    process.env.QBO_REFRESH_TOKEN = tokens.refreshToken;
+    process.env.QBO_REALM_ID = tokens.realmId;
+    
+    // Reinitialize the QuickBooks service with new tokens
+    await qbService.reinitialize();
+    
+    // Return HTML page that posts success message to parent window
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>QuickBooks Authentication</title>
+        </head>
+        <body>
+          <h2>Authentication Successful!</h2>
+          <p>You can close this window now.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'QB_AUTH_SUCCESS',
+                message: 'Authentication successful and tokens stored'
+              }, window.location.origin);
+            }
+            setTimeout(() => {
+              window.close();
+            }, 2000);
+          </script>
+        </body>
+      </html>
+    `);
   } catch (error) {
     console.error('OAuth callback error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+    
+    // Return HTML page that posts error message to parent window
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>QuickBooks Authentication Error</title>
+        </head>
+        <body>
+          <h2>Authentication Failed</h2>
+          <p>There was an error connecting to QuickBooks. Please try again.</p>
+          <script>
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'QB_AUTH_ERROR',
+                error: 'Authentication failed'
+              }, window.location.origin);
+            }
+            setTimeout(() => {
+              window.close();
+            }, 2000);
+          </script>
+        </body>
+      </html>
+    `);
   }
 });
 
@@ -343,6 +395,33 @@ router.post('/invoices/preview', async (req, res) => {
   } catch (error) {
     console.error('Error generating invoice preview:', error);
     res.status(500).json({ error: 'Failed to generate invoice preview' });
+  }
+});
+
+/**
+ * Seed QuickBooks sandbox with sample data
+ */
+router.post('/seed', async (req, res) => {
+  try {
+    const { default: QBOSeedDataGenerator } = await import('../scripts/seedQBOData');
+    const seedGenerator = new QBOSeedDataGenerator();
+    
+    const startTime = Date.now();
+    await seedGenerator.generateAllSeedData();
+    const duration = Date.now() - startTime;
+    
+    res.json({ 
+      success: true,
+      message: 'QuickBooks sandbox data seeded successfully. Created customers, service items, and sample invoices.',
+      duration 
+    });
+  } catch (error) {
+    console.error('Error seeding QuickBooks data:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to seed QuickBooks data';
+    res.status(500).json({ 
+      success: false,
+      error: errorMessage 
+    });
   }
 });
 
