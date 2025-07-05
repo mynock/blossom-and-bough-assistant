@@ -661,14 +661,31 @@ export class NotionSyncService {
         
         // Prepare and insert new charges
         const charges = parsedActivity.charges.map((charge: any, index: number) => {
+          let description: string;
+          let cost: number | null = null;
+          let chargeType: string = 'material';
+          let quantity: number | null = null;
+          let billable: boolean = true;
+          
+          // Handle case where AI returns a string instead of an object
+          if (typeof charge === 'string') {
+            description = charge;
+          } else {
+            description = charge.description || charge.name || charge.item || 'Unknown charge';
+            cost = charge.cost || charge.price || charge.amount || null;
+            chargeType = charge.type || charge.chargeType || 'material';
+            quantity = charge.quantity || null;
+            billable = charge.billable !== undefined ? charge.billable : true;
+          }
+          
           const processedCharge = {
             workActivityId,
-            chargeType: charge.type || 'material',
-            description: charge.description || 'Unknown charge',
-            quantity: charge.quantity || null,
-            unitRate: charge.cost || null,
-            totalCost: charge.cost || null,
-            billable: charge.billable !== undefined ? charge.billable : true
+            chargeType,
+            description,
+            quantity,
+            unitRate: cost,
+            totalCost: cost,
+            billable
           };
           debugLog.info(`🔍 Processing charge ${index + 1}:`, charge, '→', processedCharge);
           return processedCharge;
