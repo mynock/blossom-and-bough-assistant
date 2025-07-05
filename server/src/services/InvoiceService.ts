@@ -143,6 +143,29 @@ export class InvoiceService extends DatabaseService {
   }
 
   /**
+   * Get all invoices with client information
+   */
+  async getAllInvoices(): Promise<any[]> {
+    return await this.db
+      .select({
+        id: invoices.id,
+        qboInvoiceId: invoices.qboInvoiceId,
+        invoiceNumber: invoices.invoiceNumber,
+        status: invoices.status,
+        totalAmount: invoices.totalAmount,
+        invoiceDate: invoices.invoiceDate,
+        dueDate: invoices.dueDate,
+        clientId: invoices.clientId,
+        clientName: clients.name,
+        qboSyncAt: invoices.qboSyncAt,
+        createdAt: invoices.createdAt
+      })
+      .from(invoices)
+      .leftJoin(clients, eq(invoices.clientId, clients.id))
+      .orderBy(invoices.createdAt);
+  }
+
+  /**
    * Sync invoice status from QuickBooks
    */
   async syncInvoiceStatus(invoiceId: number): Promise<void> {
