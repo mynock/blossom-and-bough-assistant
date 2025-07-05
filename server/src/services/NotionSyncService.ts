@@ -651,6 +651,7 @@ export class NotionSyncService {
       await this.workActivityService.updateWorkActivity(workActivityId, updateData);
       
       // Handle charges update - delete existing charges and recreate them
+      debugLog.info(`🔍 Parsed activity charges:`, parsedActivity.charges);
       if (parsedActivity.charges && parsedActivity.charges.length > 0) {
         debugLog.info(`🔄 Updating ${parsedActivity.charges.length} charges for work activity ${workActivityId}`);
         
@@ -659,22 +660,36 @@ export class NotionSyncService {
           .where(eq(otherCharges.workActivityId, workActivityId));
         
         // Prepare and insert new charges
-        const charges = parsedActivity.charges.map((charge: any) => ({
-          workActivityId,
-          chargeType: charge.type || 'material',
-          description: charge.description || 'Unknown charge',
-          quantity: charge.quantity || null,
-          unitRate: charge.cost || null,
-          totalCost: charge.cost || null,
-          billable: charge.billable !== undefined ? charge.billable : true
-        })).filter((charge: any) => charge.description && charge.description !== 'Unknown charge');
+        const charges = parsedActivity.charges.map((charge: any, index: number) => {
+          const processedCharge = {
+            workActivityId,
+            chargeType: charge.type || 'material',
+            description: charge.description || 'Unknown charge',
+            quantity: charge.quantity || null,
+            unitRate: charge.cost || null,
+            totalCost: charge.cost || null,
+            billable: charge.billable !== undefined ? charge.billable : true
+          };
+          debugLog.info(`🔍 Processing charge ${index + 1}:`, charge, '→', processedCharge);
+          return processedCharge;
+        }).filter((charge: any) => {
+          const keep = charge.description && charge.description !== 'Unknown charge';
+          if (!keep) {
+            debugLog.warn(`🚫 Filtered out charge with description: "${charge.description}"`);
+          }
+          return keep;
+        });
+        
+        debugLog.info(`🔍 Final charges array (${charges.length} items):`, charges);
         
         if (charges.length > 0) {
           await this.workActivityService.db.insert(otherCharges).values(charges);
           debugLog.info(`✅ Updated ${charges.length} charges for work activity ${workActivityId}`);
+        } else {
+          debugLog.warn(`⚠️ No valid charges to insert after filtering`);
         }
       } else {
-        debugLog.info(`📝 No charges to update for work activity ${workActivityId}`);
+        debugLog.info(`📝 No charges to update for work activity ${workActivityId} (parsedActivity.charges: ${parsedActivity.charges?.length || 'undefined'})`);
       }
       
       debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data and charges`);
