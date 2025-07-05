@@ -211,6 +211,19 @@ router.get('/invoices/client/:clientId', async (req, res) => {
 });
 
 /**
+ * Get all invoices
+ */
+router.get('/invoices', async (req, res) => {
+  try {
+    const invoices = await invoiceService.getAllInvoices();
+    res.json(invoices);
+  } catch (error) {
+    console.error('Error fetching invoices:', error);
+    res.status(500).json({ error: 'Failed to fetch invoices' });
+  }
+});
+
+/**
  * Get invoice details with line items
  */
 router.get('/invoices/:invoiceId', async (req, res) => {

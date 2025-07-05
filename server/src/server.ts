@@ -26,6 +26,7 @@ import projectsRouter from './routes/projects';
 import authRouter from './routes/auth';
 import adminRouter from './routes/admin';
 import notionRouter from './routes/notion';
+import quickbooksRouter from './routes/quickbooks';
 import { createNotionSyncRouter } from './routes/notionSync';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
 import travelTimeRouter from './routes/travelTime';
@@ -139,10 +140,7 @@ app.use('/api/migration', requireAuth, migrationRouter);
 app.use('/api/notion', notionRouter); // Public routes for embedded usage
 app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
-// Only enable QuickBooks routes in development
-if (process.env.NODE_ENV !== 'production') {
-  app.use('/api/qbo', require('./routes/quickbooks').default); // QuickBooks Online routes
-}
+app.use('/api/qbo', quickbooksRouter); // QuickBooks Online routes
 
 // Get all helpers
 app.get('/api/helpers', requireAuth, async (req, res) => {
