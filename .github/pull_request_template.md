@@ -1,22 +1,25 @@
 ## What Changed
 
-<!-- Brief description of what you changed and why -->
+Brief description of what you changed and why.
 
 ## Type of Change
+
 - [ ] 🐛 Bug fix
-- [ ] ✨ New feature
+- [ ] ✨ New feature  
 - [ ] 💥 Breaking change
 - [ ] 📝 Documentation update
 
 ## Testing
+
 - [ ] Tests pass locally
 - [ ] Added tests for new functionality (if applicable)
 - [ ] Manually tested the changes
 
 ## Related Issues
-<!-- Link any related issues -->
+
 Closes #
 Fixes #
 
 ## Notes
-<!-- Any additional context, deployment notes, or special instructions -->
+
+Any additional context, deployment notes, or special instructions.
