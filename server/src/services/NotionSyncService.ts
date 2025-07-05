@@ -712,7 +712,7 @@ export class NotionSyncService {
             if (inChargesSection) {
               const listText = this.extractTextFromRichText(block as any);
               if (listText) {
-                const chargeItem = this.parseChargeFromText(listText);
+                const chargeItem = this.parseChargeFromText(listText, true); // true = from charges section
                 if (chargeItem) {
                   materials.push(chargeItem);
                 }
@@ -729,11 +729,23 @@ export class NotionSyncService {
                   const cells = row.table_row.cells;
                   if (cells.length >= 2) {
                     const description = cells[0]?.map((text: any) => text.plain_text).join('') || '';
-                    const costText = cells[1]?.map((text: any) => text.plain_text).join('') || '0';
-                    const cost = parseFloat(costText.replace(/[^0-9.-]/g, '')) || 0;
+                    const secondColumnText = cells[1]?.map((text: any) => text.plain_text).join('') || '';
                     
+                    // Skip header rows
                     if (description && description.toLowerCase() !== 'item' && description.toLowerCase() !== 'charge') {
-                      materials.push({ description: description.trim(), cost });
+                      // Check if second column looks like a cost (has $ or decimal) or just units/quantity
+                      let cost = 0;
+                      let finalDescription = description.trim();
+                      
+                      if (secondColumnText.match(/\$|cost|price/i) || secondColumnText.match(/^\s*\d+\.\d{2}\s*$/)) {
+                        // This looks like a cost column
+                        cost = parseFloat(secondColumnText.replace(/[^0-9.-]/g, '')) || 0;
+                      } else if (secondColumnText.trim()) {
+                        // This looks like units/quantity column, append to description
+                        finalDescription += ` - ${secondColumnText.trim()}`;
+                      }
+                      
+                      materials.push({ description: finalDescription, cost });
                     }
                   }
                 }
@@ -772,15 +784,18 @@ export class NotionSyncService {
   /**
    * Parse charge information from text like "1 bag debris" or "2 native mock orange"
    */
-  private parseChargeFromText(text: string): { description: string; cost: number } | null {
+  private parseChargeFromText(text: string, isFromChargesSection: boolean = true): { description: string; cost: number } | null {
     if (!text || text.trim() === '') return null;
     
-    // Skip plant list items (ignore for now as requested)
-    const plantIndicators = ['native', 'achillea', 'agastache', 'guara', 'allium', 'terracotta', 'whirling', 'butterflies', 'kudos', 'yellow', 'cernuum'];
-    const lowerText = text.toLowerCase();
-    if (plantIndicators.some(indicator => lowerText.includes(indicator))) {
-      debugLog.debug(`Skipping plant list item: ${text}`);
-      return null;
+    // Only skip plant list items if this is NOT from a charges/materials section
+    // This allows plant-related materials/fees to be processed as charges
+    if (!isFromChargesSection) {
+      const plantIndicators = ['native', 'achillea', 'agastache', 'guara', 'allium', 'terracotta', 'whirling', 'butterflies', 'kudos', 'yellow', 'cernuum'];
+      const lowerText = text.toLowerCase();
+      if (plantIndicators.some(indicator => lowerText.includes(indicator))) {
+        debugLog.debug(`Skipping plant list item: ${text}`);
+        return null;
+      }
     }
 
     // Try to extract cost from parentheses like "mulch ($27)" or "debris (35)"
