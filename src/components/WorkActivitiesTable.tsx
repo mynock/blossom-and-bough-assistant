@@ -15,6 +15,7 @@ import {
   Grid,
   Paper,
   TableSortLabel,
+  Link,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -176,7 +177,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
       <Table sx={{ minWidth: 650 }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ width: '15%' }}>
+            <TableCell sx={{ width: '12%' }}>
               <TableSortLabel
                 active={sortColumn === 'date'}
                 direction={sortColumn === 'date' ? sortDirection : 'asc'}
@@ -185,7 +186,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Date
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '12%' }}>
+            <TableCell sx={{ width: '10%' }}>
               <TableSortLabel
                 active={sortColumn === 'workType'}
                 direction={sortColumn === 'workType' ? sortDirection : 'asc'}
@@ -194,7 +195,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Type
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '10%' }}>
+            <TableCell sx={{ width: '8%' }}>
               <TableSortLabel
                 active={sortColumn === 'status'}
                 direction={sortColumn === 'status' ? sortDirection : 'asc'}
@@ -203,7 +204,8 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Status
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '12%' }}>
+            <TableCell sx={{ width: '15%' }}>Client</TableCell>
+            <TableCell sx={{ width: '10%' }}>
               <TableSortLabel
                 active={sortColumn === 'billableHours'}
                 direction={sortColumn === 'billableHours' ? sortDirection : 'asc'}
@@ -212,8 +214,8 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Billable Hours
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '25%' }}>Employees</TableCell>
-            <TableCell sx={{ width: '18%', textAlign: 'center' }}>Actions</TableCell>
+            <TableCell sx={{ width: '20%' }}>Employees</TableCell>
+            <TableCell sx={{ width: '15%', textAlign: 'center' }}>Actions</TableCell>
             <TableCell sx={{ width: '8%', textAlign: 'center' }}>Details</TableCell>
           </TableRow>
         </TableHead>
@@ -237,6 +239,29 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                     size="small"
                     sx={{ fontSize: '0.75rem' }}
                   />
+                </TableCell>
+                <TableCell>
+                  {activity.clientName && activity.clientId ? (
+                    <Link
+                      component="button"
+                      onClick={() => navigate(`/clients/${activity.clientId}`)}
+                      sx={{
+                        textDecoration: 'none',
+                        color: 'primary.main',
+                        fontWeight: 500,
+                        fontSize: '0.875rem',
+                        '&:hover': {
+                          textDecoration: 'underline',
+                        },
+                      }}
+                    >
+                      {activity.clientName}
+                    </Link>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary">
+                      No Client
+                    </Typography>
+                  )}
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -300,7 +325,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
               </TableRow>
               {expandedRows.has(activity.id) && (
                 <TableRow>
-                  <TableCell colSpan={7} sx={{ p: 0, borderBottom: 'none' }}>
+                  <TableCell colSpan={8} sx={{ p: 0, borderBottom: 'none' }}>
                     <Box sx={{ p: 3, backgroundColor: 'grey.50', borderRadius: 1, m: 1 }}>
                       <Grid container spacing={3}>
                         {/* Client & Project Info */}
