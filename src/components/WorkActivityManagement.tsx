@@ -47,6 +47,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
   createdAt?: string;

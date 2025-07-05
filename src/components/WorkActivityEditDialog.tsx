@@ -49,6 +49,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
   createdAt?: string;
@@ -174,6 +175,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         travelTimeMinutes: 0,
         adjustedTravelTimeMinutes: null,
         breakTimeMinutes: 30,
+        nonBillableTimeMinutes: 0,
       });
       setSelectedEmployees([]);
       setSelectedCharges([]);
@@ -520,6 +522,21 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                 endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
               }}
               helperText="Break duration"
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={3}>
+            <TextField
+              label="Non-Billable Time"
+              type="number"
+              fullWidth
+              value={formData.nonBillableTimeMinutes || 0}
+              onChange={(e) => handleInputChange('nonBillableTimeMinutes', parseInt(e.target.value))}
+              inputProps={{ min: 0 }}
+              InputProps={{
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
+              }}
+              helperText="Time not billable to client"
             />
           </Grid>
 
