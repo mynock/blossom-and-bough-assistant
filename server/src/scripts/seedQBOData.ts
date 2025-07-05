@@ -161,57 +161,15 @@ class QBOSeedDataGenerator {
       try {
         console.log(`Creating customer: ${customerData.name}`);
         
-        // Check if customer already exists
-        try {
-          const existingCustomer = await qbSvc.findCustomerByName(customerData.name);
-          if (existingCustomer) {
-            console.log(`✓ Customer ${customerData.name} already exists (ID: ${existingCustomer.Id})`);
-            customers.push(existingCustomer);
-            continue;
-          }
-        } catch (findError) {
-          // Customer not found, continue with creation
-        }
+        // Skip duplicate check for now since findCustomerByName is also failing
+        // We'll handle duplicates through QB's built-in duplicate detection
         
-        // Build customer payload with only essential fields to avoid validation issues
+        // Start with absolute minimum - just the name
         const customerPayload: any = {
           Name: customerData.name
         };
         
-        // Add optional fields if they exist
-        if (customerData.companyName) {
-          customerPayload.CompanyName = customerData.companyName;
-        }
-        
-        if (customerData.email) {
-          customerPayload.PrimaryEmailAddr = {
-            Address: customerData.email
-          };
-        }
-        
-        if (customerData.phone) {
-          customerPayload.PrimaryPhone = {
-            FreeFormNumber: customerData.phone
-          };
-        }
-        
-        if (customerData.address) {
-          customerPayload.BillAddr = {
-            Line1: customerData.address.line1,
-            City: customerData.address.city,
-            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
-            PostalCode: customerData.address.postalCode
-          };
-          
-          // Ship address same as billing
-          customerPayload.ShipAddr = {
-            Line1: customerData.address.line1,
-            City: customerData.address.city,
-            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
-            PostalCode: customerData.address.postalCode
-          };
-        }
-        
+        console.log(`Sending customer payload:`, JSON.stringify(customerPayload, null, 2));
         const customer = await qbSvc.createCustomer(customerPayload);
         
         customers.push(customer);
