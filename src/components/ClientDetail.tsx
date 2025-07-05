@@ -42,6 +42,9 @@ import {
   Note as NoteIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Receipt as ReceiptIcon,
+  AttachMoney as AttachMoneyIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
@@ -188,6 +191,11 @@ const ClientDetail: React.FC = () => {
   });
   const [editingNote, setEditingNote] = useState<ClientNote | null>(null);
 
+  const [invoiceCreationOpen, setInvoiceCreationOpen] = useState(false);
+  const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<number[]>([]);
+  const [invoicePreview, setInvoicePreview] = useState<any>(null);
+  const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
+
   useEffect(() => {
     const fetchClientData = async () => {
       try {
@@ -235,8 +243,6 @@ const ClientDetail: React.FC = () => {
       fetchClientData();
     }
   }, [id]);
-
-
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -464,6 +470,120 @@ const ClientDetail: React.FC = () => {
     setNoteDialogOpen(true);
   };
 
+  const completedActivities = workActivities.filter(activity => activity.status === 'completed');
+  const readyToInvoiceActivities = completedActivities.filter(activity => 
+    activity.billableHours && activity.billableHours > 0
+  );
+
+  const handleCreateInvoice = () => {
+    if (readyToInvoiceActivities.length === 0) {
+      setSnackbar({ 
+        open: true, 
+        message: 'No completed work activities with billable hours found', 
+        severity: 'error' 
+      });
+      return;
+    }
+    
+    // Select all ready-to-invoice activities by default
+    setSelectedActivitiesForInvoice(readyToInvoiceActivities.map(a => a.id));
+    setInvoiceCreationOpen(true);
+  };
+
+  const handleInvoiceActivityToggle = (activityId: number) => {
+    setSelectedActivitiesForInvoice(prev => 
+      prev.includes(activityId) 
+        ? prev.filter(id => id !== activityId)
+        : [...prev, activityId]
+    );
+  };
+
+  const handleInvoicePreview = async () => {
+    if (!client || selectedActivitiesForInvoice.length === 0) return;
+
+    setInvoiceCreationLoading(true);
+    try {
+      const response = await fetch('/api/qbo/invoices/preview', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          workActivityIds: selectedActivitiesForInvoice,
+          includeOtherCharges: true,
+        }),
+      });
+
+      if (response.ok) {
+        const preview = await response.json();
+        setInvoicePreview(preview);
+      } else {
+        throw new Error('Failed to generate invoice preview');
+      }
+    } catch (error) {
+      setSnackbar({ 
+        open: true, 
+        message: 'Failed to generate invoice preview', 
+        severity: 'error' 
+      });
+    } finally {
+      setInvoiceCreationLoading(false);
+    }
+  };
+
+  const handleCreateInvoiceConfirm = async () => {
+    if (!client || selectedActivitiesForInvoice.length === 0) return;
+
+    setInvoiceCreationLoading(true);
+    try {
+      const response = await fetch('/api/qbo/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          workActivityIds: selectedActivitiesForInvoice,
+          includeOtherCharges: true,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setSnackbar({ 
+          open: true, 
+          message: `Invoice created successfully! Invoice #${result.invoice.invoiceNumber}`, 
+          severity: 'success' 
+        });
+        setInvoiceCreationOpen(false);
+        setSelectedActivitiesForInvoice([]);
+        setInvoicePreview(null);
+        
+        // Refresh work activities to update status
+        if (id) {
+          const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+          if (activitiesResponse.ok) {
+            const activitiesData = await activitiesResponse.json();
+            setWorkActivities(activitiesData.activities);
+            setSummary(activitiesData.summary);
+          }
+        }
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create invoice');
+      }
+    } catch (error) {
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to create invoice', 
+        severity: 'error' 
+      });
+    } finally {
+      setInvoiceCreationLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -671,6 +791,76 @@ const ClientDetail: React.FC = () => {
           </Grid>
         </Grid>
 
+        {/* Ready to Invoice Section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ReceiptIcon sx={{ color: 'primary.main' }} />
+                  <Typography variant="h6">Ready to Invoice</Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<AttachMoneyIcon />}
+                  onClick={handleCreateInvoice}
+                  disabled={readyToInvoiceActivities.length === 0}
+                >
+                  Create Invoice
+                </Button>
+              </Box>
+              
+              {readyToInvoiceActivities.length > 0 ? (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {readyToInvoiceActivities.length} completed work {readyToInvoiceActivities.length === 1 ? 'activity' : 'activities'} ready to invoice
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {readyToInvoiceActivities.slice(0, 3).map((activity) => (
+                      <Grid item xs={12} md={4} key={activity.id}>
+                        <Paper sx={{ p: 2, bgcolor: 'success.50' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                            <Typography variant="body2" fontWeight="medium">
+                              {activity.workType.charAt(0).toUpperCase() + activity.workType.slice(1)}
+                            </Typography>
+                            <Chip
+                              icon={<CheckCircleIcon />}
+                              label="Completed"
+                              color="success"
+                              size="small"
+                            />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatDatePacific(activity.date)}
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium" sx={{ mt: 1 }}>
+                            {activity.billableHours} hours
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                  {readyToInvoiceActivities.length > 3 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      ... and {readyToInvoiceActivities.length - 3} more activities
+                    </Typography>
+                  )}
+                </Box>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 3 }}>
+                  <ReceiptIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="body1" color="text.secondary">
+                    No completed work activities ready to invoice
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Activities must be completed and have billable hours to be invoiced
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Upcoming Schedule */}
         <Grid item xs={12}>
           <Card>
@@ -844,6 +1034,78 @@ const ClientDetail: React.FC = () => {
             />
           </Paper>
         </Grid>
+
+        {/* Invoice Creation Dialog */}
+        <Dialog 
+          open={invoiceCreationOpen} 
+          onClose={() => setInvoiceCreationOpen(false)} 
+          maxWidth="md" 
+          fullWidth
+        >
+          <DialogTitle>Create Invoice for {client?.name}</DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Select the work activities to include in this invoice:
+            </Typography>
+            
+            <Box sx={{ mb: 3 }}>
+              {readyToInvoiceActivities.map((activity) => (
+                <Box key={activity.id} sx={{ display: 'flex', alignItems: 'center', mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <input
+                    type="checkbox"
+                    checked={selectedActivitiesForInvoice.includes(activity.id)}
+                    onChange={() => handleInvoiceActivityToggle(activity.id)}
+                    style={{ marginRight: 12 }}
+                  />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="body2" fontWeight="medium">
+                      {activity.workType.charAt(0).toUpperCase() + activity.workType.slice(1)} - {formatDatePacific(activity.date)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {activity.billableHours} hours • ${((activity.billableHours || 0) * 55).toFixed(2)}
+                    </Typography>
+                    {activity.notes && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                        {activity.notes.substring(0, 100)}...
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              ))}
+            </Box>
+
+            {invoicePreview && (
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'primary.50', borderRadius: 1 }}>
+                <Typography variant="h6" gutterBottom>Invoice Preview</Typography>
+                <Typography variant="body2">
+                  Total Line Items: {invoicePreview.lineCount}
+                </Typography>
+                <Typography variant="body2">
+                  Total Amount: ${invoicePreview.totalAmount.toFixed(2)}
+                </Typography>
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Activities: {invoicePreview.activities.length}
+                </Typography>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setInvoiceCreationOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleInvoicePreview} 
+              disabled={selectedActivitiesForInvoice.length === 0 || invoiceCreationLoading}
+            >
+              Preview Invoice
+            </Button>
+            <Button 
+              onClick={handleCreateInvoiceConfirm} 
+              variant="contained"
+              disabled={selectedActivitiesForInvoice.length === 0 || invoiceCreationLoading}
+            >
+              {invoiceCreationLoading ? <CircularProgress size={20} /> : 'Create Invoice'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Grid>
 
       {/* Edit Dialog */}

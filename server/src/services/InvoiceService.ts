@@ -43,10 +43,23 @@ export class InvoiceService extends DatabaseService {
   }
 
   /**
+   * Ensure QuickBooks service is initialized with latest tokens
+   */
+  private async ensureQBServiceInitialized(): Promise<void> {
+    try {
+      await this.qbService.reinitialize();
+    } catch (error) {
+      console.error('Failed to reinitialize QuickBooks service:', error);
+      throw new Error('QuickBooks service not properly initialized. Please check your authentication.');
+    }
+  }
+
+  /**
    * Sync QBO Items to local database
    */
   async syncQBOItems(): Promise<void> {
     try {
+      await this.ensureQBServiceInitialized();
       await this.qbService.syncItems();
       console.log('QBO Items synced successfully');
     } catch (error) {
@@ -56,9 +69,24 @@ export class InvoiceService extends DatabaseService {
   }
 
   /**
+   * Sync QBO Customers to local database
+   */
+  async syncQBOCustomers(): Promise<void> {
+    try {
+      await this.ensureQBServiceInitialized();
+      await this.qbService.syncCustomers();
+      console.log('QBO Customers synced successfully');
+    } catch (error) {
+      console.error('Error syncing QBO Customers:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get all available QBO Items
    */
   async getQBOItems(): Promise<any[]> {
+    await this.ensureQBServiceInitialized();
     return await this.qbService.getItems();
   }
 
@@ -80,32 +108,44 @@ export class InvoiceService extends DatabaseService {
    */
   async createInvoiceFromWorkActivities(request: CreateInvoiceRequest): Promise<any> {
     try {
+      console.log('Starting invoice creation process...');
+      
+      // 0. Ensure QuickBooks service is properly initialized
+      await this.ensureQBServiceInitialized();
+      console.log('QuickBooks service initialized');
+
       // 1. Get client data and ensure QBO customer exists
       const client = await this.clientService.getClientById(request.clientId);
       if (!client) {
         throw new Error('Client not found');
       }
+      console.log(`Creating invoice for client: ${client.name}`);
 
       // 2. Find or create QBO customer
       const qboCustomer = await this.ensureQBOCustomer(client);
 
       // 3. Get work activities and validate they're ready for invoicing
       const workActivitiesData = await this.validateWorkActivitiesForInvoicing(request.workActivityIds);
+      console.log(`Validated ${workActivitiesData.length} work activities for invoicing`);
 
       // 4. Build invoice line items from work activities
       const lineItems = await this.buildInvoiceLineItems(workActivitiesData, request.includeOtherCharges);
+      console.log(`Built ${lineItems.length} line items for invoice`);
 
       // 5. Create invoice data for QBO
       const qboInvoiceData = this.buildQBOInvoiceData(qboCustomer, lineItems, request);
+      console.log('Built QuickBooks invoice data:', JSON.stringify(qboInvoiceData, null, 2));
 
       // 6. Create invoice in QuickBooks
       const qboInvoice = await this.qbService.createInvoice(qboInvoiceData);
+      console.log(`Created invoice in QuickBooks with ID: ${qboInvoice.Id}`);
 
       // 7. Save invoice to local database
       const localInvoice = await this.saveInvoiceToLocal(qboInvoice, client.id, lineItems);
 
       // 8. Update work activities status to 'invoiced'
       await this.updateWorkActivitiesStatus(request.workActivityIds, 'invoiced');
+      console.log('Updated work activities status to invoiced');
 
       return {
         invoice: localInvoice,
@@ -169,6 +209,8 @@ export class InvoiceService extends DatabaseService {
    * Sync invoice status from QuickBooks
    */
   async syncInvoiceStatus(invoiceId: number): Promise<void> {
+    await this.ensureQBServiceInitialized();
+    
     const localInvoice = await this.db
       .select()
       .from(invoices)
@@ -194,21 +236,88 @@ export class InvoiceService extends DatabaseService {
   }
 
   private async ensureQBOCustomer(client: any): Promise<any> {
-    // Try to find existing customer by name
+    // Ensure QB service is initialized before customer operations
+    await this.ensureQBServiceInitialized();
+    
+    console.log(`Looking for customer: ${client.name}`);
+    
+    // First try exact match
     let qboCustomer = await this.qbService.findCustomerByName(client.name);
+    console.log(`Exact match result:`, qboCustomer ? `Found "${qboCustomer.DisplayName}"` : 'No exact match');
+    
+    // If exact match not found, try partial matches (in case of slight name differences)
+    if (!qboCustomer) {
+      console.log(`Exact match not found, checking for similar customer names...`);
+      
+      try {
+        const allCustomers = await this.qbService.getAllCustomers();
+        console.log(`Found ${allCustomers.length} total customers in QuickBooks`);
+        
+        // Debug: Show all customer names
+        console.log(`All QuickBooks customer names:`, allCustomers.map((c: any) => `"${c.DisplayName}"`).join(', '));
+        
+        // Look for partial matches (case insensitive)
+        const searchName = client.name.toLowerCase().trim();
+        console.log(`Searching for: "${searchName}"`);
+        
+        qboCustomer = allCustomers.find((customer: any) => {
+          const customerName = customer.DisplayName?.toLowerCase().trim() || '';
+          const matches = customerName.includes(searchName) || searchName.includes(customerName);
+          if (matches) {
+            console.log(`✓ MATCH FOUND: "${customerName}" matches "${searchName}"`);
+          }
+          return matches;
+        });
+        
+        if (qboCustomer) {
+          console.log(`Found similar customer: "${qboCustomer.DisplayName}" for search: "${client.name}"`);
+        } else {
+          console.log(`No similar customers found for: ${client.name}`);
+          console.log(`Available customers: ${allCustomers.map((c: any) => c.DisplayName).slice(0, 5).join(', ')}${allCustomers.length > 5 ? '...' : ''}`);
+        }
+      } catch (error) {
+        console.error('Error searching for similar customers:', error);
+      }
+    }
     
     if (!qboCustomer) {
-      // Create customer in QuickBooks
-      const customerData = {
-        Name: client.name,
-        BillAddr: {
-          Line1: client.address,
-        },
-        CompanyName: client.name,
-        Active: true
+      console.log(`Customer not found, creating new customer: ${client.name}`);
+      
+      // Create customer in QuickBooks with minimal required fields
+      const customerData: any = {
+        Name: client.name
       };
       
-      qboCustomer = await this.qbService.createCustomer(customerData);
+      // Only add optional fields if they exist and are valid
+      if (client.address && client.address.trim() && client.address.length > 0) {
+        // Simple address format that QB accepts
+        customerData.BillAddr = {
+          Line1: client.address.trim()
+        };
+      }
+      
+      console.log('Customer data to send:', JSON.stringify(customerData, null, 2));
+      
+      try {
+        qboCustomer = await this.qbService.createCustomer(customerData);
+        console.log(`Created new customer with ID: ${qboCustomer.Id}`);
+      } catch (error) {
+        console.error(`Error creating customer in QuickBooks:`, error);
+        
+        // If customer creation fails, try with even simpler data
+        console.log('Retrying with minimal customer data...');
+        try {
+          const minimalCustomerData = { Name: client.name };
+          qboCustomer = await this.qbService.createCustomer(minimalCustomerData);
+          console.log(`Created customer with minimal data, ID: ${qboCustomer.Id}`);
+        } catch (retryError) {
+          console.error(`Both customer creation attempts failed:`, retryError);
+          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+          throw new Error(`Failed to create customer "${client.name}" in QuickBooks: ${errorMessage}`);
+        }
+      }
+    } else {
+      console.log(`Found existing customer with ID: ${qboCustomer.Id}`);
     }
     
     return qboCustomer;

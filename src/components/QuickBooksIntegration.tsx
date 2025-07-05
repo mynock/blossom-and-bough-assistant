@@ -172,6 +172,8 @@ const QuickBooksIntegration: React.FC = () => {
     }
   };
 
+
+
   const seedQuickBooksData = async () => {
     setIsLoading(true);
     setError(null);

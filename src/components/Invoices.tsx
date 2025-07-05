@@ -240,7 +240,7 @@ const Invoices: React.FC = () => {
           <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={() => navigate('/work-activities')}
+            onClick={() => navigate('/clients')}
           >
             Create Invoice
           </Button>
@@ -475,7 +475,7 @@ const Invoices: React.FC = () => {
               No invoices found
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {searchTerm || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Create your first invoice from completed work activities'}
+              {searchTerm || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Create your first invoice from a client page'}
             </Typography>
           </Box>
         )}

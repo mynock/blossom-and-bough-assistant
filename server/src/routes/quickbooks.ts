@@ -144,6 +144,19 @@ router.post('/items/sync', async (req, res) => {
 });
 
 /**
+ * Sync QBO Customers to local database
+ */
+router.post('/customers/sync', async (req, res) => {
+  try {
+    await invoiceService.syncQBOCustomers();
+    res.json({ message: 'Customers synced successfully' });
+  } catch (error) {
+    console.error('Error syncing customers:', error);
+    res.status(500).json({ error: 'Failed to sync customers' });
+  }
+});
+
+/**
  * Get all QBO Items
  */
 router.get('/items', async (req, res) => {
