@@ -73,7 +73,7 @@ const Navigation: React.FC = () => {
     { path: '/employees', label: 'Employees', icon: <People /> },
     { path: '/projects', label: 'Projects', icon: <Assignment /> },
     { path: '/invoices', label: 'Invoices', icon: <Receipt /> },
-    { path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> },
+    ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
     { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
     { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
     // { path: '/chat', label: 'AI Assistant', icon: <Chat /> }, // Hidden for now
