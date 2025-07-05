@@ -191,7 +191,7 @@ class QBOSeedDataGenerator {
         await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
-        console.error(`✗ Failed to create customer ${customerData.name}:`, error);
+        console.error(`✗ Failed to create customer ${customerData.name}:`, JSON.stringify(error, null, 2));
       }
     }
     
@@ -223,7 +223,7 @@ class QBOSeedDataGenerator {
         await new Promise(resolve => setTimeout(resolve, 500));
         
       } catch (error) {
-        console.error(`✗ Failed to create item ${itemData.name}:`, error);
+        console.error(`✗ Failed to create item ${itemData.name}:`, JSON.stringify(error, null, 2));
       }
     }
     
