@@ -5,7 +5,8 @@ import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
 import { WorkNotesParserService } from './WorkNotesParserService';
 import { debugLog } from '../utils/logger';
-import { NewWorkActivity } from '../db/schema';
+import { NewWorkActivity, otherCharges } from '../db/schema';
+import { eq } from 'drizzle-orm';
 
 const notion = new Client({
   auth: process.env.NOTION_TOKEN,
@@ -648,7 +649,35 @@ export class NotionSyncService {
       };
 
       await this.workActivityService.updateWorkActivity(workActivityId, updateData);
-      debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data`);
+      
+      // Handle charges update - delete existing charges and recreate them
+      if (parsedActivity.charges && parsedActivity.charges.length > 0) {
+        debugLog.info(`🔄 Updating ${parsedActivity.charges.length} charges for work activity ${workActivityId}`);
+        
+        // Delete existing charges
+        await this.workActivityService.db.delete(otherCharges)
+          .where(eq(otherCharges.workActivityId, workActivityId));
+        
+        // Prepare and insert new charges
+        const charges = parsedActivity.charges.map((charge: any) => ({
+          workActivityId,
+          chargeType: charge.type || 'material',
+          description: charge.description || 'Unknown charge',
+          quantity: charge.quantity || null,
+          unitRate: charge.cost || null,
+          totalCost: charge.cost || null,
+          billable: charge.billable !== undefined ? charge.billable : true
+        })).filter((charge: any) => charge.description && charge.description !== 'Unknown charge');
+        
+        if (charges.length > 0) {
+          await this.workActivityService.db.insert(otherCharges).values(charges);
+          debugLog.info(`✅ Updated ${charges.length} charges for work activity ${workActivityId}`);
+        }
+      } else {
+        debugLog.info(`📝 No charges to update for work activity ${workActivityId}`);
+      }
+      
+      debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data and charges`);
 
     } catch (error) {
       debugLog.error(`Error updating work activity ${workActivityId}:`, error);
@@ -722,14 +751,18 @@ export class NotionSyncService {
 
           case 'table':
             if (inChargesSection && 'table' in block) {
+              debugLog.info(`📋 Found table in charges section, processing...`);
               // Get table rows for materials/charges
               const tableRows = await notion.blocks.children.list({ block_id: block.id });
+              debugLog.info(`📋 Table has ${tableRows.results.length} rows`);
               for (const row of tableRows.results) {
                 if ('type' in row && row.type === 'table_row' && 'table_row' in row) {
                   const cells = row.table_row.cells;
                   if (cells.length >= 2) {
                     const description = cells[0]?.map((text: any) => text.plain_text).join('') || '';
                     const secondColumnText = cells[1]?.map((text: any) => text.plain_text).join('') || '';
+                    
+                    debugLog.info(`📋 Table row: "${description}" | "${secondColumnText}"`);
                     
                     // Skip header rows
                     if (description && description.toLowerCase() !== 'item' && description.toLowerCase() !== 'charge') {
@@ -745,7 +778,10 @@ export class NotionSyncService {
                         finalDescription += ` - ${secondColumnText.trim()}`;
                       }
                       
+                      debugLog.info(`📋 Added material: "${finalDescription}" (cost: $${cost})`);
                       materials.push({ description: finalDescription, cost });
+                    } else {
+                      debugLog.info(`📋 Skipped header row: "${description}"`);
                     }
                   }
                 }
@@ -756,6 +792,7 @@ export class NotionSyncService {
       }
     }
 
+    debugLog.info(`📋 Final materials array: ${materials.length} items`, materials);
     return { tasks: tasks.trim(), notes: notes.trim(), materials };
   }
 
