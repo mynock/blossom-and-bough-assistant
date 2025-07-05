@@ -1,0 +1,1 @@
+ALTER TABLE "other_charges" ALTER COLUMN "total_cost" DROP NOT NULL;

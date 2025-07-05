@@ -95,7 +95,7 @@ export const otherCharges = pgTable('other_charges', {
   description: text('description').notNull(), // e.g., "1 debris bag", "3 astrantia", "mulch delivery"
   quantity: real('quantity'),
   unitRate: real('unit_rate'),
-  totalCost: real('total_cost').notNull(),
+  totalCost: real('total_cost'),
   billable: boolean('billable').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()

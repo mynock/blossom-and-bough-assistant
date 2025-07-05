@@ -134,7 +134,7 @@ export class WorkActivityService extends DatabaseService {
       const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
       const chargesList = await this.getWorkActivityCharges(activity.id);
       const plantsList = await this.getWorkActivityPlants(activity.id);
-      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
       activitiesWithDetails.push({
         ...activity,
@@ -189,7 +189,7 @@ export class WorkActivityService extends DatabaseService {
     const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
     const chargesList = await this.getWorkActivityCharges(activity.id);
     const plantsList = await this.getWorkActivityPlants(activity.id);
-    const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+    const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
     return {
       ...activity,
@@ -246,7 +246,7 @@ export class WorkActivityService extends DatabaseService {
       const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
       const chargesList = await this.getWorkActivityCharges(activity.id);
       const plantsList = await this.getWorkActivityPlants(activity.id);
-      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
       activitiesWithDetails.push({
         ...activity,
@@ -292,9 +292,9 @@ export class WorkActivityService extends DatabaseService {
           workActivityId,
           chargeType: charge.chargeType || 'material',
           description: charge.description || 'Unknown charge',
-          quantity: charge.quantity || 1,
-          unitRate: typeof charge.unitRate === 'number' ? charge.unitRate : 0,
-          totalCost: typeof charge.totalCost === 'number' ? charge.totalCost : 0,
+          quantity: charge.quantity || null,
+          unitRate: charge.unitRate || null,
+          totalCost: charge.totalCost || null, // Allow null cost for non-billable or informational charges
           billable: charge.billable !== undefined ? charge.billable : true
         };
         
@@ -451,7 +451,7 @@ export class WorkActivityService extends DatabaseService {
       const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
       const chargesList = await this.getWorkActivityCharges(activity.id);
       const plantsList = await this.getWorkActivityPlants(activity.id);
-      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
       activitiesWithDetails.push({
         ...activity,
@@ -508,7 +508,7 @@ export class WorkActivityService extends DatabaseService {
       const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
       const chargesList = await this.getWorkActivityCharges(activity.id);
       const plantsList = await this.getWorkActivityPlants(activity.id);
-      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
       activitiesWithDetails.push({
         ...activity,
@@ -567,7 +567,7 @@ export class WorkActivityService extends DatabaseService {
       const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
       const chargesList = await this.getWorkActivityCharges(activity.id);
       const plantsList = await this.getWorkActivityPlants(activity.id);
-      const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+      const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
       activitiesWithDetails.push({
         ...activity,
@@ -622,7 +622,7 @@ export class WorkActivityService extends DatabaseService {
     const employeesList = await this.getWorkActivityEmployeesWithNames(activity.id);
     const chargesList = await this.getWorkActivityCharges(activity.id);
     const plantsList = await this.getWorkActivityPlants(activity.id);
-    const totalCharges = chargesList.reduce((sum, charge) => sum + charge.totalCost, 0);
+    const totalCharges = chargesList.reduce((sum, charge) => sum + (charge.totalCost || 0), 0);
 
     return {
       ...activity,

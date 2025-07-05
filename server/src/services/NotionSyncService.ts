@@ -550,9 +550,9 @@ export class NotionSyncService {
       const charges = parsedActivity.charges?.map((charge: any) => ({
         chargeType: charge.type || 'material',
         description: charge.description || 'Unknown charge',
-        quantity: charge.quantity || 1,
-        unitRate: charge.cost || 0,
-        totalCost: charge.cost || 0,
+        quantity: charge.quantity || null,
+        unitRate: charge.cost || null,
+        totalCost: charge.cost || null, // Allow null cost for non-billable or informational charges
         billable: charge.billable !== undefined ? charge.billable : true
       })).filter((charge: any) => charge.description && charge.description !== 'Unknown charge') || [];
 

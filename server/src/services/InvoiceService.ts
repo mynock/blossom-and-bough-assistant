@@ -262,8 +262,8 @@ export class InvoiceService extends DatabaseService {
               qboItemId: qboItem.qboId,
               description: charge.description,
               quantity: charge.quantity || 1,
-              rate: charge.unitRate || charge.totalCost,
-              amount: charge.totalCost
+              rate: charge.unitRate || charge.totalCost || 0,
+              amount: charge.totalCost || 0
             });
           }
         }

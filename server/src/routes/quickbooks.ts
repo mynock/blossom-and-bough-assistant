@@ -375,11 +375,11 @@ router.post('/invoices/preview', async (req, res) => {
             chargeType: charge.chargeType,
             description: charge.description,
             quantity: charge.quantity || 1,
-            rate: charge.unitRate || charge.totalCost,
-            amount: charge.totalCost
+            rate: charge.unitRate || charge.totalCost || 0,
+            amount: charge.totalCost || 0
           });
           
-          totalAmount += charge.totalCost;
+          totalAmount += charge.totalCost || 0;
         }
       }
     }
