@@ -338,6 +338,11 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         tasks: editorStateToHtml(tasksEditorState),
       } as WorkActivity;
 
+      console.log('🔍 [DEBUG] Saving activity data:', {
+        nonBillableTimeMinutes: updatedFormData.nonBillableTimeMinutes,
+        fullFormData: updatedFormData
+      });
+
       await onSave(updatedFormData, selectedEmployees, selectedCharges, selectedPlants);
       onClose();
     } catch (error) {

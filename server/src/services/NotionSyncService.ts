@@ -398,6 +398,17 @@ export class NotionSyncService {
         naturalText += '\n';
       }
 
+      // Add non-billable time if present
+      if (nonBillableTime && nonBillableTime > 0) {
+        const hours = Math.floor(nonBillableTime / 60);
+        const minutes = nonBillableTime % 60;
+        if (hours > 0) {
+          naturalText += `Non-billable time: ${hours}:${minutes.toString().padStart(2, '0')}\n`;
+        } else {
+          naturalText += `Non-billable time: ${minutes} min\n`;
+        }
+      }
+
       // Add client name
       if (clientName) {
         naturalText += `${clientName}\n`;

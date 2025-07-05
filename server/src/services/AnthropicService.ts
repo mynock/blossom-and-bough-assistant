@@ -19,6 +19,7 @@ export interface ParsedWorkActivity {
   }>;
   driveTime?: number;
   lunchTime?: number;
+  nonBillableTime?: number;
   confidence: number; // 0-1 confidence score
 }
 
@@ -815,7 +816,8 @@ For each work activity found, extract:
 8. Notes (any client conversations, follow-ups, or observations)
 9. Charges (materials, debris bags, plants, etc.)
 10. Drive time if mentioned
-11. Confidence score (0-1) based on how clear the parsing was
+11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
+12. Confidence score (0-1) based on how clear the parsing was
 
 Return JSON in this exact format:
 {
@@ -837,6 +839,7 @@ Return JSON in this exact format:
       "charges": [],
       "driveTime": 44,
       "lunchTime": 85,
+      "nonBillableTime": 0,
       "confidence": 0.9
     }
   ],
@@ -1098,7 +1101,8 @@ For each work activity found, extract:
 8. Notes (any client conversations, follow-ups, or observations)
 9. Charges (materials, debris bags, plants, etc.)
 10. Drive time if mentioned
-11. Confidence score (0-1) based on how clear the parsing was
+11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
+12. Confidence score (0-1) based on how clear the parsing was
 
 Return JSON in this exact format:
 {
@@ -1120,6 +1124,7 @@ Return JSON in this exact format:
       "charges": [],
       "driveTime": 44,
       "lunchTime": 85,
+      "nonBillableTime": 0,
       "confidence": 0.9
     }
   ],
