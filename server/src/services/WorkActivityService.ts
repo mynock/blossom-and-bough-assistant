@@ -358,10 +358,15 @@ export class WorkActivityService extends DatabaseService {
     }
     
     // Set lastUpdatedBy to 'web_app' by default unless explicitly provided (for Notion sync)
+    // Filter out timestamp fields that should not be updated by frontend to avoid type errors
+    const { createdAt, updatedAt, lastNotionSyncAt, ...safeUpdateData } = finalUpdateData;
+    
     const updateData = {
-      ...finalUpdateData,
+      ...safeUpdateData,
       updatedAt: this.formatTimestamp(new Date()),
-      lastUpdatedBy: finalUpdateData.lastUpdatedBy || 'web_app' as const
+      lastUpdatedBy: finalUpdateData.lastUpdatedBy || 'web_app' as const,
+      // Only include lastNotionSyncAt if it's a Date object (from Notion sync)
+      ...(lastNotionSyncAt instanceof Date && { lastNotionSyncAt })
     };
     
     const updated = await this.db
