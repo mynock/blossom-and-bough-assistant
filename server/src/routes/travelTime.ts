@@ -123,4 +123,66 @@ router.post('/apply', async (req, res) => {
   }
 });
 
+/**
+ * Calculate travel time allocation for a date range (preview without applying)
+ */
+router.post('/calculate-range', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    // Validate required fields
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'startDate and endDate are required' 
+      });
+    }
+
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({ 
+        error: 'Invalid date format. Use YYYY-MM-DD' 
+      });
+    }
+
+    const rangeResult = await travelTimeService.allocateTravelTimeForRange(startDate, endDate);
+
+    res.json(rangeResult);
+  } catch (error) {
+    console.error('Error calculating travel time allocation for range:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to calculate travel time allocation for range';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+/**
+ * Apply travel time allocation to work activities for a date range
+ */
+router.post('/apply-range', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.body;
+
+    // Validate required fields
+    if (!startDate || !endDate) {
+      return res.status(400).json({ 
+        error: 'startDate and endDate are required' 
+      });
+    }
+
+    // Validate date format
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+      return res.status(400).json({ 
+        error: 'Invalid date format. Use YYYY-MM-DD' 
+      });
+    }
+
+    const result = await travelTimeService.calculateAndApplyTravelTimeForRange(startDate, endDate);
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error applying travel time allocation for range:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to apply travel time allocation for range';
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
 export default router;
