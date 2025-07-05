@@ -187,7 +187,7 @@ export class WorkNotesParserService {
           status: 'completed', // Default to completed for imported activities
           startTime: activity.startTime,
           endTime: activity.endTime,
-          billableHours: this.calculateBillableHours(activity.totalHours, activity.driveTime, activity.lunchTime),
+          billableHours: this.calculateBillableHours(activity.totalHours, activity.lunchTime),
           totalHours: activity.totalHours,
           hourlyRate: null, // Will be set based on client rate
           clientId: activity.clientId || null,
@@ -483,13 +483,10 @@ export class WorkNotesParserService {
 
   /**
    * Calculate billable hours from total hours minus non-billable time
+   * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
    */
-  private calculateBillableHours(totalHours: number, driveTime?: number, lunchTime?: number): number {
+  private calculateBillableHours(totalHours: number, lunchTime?: number): number {
     let nonBillableHours = 0;
-    
-    if (driveTime) {
-      nonBillableHours += driveTime / 60; // Convert minutes to hours
-    }
     
     if (lunchTime) {
       nonBillableHours += lunchTime / 60; // Convert minutes to hours
