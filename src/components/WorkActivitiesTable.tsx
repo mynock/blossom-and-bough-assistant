@@ -22,6 +22,12 @@ import {
   Person as PersonIcon,
   AccessTime as TimeIcon,
   Update as UpdateIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon,
+  Visibility as VisibilityIcon,
+  Business as BusinessIcon,
+  AttachMoney as AttachMoneyIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { formatDateShortPacific, formatTimestampPacific } from '../utils/dateUtils';
 
@@ -64,7 +70,7 @@ interface WorkActivitiesTableProps {
   emptyMessage?: string;
 }
 
-type SortColumn = 'date' | 'workType' | 'status' | 'clientName' | 'totalHours' | 'adjustedTravelTimeMinutes' | 'totalCharges' | 'updatedAt';
+type SortColumn = 'date' | 'workType' | 'status' | 'billableHours' | 'totalCharges';
 type SortDirection = 'asc' | 'desc';
 
 export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
@@ -78,8 +84,6 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [sortColumn, setSortColumn] = useState<SortColumn>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-
-
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -136,21 +140,13 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
           aValue = a.status;
           bValue = b.status;
           break;
-        case 'clientName':
-          aValue = a.clientName || '';
-          bValue = b.clientName || '';
-          break;
-        case 'totalHours':
-          aValue = a.totalHours;
-          bValue = b.totalHours;
+        case 'billableHours':
+          aValue = a.billableHours || 0;
+          bValue = b.billableHours || 0;
           break;
         case 'totalCharges':
           aValue = a.totalCharges;
           bValue = b.totalCharges;
-          break;
-        case 'updatedAt':
-          aValue = new Date(a.updatedAt || 0);
-          bValue = new Date(b.updatedAt || 0);
           break;
         default:
           aValue = '';
@@ -177,10 +173,10 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
 
   return (
     <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-      <Table sx={{ minWidth: 800 }}>
+      <Table sx={{ minWidth: 650 }}>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ width: '10%' }}>
+            <TableCell sx={{ width: '15%' }}>
               <TableSortLabel
                 active={sortColumn === 'date'}
                 direction={sortColumn === 'date' ? sortDirection : 'asc'}
@@ -189,7 +185,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Date
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '10%' }}>
+            <TableCell sx={{ width: '12%' }}>
               <TableSortLabel
                 active={sortColumn === 'workType'}
                 direction={sortColumn === 'workType' ? sortDirection : 'asc'}
@@ -207,59 +203,18 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                 Status
               </TableSortLabel>
             </TableCell>
-            {showClientColumn && (
-              <TableCell sx={{ width: '12%' }}>
-                <TableSortLabel
-                  active={sortColumn === 'clientName'}
-                  direction={sortColumn === 'clientName' ? sortDirection : 'asc'}
-                  onClick={() => handleSort('clientName')}
-                >
-                  Client
-                </TableSortLabel>
-              </TableCell>
-            )}
-            <TableCell sx={{ width: '12%' }}>Time</TableCell>
-            <TableCell sx={{ width: '8%' }}>
+            <TableCell sx={{ width: '12%' }}>
               <TableSortLabel
-                active={sortColumn === 'totalHours'}
-                direction={sortColumn === 'totalHours' ? sortDirection : 'asc'}
-                onClick={() => handleSort('totalHours')}
+                active={sortColumn === 'billableHours'}
+                direction={sortColumn === 'billableHours' ? sortDirection : 'asc'}
+                onClick={() => handleSort('billableHours')}
               >
-                Hours
+                Billable Hours
               </TableSortLabel>
             </TableCell>
-            <TableCell sx={{ width: '8%' }}>
-              <TableSortLabel
-                active={sortColumn === 'adjustedTravelTimeMinutes'}
-                direction={sortColumn === 'adjustedTravelTimeMinutes' ? sortDirection : 'asc'}
-                onClick={() => handleSort('adjustedTravelTimeMinutes')}
-              >
-                Adj Travel
-              </TableSortLabel>
-            </TableCell>
-            <TableCell sx={{ width: '20%' }}>Employees</TableCell>
-            <TableCell sx={{ width: '10%' }}>
-              <TableSortLabel
-                active={sortColumn === 'totalCharges'}
-                direction={sortColumn === 'totalCharges' ? sortDirection : 'asc'}
-                onClick={() => handleSort('totalCharges')}
-              >
-                Charges
-              </TableSortLabel>
-            </TableCell>
-            <TableCell sx={{ width: '15%' }}>
-              <TableSortLabel
-                active={sortColumn === 'updatedAt'}
-                direction={sortColumn === 'updatedAt' ? sortDirection : 'asc'}
-                onClick={() => handleSort('updatedAt')}
-              >
-                Last Updated
-              </TableSortLabel>
-            </TableCell>
-            <TableCell sx={{ width: '10%' }}>Notes/Tasks</TableCell>
-            {(onEdit || onDelete) && (
-              <TableCell sx={{ width: '10%', textAlign: 'center' }}>Actions</TableCell>
-            )}
+            <TableCell sx={{ width: '25%' }}>Employees</TableCell>
+            <TableCell sx={{ width: '18%', textAlign: 'center' }}>Actions</TableCell>
+            <TableCell sx={{ width: '8%', textAlign: 'center' }}>Details</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -272,92 +227,29 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                     label={activity.workType.replace('_', ' ').toUpperCase()} 
                     size="small" 
                     variant="outlined"
+                    sx={{ fontSize: '0.75rem' }}
                   />
                 </TableCell>
                 <TableCell>
                   <Chip 
                     label={activity.status.replace('_', ' ').toUpperCase()} 
                     color={getStatusColor(activity.status) as any} 
-                    size="small" 
+                    size="small"
+                    sx={{ fontSize: '0.75rem' }}
                   />
-                </TableCell>
-                {showClientColumn && (
-                  <TableCell>
-                    {activity.clientName && activity.clientId ? (
-                      <Button 
-                        variant="text" 
-                        onClick={() => navigate(`/clients/${activity.clientId}`)}
-                        sx={{ 
-                          textAlign: 'left', 
-                          justifyContent: 'flex-start', 
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          minHeight: 'auto',
-                          p: 0,
-                          fontSize: '0.875rem'
-                        }}
-                      >
-                        {activity.clientName}
-                      </Button>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary">
-                        No Client
-                      </Typography>
-                    )}
-                    {activity.projectName && (
-                      <Typography variant="caption" color="text.secondary" display="block">
-                        {activity.projectName}
-                      </Typography>
-                    )}
-                  </TableCell>
-                )}
-                <TableCell>
-                  {activity.startTime && activity.endTime 
-                    ? `${activity.startTime} - ${activity.endTime}`
-                    : '-'
-                  }
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <TimeIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {activity.totalHours.toFixed(1)}h
+                      {activity.billableHours ? `${activity.billableHours.toFixed(1)}h` : '-'}
                     </Typography>
-                    {activity.billableHours && activity.billableHours !== activity.totalHours && (
+                    {activity.totalHours && activity.totalHours !== activity.billableHours && (
                       <Typography variant="caption" color="text.secondary">
-                        ({activity.billableHours.toFixed(1)}h bill)
+                        ({activity.totalHours.toFixed(1)}h total)
                       </Typography>
                     )}
                   </Box>
-                </TableCell>
-                <TableCell>
-                  {activity.adjustedTravelTimeMinutes !== null && activity.adjustedTravelTimeMinutes !== undefined ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-                        {Math.floor(activity.adjustedTravelTimeMinutes / 60) > 0 
-                          ? `${Math.floor(activity.adjustedTravelTimeMinutes / 60)}h ${activity.adjustedTravelTimeMinutes % 60}m`
-                          : `${activity.adjustedTravelTimeMinutes}m`
-                        }
-                      </Typography>
-                      {activity.travelTimeMinutes && activity.travelTimeMinutes !== activity.adjustedTravelTimeMinutes && (
-                        <Typography variant="caption" color="text.secondary">
-                          (was {Math.floor(activity.travelTimeMinutes / 60) > 0 
-                            ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
-                            : `${activity.travelTimeMinutes}m`
-                          })
-                        </Typography>
-                      )}
-                    </Box>
-                  ) : activity.travelTimeMinutes ? (
-                    <Typography variant="body2" color="text.secondary">
-                      {Math.floor(activity.travelTimeMinutes / 60) > 0 
-                        ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
-                        : `${activity.travelTimeMinutes}m`
-                      }
-                    </Typography>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">-</Typography>
-                  )}
                 </TableCell>
                 <TableCell>
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -373,106 +265,164 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                     ))}
                   </Box>
                 </TableCell>
-                <TableCell>{formatCurrency(activity.totalCharges)}</TableCell>
-                <TableCell>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.5 }}>
-                    <UpdateIcon sx={{ fontSize: 14, color: 'text.secondary', mt: 0.1 }} />
-                    <Box>
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                        {formatTimestampPacific(activity.updatedAt)}
-                      </Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                          by {activity.lastUpdatedBy === 'web_app' ? 'User' : 'Notion Sync'}
-                        </Typography>
-                        {activity.lastUpdatedBy === 'web_app' && (
-                          <Chip 
-                            label="🛡️" 
-                            size="small" 
-                            variant="outlined"
-                            sx={{ 
-                              fontSize: '0.6rem', 
-                              height: '16px',
-                              minWidth: '16px',
-                              '& .MuiChip-label': { px: 0.5 },
-                              color: 'warning.main',
-                              borderColor: 'warning.main'
-                            }}
-                          />
-                        )}
-                      </Box>
-                    </Box>
+                <TableCell sx={{ textAlign: 'center' }}>
+                  <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center', alignItems: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<VisibilityIcon />}
+                      onClick={() => navigate(`/work-activities/${activity.id}`)}
+                      sx={{ minWidth: 'auto', fontSize: '0.75rem' }}
+                    >
+                      View
+                    </Button>
+                    {onEdit && (
+                      <IconButton onClick={() => onEdit(activity)} size="small" color="primary">
+                        <EditIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    )}
+                    {onDelete && (
+                      <IconButton onClick={() => onDelete(activity)} size="small" color="error">
+                        <DeleteIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    )}
                   </Box>
                 </TableCell>
-                <TableCell>
-                  {(activity.notes || activity.tasks) ? (
-                    <Button 
-                      variant="text" 
-                      size="small" 
-                      onClick={() => toggleRowExpansion(activity.id)}
-                      sx={{ minWidth: 'auto', p: 0.5, fontSize: '0.75rem' }}
-                    >
-                      {expandedRows.has(activity.id) ? 'Hide' : 'View'}
-                    </Button>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">-</Typography>
-                  )}
+                <TableCell sx={{ textAlign: 'center' }}>
+                  <IconButton 
+                    onClick={() => toggleRowExpansion(activity.id)}
+                    size="small"
+                    sx={{ color: 'text.secondary' }}
+                  >
+                    {expandedRows.has(activity.id) ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </IconButton>
                 </TableCell>
-                {(onEdit || onDelete) && (
-                  <TableCell sx={{ textAlign: 'center' }}>
-                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                      {onEdit && (
-                        <IconButton onClick={() => onEdit(activity)} size="small" color="primary">
-                          <EditIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      )}
-                      {onDelete && (
-                        <IconButton onClick={() => onDelete(activity)} size="small" color="error">
-                          <DeleteIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                      )}
-                    </Box>
-                  </TableCell>
-                )}
               </TableRow>
-              {expandedRows.has(activity.id) && (activity.notes || activity.tasks) && (
+              {expandedRows.has(activity.id) && (
                 <TableRow>
-                  <TableCell colSpan={showClientColumn ? (onEdit || onDelete ? 11 : 10) : (onEdit || onDelete ? 10 : 9)} sx={{ p: 0, borderBottom: 'none' }}>
+                  <TableCell colSpan={7} sx={{ p: 0, borderBottom: 'none' }}>
                     <Box sx={{ p: 3, backgroundColor: 'grey.50', borderRadius: 1, m: 1 }}>
                       <Grid container spacing={3}>
+                        {/* Client & Project Info */}
+                        <Grid item xs={12} md={6}>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <BusinessIcon sx={{ fontSize: 16 }} />
+                              Client & Project
+                            </Typography>
+                            <Box sx={{ pl: 2 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Client: {activity.clientName || 'No Client'}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Project: {activity.projectName || 'No Project'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+
+                        {/* Time & Travel Info */}
+                        <Grid item xs={12} md={6}>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <TimelineIcon sx={{ fontSize: 16 }} />
+                              Time Details
+                            </Typography>
+                            <Box sx={{ pl: 2 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Time: {activity.startTime && activity.endTime 
+                                  ? `${activity.startTime} - ${activity.endTime}`
+                                  : 'Not specified'
+                                }
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                Travel: {activity.adjustedTravelTimeMinutes !== null && activity.adjustedTravelTimeMinutes !== undefined
+                                  ? `${Math.floor(activity.adjustedTravelTimeMinutes / 60)}h ${activity.adjustedTravelTimeMinutes % 60}m`
+                                  : activity.travelTimeMinutes 
+                                    ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
+                                    : 'None'
+                                }
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+
+                        {/* Charges */}
+                        <Grid item xs={12} md={6}>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <AttachMoneyIcon sx={{ fontSize: 16 }} />
+                              Charges
+                            </Typography>
+                            <Box sx={{ pl: 2 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                Total: {formatCurrency(activity.totalCharges)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+
+                        {/* Last Updated */}
+                        <Grid item xs={12} md={6}>
+                          <Box sx={{ mb: 2 }}>
+                            <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <UpdateIcon sx={{ fontSize: 16 }} />
+                              Last Updated
+                            </Typography>
+                            <Box sx={{ pl: 2 }}>
+                              <Typography variant="body2" color="text.secondary">
+                                {activity.updatedAt 
+                                  ? formatTimestampPacific(activity.updatedAt)
+                                  : 'Unknown'
+                                }
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                by {activity.lastUpdatedBy === 'notion_sync' ? 'Notion Sync' : 'Web App'}
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+
+                        {/* Notes */}
                         {activity.notes && (
                           <Grid item xs={12} md={activity.tasks ? 6 : 12}>
                             <Box>
-                              <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem' }}>
+                              <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                                 📝 Notes
                               </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  whiteSpace: 'pre-wrap', 
-                                  lineHeight: 1.6,
-                                  fontSize: '0.875rem'
-                                }}
-                                dangerouslySetInnerHTML={{ __html: activity.notes }}
-                              />
+                              <Box sx={{ pl: 2 }}>
+                                <Typography 
+                                  variant="body2" 
+                                  sx={{ 
+                                    whiteSpace: 'pre-wrap', 
+                                    lineHeight: 1.6,
+                                    fontSize: '0.875rem'
+                                  }}
+                                  dangerouslySetInnerHTML={{ __html: activity.notes }}
+                                />
+                              </Box>
                             </Box>
                           </Grid>
                         )}
+
+                        {/* Tasks */}
                         {activity.tasks && (
                           <Grid item xs={12} md={activity.notes ? 6 : 12}>
                             <Box>
-                              <Typography variant="h6" gutterBottom sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, fontSize: '1rem' }}>
+                              <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                                 ✓ Tasks
                               </Typography>
-                              <Typography 
-                                variant="body2" 
-                                sx={{ 
-                                  whiteSpace: 'pre-wrap', 
-                                  lineHeight: 1.6,
-                                  fontSize: '0.875rem'
-                                }}
-                                dangerouslySetInnerHTML={{ __html: activity.tasks }}
-                              />
+                              <Box sx={{ pl: 2 }}>
+                                <Typography 
+                                  variant="body2" 
+                                  sx={{ 
+                                    whiteSpace: 'pre-wrap', 
+                                    lineHeight: 1.6,
+                                    fontSize: '0.875rem'
+                                  }}
+                                  dangerouslySetInnerHTML={{ __html: activity.tasks }}
+                                />
+                              </Box>
                             </Box>
                           </Grid>
                         )}
