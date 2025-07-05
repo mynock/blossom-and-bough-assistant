@@ -552,9 +552,21 @@ export class AnthropicService {
             recentEventsSection += '**This Week:**\n';
             thisWeekEvents.forEach(e => {
               const date = new Date(e.start);
-              const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-              const dateStr = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-              const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+              const dayName = date.toLocaleDateString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                weekday: 'short' 
+              });
+              const dateStr = date.toLocaleDateString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                month: 'numeric', 
+                day: 'numeric' 
+              });
+              const timeStr = date.toLocaleTimeString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: false 
+              });
               const title = e.title || 'Untitled';
               recentEventsSection += `- ${dayName} ${dateStr}: ${timeStr} ${title}\n`;
             });
@@ -564,9 +576,21 @@ export class AnthropicService {
             recentEventsSection += '\n**Next Week:**\n';
             nextWeekEvents.forEach(e => {
               const date = new Date(e.start);
-              const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-              const dateStr = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-              const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: false });
+              const dayName = date.toLocaleDateString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                weekday: 'short' 
+              });
+              const dateStr = date.toLocaleDateString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                month: 'numeric', 
+                day: 'numeric' 
+              });
+              const timeStr = date.toLocaleTimeString('en-US', { 
+                timeZone: 'America/Los_Angeles',
+                hour: 'numeric', 
+                minute: '2-digit', 
+                hour12: false 
+              });
               const title = e.title || 'Untitled';
               recentEventsSection += `- ${dayName} ${dateStr}: ${timeStr} ${title}\n`;
             });
@@ -597,7 +621,9 @@ export class AnthropicService {
           if (upcoming.length > 0) {
             maintenanceSection += `**Next due:** ${upcoming.map((m: any) => {
               const clientName = m.clientName || 'Unknown';
-              const nextDue = m.nextDue ? new Date(m.nextDue).toLocaleDateString() : 'Unknown';
+              const nextDue = m.nextDue ? new Date(m.nextDue).toLocaleDateString('en-US', {
+                timeZone: 'America/Los_Angeles'
+              }) : 'Unknown';
               return `${clientName} (${nextDue})`;
             }).join(', ')}\n`;
           }
@@ -612,6 +638,7 @@ export class AnthropicService {
       }
 
       const currentDate = new Date().toLocaleDateString('en-US', { 
+        timeZone: 'America/Los_Angeles',
         weekday: 'long', 
         year: 'numeric', 
         month: 'long', 

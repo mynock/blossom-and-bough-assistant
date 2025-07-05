@@ -23,6 +23,7 @@ import {
   AccessTime as TimeIcon,
   Update as UpdateIcon,
 } from '@mui/icons-material';
+import { formatDateShortPacific, formatTimestampPacific } from '../utils/dateUtils';
 
 interface WorkActivity {
   id: number;
@@ -76,29 +77,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
   const [sortColumn, setSortColumn] = useState<SortColumn>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
 
-  const formatTimestamp = (timestamp?: string) => {
-    if (!timestamp) return 'Never';
-    const date = new Date(timestamp);
-    return `${date.toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles',
-      month: 'short',
-      day: 'numeric',
-      year: '2-digit'
-    })} ${date.toLocaleTimeString('en-US', { 
-      timeZone: 'America/Los_Angeles',
-      hour: '2-digit', 
-      minute: '2-digit' 
-    })}`;
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -276,7 +255,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
           {sortedActivities.map((activity) => (
             <React.Fragment key={activity.id}>
               <TableRow sx={{ '&:nth-of-type(odd)': { backgroundColor: 'action.hover' } }}>
-                <TableCell>{formatDate(activity.date)}</TableCell>
+                <TableCell>{formatDateShortPacific(activity.date)}</TableCell>
                 <TableCell>
                   <Chip 
                     label={activity.workType.replace('_', ' ').toUpperCase()} 
@@ -360,7 +339,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                     <UpdateIcon sx={{ fontSize: 14, color: 'text.secondary', mt: 0.1 }} />
                     <Box>
                       <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                        {formatTimestamp(activity.updatedAt)}
+                        {formatTimestampPacific(activity.updatedAt)}
                       </Typography>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.25 }}>
                         <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>

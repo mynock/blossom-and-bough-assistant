@@ -33,6 +33,7 @@ import {
   Work as WorkIcon,
 } from '@mui/icons-material';
 import { Client } from '../services/api';
+import { formatDatePacific } from '../utils/dateUtils';
 
 interface Project {
   id: number;
@@ -183,9 +184,7 @@ const ProjectManagement: React.FC = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString();
-  };
+
 
   if (loading) return <Typography>Loading projects...</Typography>;
 
@@ -257,7 +256,7 @@ const ProjectManagement: React.FC = () => {
                     {project.description || '-'}
                   </Typography>
                 </TableCell>
-                <TableCell>{formatDate(project.createdAt)}</TableCell>
+                <TableCell>{formatDatePacific(project.createdAt)}</TableCell>
                 <TableCell>
                   <IconButton onClick={() => handleEdit(project)} size="small">
                     <EditIcon />

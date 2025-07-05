@@ -51,6 +51,7 @@ import {
   Sync,
 } from '@mui/icons-material';
 import { API_ENDPOINTS } from '../config/api';
+import { formatDateLongPacific, formatDateTimePacific } from '../utils/dateUtils';
 
 interface WorkActivity {
   id: number;
@@ -120,24 +121,7 @@ const WorkActivityDetail: React.FC = () => {
     }
   }, [id]);
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
-  };
 
-  const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -252,7 +236,7 @@ const WorkActivityDetail: React.FC = () => {
           </Box>
         </Box>
         <Typography variant="subtitle1" color="text.secondary">
-          Activity #{activity.id} • {formatDate(activity.date)}
+          Activity #{activity.id} • {formatDateLongPacific(activity.date)}
         </Typography>
       </Box>
 
@@ -587,7 +571,7 @@ const WorkActivityDetail: React.FC = () => {
                     Created
                   </Typography>
                   <Typography variant="body1">
-                    {activity.createdAt ? formatDateTime(activity.createdAt) : 'Unknown'}
+                    {activity.createdAt ? formatDateTimePacific(activity.createdAt) : 'Unknown'}
                   </Typography>
                 </Box>
                 <Box>
@@ -595,7 +579,7 @@ const WorkActivityDetail: React.FC = () => {
                     Last Updated
                   </Typography>
                   <Typography variant="body1">
-                    {activity.updatedAt ? formatDateTime(activity.updatedAt) : 'Unknown'}
+                    {activity.updatedAt ? formatDateTimePacific(activity.updatedAt) : 'Unknown'}
                   </Typography>
                 </Box>
                 <Box>
@@ -620,9 +604,9 @@ const WorkActivityDetail: React.FC = () => {
                       </Typography>
                     </Box>
                     {activity.lastNotionSyncAt && (
-                      <Typography variant="caption" color="text.secondary">
-                        Last sync: {formatDateTime(activity.lastNotionSyncAt)}
-                      </Typography>
+                                          <Typography variant="caption" color="text.secondary">
+                      Last sync: {formatDateTimePacific(activity.lastNotionSyncAt)}
+                    </Typography>
                     )}
                   </Box>
                 )}

@@ -323,7 +323,9 @@ export class InvoiceService extends DatabaseService {
   }
 
   private buildServiceDescription(workType: string, activities: any[]): string {
-    const dates = activities.map(a => new Date(a.date).toLocaleDateString()).join(', ');
+    const dates = activities.map(a => new Date(a.date).toLocaleDateString('en-US', {
+      timeZone: 'America/Los_Angeles'
+    })).join(', ');
     const totalHours = activities.reduce((sum, a) => sum + (a.billableHours || a.totalHours || 0), 0);
     
     return `${this.formatWorkType(workType)} - ${totalHours} hours (${dates})`;

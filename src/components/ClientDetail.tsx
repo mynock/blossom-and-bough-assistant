@@ -45,6 +45,7 @@ import {
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
+import { formatDatePacific } from '../utils/dateUtils';
 
 interface Client {
   id: number;
@@ -235,10 +236,7 @@ const ClientDetail: React.FC = () => {
     }
   }, [id]);
 
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
-  };
+
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -336,7 +334,7 @@ const ClientDetail: React.FC = () => {
   };
 
   const handleWorkActivityDelete = async (activity: WorkActivity) => {
-    if (window.confirm(`Are you sure you want to delete this ${activity.workType} activity from ${formatDate(activity.date)}?`)) {
+    if (window.confirm(`Are you sure you want to delete this ${activity.workType} activity from ${formatDatePacific(activity.date)}?`)) {
       try {
         const response = await fetch(`/api/work-activities/${activity.id}`, {
           method: 'DELETE',
@@ -366,11 +364,13 @@ const ClientDetail: React.FC = () => {
     const date = new Date(dateString);
     return {
       date: date.toLocaleDateString('en-US', { 
+        timeZone: 'America/Los_Angeles',
         weekday: 'short',
         month: 'short', 
         day: 'numeric' 
       }),
       time: date.toLocaleTimeString('en-US', { 
+        timeZone: 'America/Los_Angeles',
         hour: 'numeric',
         minute: '2-digit',
         hour12: true
@@ -603,13 +603,13 @@ const ClientDetail: React.FC = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <CalendarIcon color="action" />
                       <Typography variant="body2" color="text.secondary">Last Maintenance:</Typography>
-                      <Typography variant="body1">{formatDate(client.lastMaintenanceDate)}</Typography>
+                      <Typography variant="body1">{formatDatePacific(client.lastMaintenanceDate)}</Typography>
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <CalendarIcon color="action" />
                       <Typography variant="body2" color="text.secondary">Next Target:</Typography>
-                      <Typography variant="body1">{formatDate(client.nextMaintenanceTarget)}</Typography>
+                      <Typography variant="body1">{formatDatePacific(client.nextMaintenanceTarget)}</Typography>
                     </Box>
                   </>
                 )}
@@ -785,7 +785,7 @@ const ClientDetail: React.FC = () => {
                             />
                             {note.date && (
                               <Typography variant="body2" color="text.secondary">
-                                {formatDate(note.date)}
+                                {formatDatePacific(note.date)}
                               </Typography>
                             )}
                           </Box>
@@ -812,9 +812,9 @@ const ClientDetail: React.FC = () => {
                         {note.content}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                        Created: {formatDate(note.createdAt)}
+                        Created: {formatDatePacific(note.createdAt)}
                         {note.updatedAt !== note.createdAt && (
-                          <span> • Updated: {formatDate(note.updatedAt)}</span>
+                          <span> • Updated: {formatDatePacific(note.updatedAt)}</span>
                         )}
                       </Typography>
                     </Box>

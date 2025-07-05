@@ -94,7 +94,10 @@ export class SchedulingService {
     const currentDate = new Date(start);
     
     while (currentDate <= end) {
-      const dayName = currentDate.toLocaleDateString('en-US', { weekday: 'long' });
+      const dayName = currentDate.toLocaleDateString('en-US', { 
+      timeZone: 'America/Los_Angeles',
+      weekday: 'long' 
+    });
       const isWorkday = helper.workdays.includes(dayName);
       
       if (isWorkday) {

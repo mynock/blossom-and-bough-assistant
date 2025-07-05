@@ -101,7 +101,8 @@ const Schedule: React.FC = () => {
             <Card sx={{ mb: 2 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom>
-                  {new Date(date).toLocaleDateString([], {
+                  {new Date(date).toLocaleDateString('en-US', {
+                    timeZone: 'America/Los_Angeles',
                     weekday: 'long',
                     month: 'long',
                     day: 'numeric',
@@ -126,11 +127,13 @@ const Schedule: React.FC = () => {
                         secondary={
                           <Box>
                             <Typography variant="body2" color="text.secondary">
-                              {new Date(event.start).toLocaleTimeString([], {
+                              {new Date(event.start).toLocaleTimeString('en-US', {
+                                timeZone: 'America/Los_Angeles',
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })} - {' '}
-                              {new Date(event.end).toLocaleTimeString([], {
+                              {new Date(event.end).toLocaleTimeString('en-US', {
+                                timeZone: 'America/Los_Angeles',
                                 hour: '2-digit',
                                 minute: '2-digit',
                               })}

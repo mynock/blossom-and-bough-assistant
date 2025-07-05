@@ -48,6 +48,7 @@ import {
   Edit as EditIcon,
   TrendingUp as TrendingUpIcon,
 } from '@mui/icons-material';
+import { formatDatePacific } from '../utils/dateUtils';
 
 interface Employee {
   id: number;
@@ -179,10 +180,7 @@ const EmployeeDetail: React.FC = () => {
     }
   }, [id]);
 
-  const formatDate = (dateString: string | null | undefined) => {
-    if (!dateString) return '-';
-    return new Date(dateString).toLocaleDateString();
-  };
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -462,7 +460,7 @@ const EmployeeDetail: React.FC = () => {
                   
                   <Box>
                     <Typography variant="body2" color="text.secondary">Last Activity</Typography>
-                    <Typography variant="body1">{formatDate(summary?.lastActivityDate)}</Typography>
+                    <Typography variant="body1">{formatDatePacific(summary?.lastActivityDate)}</Typography>
                   </Box>
                 </Stack>
               </AccordionDetails>
@@ -494,7 +492,7 @@ const EmployeeDetail: React.FC = () => {
                 
                 return (
                   <TableRow key={activity.id}>
-                    <TableCell>{formatDate(activity.date)}</TableCell>
+                    <TableCell>{formatDatePacific(activity.date)}</TableCell>
                     <TableCell>
                       <Chip label={activity.workType} size="small" />
                     </TableCell>
