@@ -52,6 +52,7 @@ describe('WorkActivityService', () => {
     projectId: 1,
     clientId: 1,
     travelTimeMinutes: 30,
+    adjustedTravelTimeMinutes: null,
     breakTimeMinutes: 15,
     notes: 'Regular maintenance visit',
     tasks: 'Prune roses, weed beds',
