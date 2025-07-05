@@ -79,9 +79,9 @@ interface WorkActivity {
   chargesList: Array<{
     chargeType: string;
     description: string;
-    quantity: number;
-    unitRate: number;
-    totalCost: number;
+    quantity: number | null;
+    unitRate: number | null;
+    totalCost: number | null;
     billable: boolean;
   }>;
   plantsList: Array<{
@@ -501,51 +501,57 @@ const WorkActivityDetail: React.FC = () => {
         {/* Right Column */}
         <Grid item xs={12} md={4}>
           {/* Other Charges */}
-          {activity.chargesList.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  <ShoppingCart sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Other Charges
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <ShoppingCart sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Other Charges
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              {activity.chargesList.length > 0 ? (
+                <>
+                  <List dense>
+                    {activity.chargesList.map((charge, index) => (
+                      <ListItem key={index} divider>
+                        <ListItemText
+                          primary={charge.description}
+                          secondary={
+                            <Box>
+                              <Typography variant="caption" color="text.secondary">
+                                {charge.quantity || 'N/A'}x {charge.unitRate ? formatCurrency(charge.unitRate) : 'N/A'} = {charge.totalCost ? formatCurrency(charge.totalCost) : 'N/A'}
+                              </Typography>
+                              {charge.billable && (
+                                <Chip label="Billable" size="small" color="success" sx={{ ml: 1 }} />
+                              )}
+                            </Box>
+                          }
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                    <Typography variant="subtitle2">
+                      Total Charges: {formatCurrency(activity.totalCharges)}
+                    </Typography>
+                  </Box>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No charges recorded for this work activity
                 </Typography>
-                <Divider sx={{ mb: 2 }} />
-                <List dense>
-                  {activity.chargesList.map((charge, index) => (
-                    <ListItem key={index} divider>
-                      <ListItemText
-                        primary={charge.description}
-                        secondary={
-                          <Box>
-                            <Typography variant="caption" color="text.secondary">
-                              {charge.quantity}x {formatCurrency(charge.unitRate)} = {formatCurrency(charge.totalCost)}
-                            </Typography>
-                            {charge.billable && (
-                              <Chip label="Billable" size="small" color="success" sx={{ ml: 1 }} />
-                            )}
-                          </Box>
-                        }
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-                <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-                  <Typography variant="subtitle2">
-                    Total Charges: {formatCurrency(activity.totalCharges)}
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          )}
+              )}
+            </CardContent>
+          </Card>
 
           {/* Plants */}
-          {activity.plantsList.length > 0 && (
-            <Card sx={{ mb: 3 }}>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>
-                  <LocalFlorist sx={{ mr: 1, verticalAlign: 'middle' }} />
-                  Plants Used
-                </Typography>
-                <Divider sx={{ mb: 2 }} />
+          <Card sx={{ mb: 3 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                <LocalFlorist sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Plants Used
+              </Typography>
+              <Divider sx={{ mb: 2 }} />
+              {activity.plantsList.length > 0 ? (
                 <List dense>
                   {activity.plantsList.map((plant, index) => (
                     <ListItem key={index} divider>
@@ -559,9 +565,13 @@ const WorkActivityDetail: React.FC = () => {
                     </ListItem>
                   ))}
                 </List>
-              </CardContent>
-            </Card>
-          )}
+              ) : (
+                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                  No plants used in this work activity
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
 
           {/* System Information */}
           <Card>

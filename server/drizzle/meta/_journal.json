@@ -50,6 +50,13 @@
       "when": 1751666993167,
       "tag": "0006_overrated_hitman",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1751689374089,
+      "tag": "0007_white_lord_hawal",
+      "breakpoints": true
     }
   ]
 }
