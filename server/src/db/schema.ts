@@ -66,6 +66,7 @@ export const workActivities = pgTable('work_activities', {
   projectId: integer('project_id').references(() => projects.id),
   clientId: integer('client_id').references(() => clients.id), // required if billable_hours > 0
   travelTimeMinutes: integer('travel_time_minutes'),
+  adjustedTravelTimeMinutes: integer('adjusted_travel_time_minutes'),
   breakTimeMinutes: integer('break_time_minutes'),
   nonBillableTimeMinutes: integer('non_billable_time_minutes'),
   notes: text('notes'),

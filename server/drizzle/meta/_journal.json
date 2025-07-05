@@ -57,6 +57,13 @@
       "when": 1751689374089,
       "tag": "0007_white_lord_hawal",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1751741856091,
+      "tag": "0008_known_sway",
+      "breakpoints": true
     }
   ]
 }

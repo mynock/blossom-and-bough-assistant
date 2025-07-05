@@ -28,6 +28,7 @@ import adminRouter from './routes/admin';
 import notionRouter from './routes/notion';
 import { createNotionSyncRouter } from './routes/notionSync';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
+import travelTimeRouter from './routes/travelTime';
 import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
@@ -133,6 +134,7 @@ app.use('/api/employees', requireAuth, employeesRouter);
 app.use('/api/clients', requireAuth, clientsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/work-notes', requireAuth, createWorkNotesImportRouter(anthropicService));
+app.use('/api/travel-time', requireAuth, travelTimeRouter);
 app.use('/api/migration', requireAuth, migrationRouter);
 app.use('/api/notion', notionRouter); // Public routes for embedded usage
 app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
