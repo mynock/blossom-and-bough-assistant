@@ -11,7 +11,7 @@ export interface TravelTimeAllocationRequest {
 export interface TravelTimeAllocation {
   workActivityId: number;
   clientName: string;
-  hoursWorked: number;
+  hoursWorked: number; // billable hours used for proportional allocation
   originalTravelMinutes: number;
   allocatedTravelMinutes: number;
   newBillableHours: number;
@@ -22,7 +22,7 @@ export interface TravelTimeAllocationResult {
   date: string;
   employeeId?: number;
   totalTravelMinutes: number;
-  totalWorkHours: number;
+  totalWorkHours: number; // actually represents total billable hours for allocation
   allocations: TravelTimeAllocation[];
   updatedActivities: number;
   warnings: string[];
@@ -63,17 +63,17 @@ export class TravelTimeAllocationService extends DatabaseService {
       throw new Error('No travel time found in work activities for this date');
     }
 
-    // Calculate total work hours for proportional allocation
-    const totalWorkHours = workActivities.reduce((sum, activity) => {
+    // Calculate total billable hours for proportional allocation
+    const totalBillableHours = workActivities.reduce((sum, activity) => {
       return sum + (activity.billableHours || activity.totalHours || 0);
     }, 0);
 
-    if (totalWorkHours === 0) {
+    if (totalBillableHours === 0) {
       throw new Error('No billable or total hours found in work activities for proportional allocation');
     }
 
     debugLog.info(`🚗 Total travel time: ${totalTravelMinutes} minutes`);
-    debugLog.info(`🕐 Total work hours: ${totalWorkHours}`);
+    debugLog.info(`🕐 Total billable hours: ${totalBillableHours}`);
 
     // Calculate allocations and collect warnings
     const allocations: TravelTimeAllocation[] = [];
@@ -81,7 +81,7 @@ export class TravelTimeAllocationService extends DatabaseService {
     let totalAllocatedMinutes = 0;
 
     for (const activity of workActivities) {
-      const hoursWorked = activity.billableHours || activity.totalHours || 0;
+      const billableHours = activity.billableHours || activity.totalHours || 0;
       const originalTravelMinutes = activity.travelTimeMinutes || 0;
       const hasZeroTravel = originalTravelMinutes === 0;
       
@@ -90,19 +90,19 @@ export class TravelTimeAllocationService extends DatabaseService {
         warnings.push(`Activity ${activity.id} (${activity.clientName}) has zero travel time`);
       }
 
-      const proportion = hoursWorked / totalWorkHours;
+      const proportion = billableHours / totalBillableHours;
       const allocatedTravelMinutesFloat = totalTravelMinutes * proportion;
       const allocatedTravelMinutes = Math.floor(allocatedTravelMinutesFloat); // Round down as requested
       const allocatedTravelHours = allocatedTravelMinutes / 60;
       
-      // Calculate new billable hours (work hours + allocated travel time)
-      const currentWorkHours = activity.billableHours || activity.totalHours || 0;
-      const newBillableHours = currentWorkHours + allocatedTravelHours;
+      // Calculate new billable hours (original billable hours + allocated travel time)
+      const originalBillableHours = activity.billableHours || activity.totalHours || 0;
+      const newBillableHours = originalBillableHours + allocatedTravelHours;
 
       allocations.push({
         workActivityId: activity.id,
         clientName: activity.clientName || 'Unknown Client',
-        hoursWorked,
+        hoursWorked: billableHours,
         originalTravelMinutes,
         allocatedTravelMinutes,
         newBillableHours,
@@ -122,7 +122,7 @@ export class TravelTimeAllocationService extends DatabaseService {
     return {
       date,
       totalTravelMinutes,
-      totalWorkHours,
+      totalWorkHours: totalBillableHours,
       allocations,
       updatedActivities: 0, // Will be set when actually applying the allocation
       warnings

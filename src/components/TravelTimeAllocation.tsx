@@ -175,7 +175,7 @@ export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationP
                 <strong>Total Travel Time:</strong> {formatMinutes(previewData.totalTravelMinutes)}
               </Typography>
               <Typography variant="body2">
-                <strong>Total Work Hours:</strong> {formatHours(previewData.totalWorkHours)}
+                <strong>Total Billable Hours:</strong> {formatHours(previewData.totalWorkHours)}
               </Typography>
               <Typography variant="body2">
                 <strong>Activities:</strong> {previewData.allocations.length}
@@ -201,7 +201,7 @@ export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationP
               <TableHead>
                 <TableRow>
                   <TableCell>Client</TableCell>
-                  <TableCell align="right">Work Hours</TableCell>
+                  <TableCell align="right">Billable Hours</TableCell>
                   <TableCell align="right">Original Travel</TableCell>
                   <TableCell align="right">Allocated Travel</TableCell>
                   <TableCell align="right">New Billable Hours</TableCell>
