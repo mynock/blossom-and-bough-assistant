@@ -406,6 +406,27 @@ export class QuickBooksService extends DatabaseService {
   }
 
   /**
+   * Get income accounts
+   */
+  async getIncomeAccounts(): Promise<any[]> {
+    if (!this.qbo) {
+      throw new Error('QuickBooks client not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.qbo.findAccounts({
+        AccountType: 'Income'
+      }, (err: any, accounts: any) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        resolve(accounts.QueryResponse?.Account || []);
+      });
+    });
+  }
+
+  /**
    * Find customer by name
    */
   async findCustomerByName(name: string): Promise<any> {

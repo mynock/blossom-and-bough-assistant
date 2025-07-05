@@ -161,28 +161,58 @@ class QBOSeedDataGenerator {
       try {
         console.log(`Creating customer: ${customerData.name}`);
         
-        const customer = await qbSvc.createCustomer({
-          Name: customerData.name,
-          CompanyName: customerData.companyName,
-          PrimaryEmailAddr: {
-            Address: customerData.email
-          },
-          PrimaryPhone: {
-            FreeFormNumber: customerData.phone
-          },
-          BillAddr: {
-            Line1: customerData.address.line1,
-            City: customerData.address.city,
-            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
-            PostalCode: customerData.address.postalCode
-          },
-          ShipAddr: {
-            Line1: customerData.address.line1,
-            City: customerData.address.city,
-            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
-            PostalCode: customerData.address.postalCode
+        // Check if customer already exists
+        try {
+          const existingCustomer = await qbSvc.findCustomerByName(customerData.name);
+          if (existingCustomer) {
+            console.log(`✓ Customer ${customerData.name} already exists (ID: ${existingCustomer.Id})`);
+            customers.push(existingCustomer);
+            continue;
           }
-        });
+        } catch (findError) {
+          // Customer not found, continue with creation
+        }
+        
+        // Build customer payload with only essential fields to avoid validation issues
+        const customerPayload: any = {
+          Name: customerData.name
+        };
+        
+        // Add optional fields if they exist
+        if (customerData.companyName) {
+          customerPayload.CompanyName = customerData.companyName;
+        }
+        
+        if (customerData.email) {
+          customerPayload.PrimaryEmailAddr = {
+            Address: customerData.email
+          };
+        }
+        
+        if (customerData.phone) {
+          customerPayload.PrimaryPhone = {
+            FreeFormNumber: customerData.phone
+          };
+        }
+        
+        if (customerData.address) {
+          customerPayload.BillAddr = {
+            Line1: customerData.address.line1,
+            City: customerData.address.city,
+            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
+            PostalCode: customerData.address.postalCode
+          };
+          
+          // Ship address same as billing
+          customerPayload.ShipAddr = {
+            Line1: customerData.address.line1,
+            City: customerData.address.city,
+            CountrySubDivisionCode: customerData.address.countrySubDivisionCode,
+            PostalCode: customerData.address.postalCode
+          };
+        }
+        
+        const customer = await qbSvc.createCustomer(customerPayload);
         
         customers.push(customer);
         console.log(`✓ Created customer: ${customerData.name} (ID: ${customer.Id})`);
@@ -203,18 +233,46 @@ class QBOSeedDataGenerator {
     const items: any[] = [];
     const qbSvc = qbService || this.qbService;
     
+    // Get income accounts to use for service items
+    let incomeAccountRef = null;
+    try {
+      const incomeAccounts = await qbSvc.getIncomeAccounts();
+      if (incomeAccounts && incomeAccounts.length > 0) {
+        // Use the first income account (usually "Sales" or "Income")
+        incomeAccountRef = {
+          value: incomeAccounts[0].Id,
+          name: incomeAccounts[0].Name
+        };
+        console.log(`Using income account: ${incomeAccountRef.name} (${incomeAccountRef.value})`);
+      } else {
+        console.warn('No income accounts found. Items may fail to create.');
+      }
+    } catch (error) {
+      console.warn('Failed to get income accounts:', error);
+    }
+    
     for (const itemData of this.sampleItems) {
       try {
         console.log(`Creating item: ${itemData.name}`);
         
-        const item = await qbSvc.createItem({
+        const itemPayload: any = {
           Name: itemData.name,
           Description: itemData.description,
           Type: itemData.type,
-          UnitPrice: itemData.unitPrice,
-          Taxable: false,
-          TrackQtyOnHand: false
-        });
+          Taxable: false
+        };
+        
+        // Add income account ref for service items
+        if (itemData.type === 'Service' && incomeAccountRef) {
+          itemPayload.IncomeAccountRef = incomeAccountRef;
+        }
+        
+        // Add unit price if specified
+        if (itemData.unitPrice !== undefined && itemData.unitPrice > 0) {
+          itemPayload.UnitPrice = itemData.unitPrice;
+        }
+        
+        const item = await qbSvc.createItem(itemPayload);
         
         items.push(item);
         console.log(`✓ Created item: ${itemData.name} (ID: ${item.Id}) - $${itemData.unitPrice}`);
