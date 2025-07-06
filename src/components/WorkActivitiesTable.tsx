@@ -104,8 +104,9 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'needs_review': return 'warning';
       case 'completed': return 'success';
-      case 'in_progress': return 'warning';
+      case 'in_progress': return 'secondary';
       case 'planned': return 'info';
       case 'invoiced': return 'primary';
       case 'cancelled': return 'error';

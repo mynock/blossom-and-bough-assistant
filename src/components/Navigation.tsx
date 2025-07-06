@@ -68,6 +68,7 @@ const Navigation: React.FC = () => {
   // Main navigation items
   const mainNavItems = [
     { path: '/', label: 'Dashboard', icon: <Dashboard /> },
+    { path: '/review', label: 'Review', icon: <Assignment /> },
     { path: '/work-activities', label: 'Work', icon: <Work /> },
     { path: '/clients', label: 'Clients', icon: <Business /> },
     { path: '/employees', label: 'Employees', icon: <People /> },
