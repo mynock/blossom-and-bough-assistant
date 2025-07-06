@@ -17,6 +17,7 @@ import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
 import { AuthService } from './services/AuthService';
+import { CronService } from './services/CronService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
@@ -115,6 +116,7 @@ const googleCalendarService = new GoogleCalendarService();
 const anthropicService = new AnthropicService();
 const travelTimeService = new TravelTimeService();
 const authService = new AuthService();
+const cronService = new CronService();
 const schedulingService = new SchedulingService(
   googleSheetsService,
   googleCalendarService,
@@ -436,6 +438,40 @@ app.post('/api/calendar/template', async (req, res) => {
   }
 });
 
+// Maintenance entry cron job endpoint (for Railway cron service + manual testing)
+app.post('/api/cron/maintenance-entries', async (req, res) => {
+  try {
+    // Check authentication - either Railway cron token or user auth
+    const cronToken = req.headers.authorization?.replace('Bearer ', '');
+    const isRailwayCron = cronToken === process.env.CRON_AUTH_TOKEN;
+    const hasUserAuth = req.user; // From passport/session
+    
+    if (!isRailwayCron && !hasUserAuth) {
+      return res.status(401).json({ 
+        error: 'Unauthorized - requires CRON_AUTH_TOKEN or user authentication' 
+      });
+    }
+    
+    const triggerSource = isRailwayCron ? 'Railway cron service' : 'manual user trigger';
+    console.log(`🧪 Maintenance entry creation triggered by: ${triggerSource}`);
+    
+    await cronService.runManualTest();
+    
+    res.json({ 
+      success: true, 
+      message: 'Maintenance entry creation job executed successfully',
+      timestamp: new Date().toISOString(),
+      triggeredBy: triggerSource
+    });
+  } catch (error) {
+    console.error('Error in maintenance entry trigger:', error);
+    res.status(500).json({
+      error: 'Failed to create maintenance entries',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Special handling for embed routes - set headers to allow embedding and prevent caching
 app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
@@ -499,4 +535,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
+  
+  // Note: Cron jobs now handled by Railway's cron service
+  console.log(`⏰ Cron service available for Railway scheduling (no internal scheduler)`);
 }); 
