@@ -158,11 +158,15 @@ const Admin: React.FC = () => {
     setResult(null);
     
     try {
-      const response = await api.post(`/admin/${endpoint}`);
+      // Handle special cron endpoints differently
+      const apiPath = endpoint.startsWith('cron/') ? `/${endpoint}` : `/admin/${endpoint}`;
+      const response = await api.post(apiPath);
+      
       setResult({
         success: response.data.success,
         message: response.data.message,
-        duration: response.data.duration
+        duration: response.data.duration,
+        details: response.data.triggeredBy ? `Triggered by: ${response.data.triggeredBy}` : undefined
       });
       
       if (response.data.success) {
@@ -209,6 +213,7 @@ const Admin: React.FC = () => {
   const getDangerLevel = (action: string) => {
     if (action.includes('clear-all-data')) return 'extreme';
     if (action.includes('clear-projects') || action.includes('clear-work-activities')) return 'high';
+    if (action.includes('cron/')) return 'safe'; // Cron jobs are safe operations
     return 'safe';
   };
 
@@ -733,6 +738,49 @@ const Admin: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', height: '100%' }}>
                 <Typography variant="body2" color="text.secondary">
                   Access your Notion database directly or use the embedded quick entry form for field data entry.
+                </Typography>
+              </Box>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Automated Tasks */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader 
+          title="Automated Tasks" 
+          subheader="Manually trigger scheduled jobs and automated processes"
+        />
+        <CardContent>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={8}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="success"
+                onClick={() => handleActionClick('cron/maintenance-entries', 'create maintenance entries for tomorrow', false)}
+                disabled={loading}
+                sx={{ p: 2, height: 80 }}
+              >
+                <Box sx={{ textAlign: 'left', width: '100%' }}>
+                  <Typography variant="subtitle1">🌱 Create Tomorrow's Maintenance Entries</Typography>
+                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                    Generate Notion maintenance entries for tomorrow's calendar events (normally runs at 8PM Pacific)
+                  </Typography>
+                </Box>
+              </Button>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', p: 1 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <strong>Scheduled:</strong> Daily at 8PM Pacific
+                </Typography>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <strong>Purpose:</strong> Creates Notion entries for yellow calendar events
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  <strong>Features:</strong> Color filtering, helper assignment, carryover tasks
                 </Typography>
               </Box>
             </Grid>

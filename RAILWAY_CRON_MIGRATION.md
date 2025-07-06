@@ -133,7 +133,8 @@ If you see: `"✅ Daily Notion maintenance entry job scheduled..."`
 ✅ **Better resource usage** - separate from web app  
 ✅ **Railway's infrastructure** handles scheduling  
 ✅ **Easier monitoring** - visible in Railway dashboard  
-✅ **Scales independently** - cron doesn't affect web performance
+✅ **Scales independently** - cron doesn't affect web performance  
+✅ **UI trigger added** - can now manually trigger from admin panel
 
 ---
 

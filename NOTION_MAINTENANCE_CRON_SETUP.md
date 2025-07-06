@@ -55,7 +55,7 @@ The system uses existing environment variables:
 The cron job starts automatically when the server starts and runs daily at 8PM Pacific Time.
 
 ### Manual Testing
-You can manually trigger the cron job for testing:
+You can manually trigger the cron job for testing in several ways:
 
 #### **Option A: User Authentication (Manual Testing)**
 ```bash
@@ -73,8 +73,11 @@ curl -X POST https://your-app.railway.app/api/cron/maintenance-entries \
   -H "Authorization: Bearer YOUR_CRON_AUTH_TOKEN"
 ```
 
-#### **Option C: Admin Panel**
-Use your CRM's admin interface to trigger the job manually.
+#### **Option C: Admin Panel (Recommended)**
+1. **Navigate to Admin Panel** in your CRM
+2. **Go to "Automated Tasks" section**
+3. **Click "🌱 Create Tomorrow's Maintenance Entries"**
+4. **View results** in the same page
 
 ### Monitoring
 Check the server logs for cron job execution:
