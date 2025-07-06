@@ -438,18 +438,33 @@ app.post('/api/calendar/template', async (req, res) => {
   }
 });
 
-// Manual trigger for maintenance entry cron job (for testing)
-app.post('/api/cron/maintenance-entries', requireAuth, async (req, res) => {
+// Maintenance entry cron job endpoint (for Railway cron service + manual testing)
+app.post('/api/cron/maintenance-entries', async (req, res) => {
   try {
-    console.log('🧪 Manual trigger for maintenance entry creation');
+    // Check authentication - either Railway cron token or user auth
+    const cronToken = req.headers.authorization?.replace('Bearer ', '');
+    const isRailwayCron = cronToken === process.env.CRON_AUTH_TOKEN;
+    const hasUserAuth = req.user; // From passport/session
+    
+    if (!isRailwayCron && !hasUserAuth) {
+      return res.status(401).json({ 
+        error: 'Unauthorized - requires CRON_AUTH_TOKEN or user authentication' 
+      });
+    }
+    
+    const triggerSource = isRailwayCron ? 'Railway cron service' : 'manual user trigger';
+    console.log(`🧪 Maintenance entry creation triggered by: ${triggerSource}`);
+    
     await cronService.runManualTest();
+    
     res.json({ 
       success: true, 
       message: 'Maintenance entry creation job executed successfully',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      triggeredBy: triggerSource
     });
   } catch (error) {
-    console.error('Error in manual maintenance entry trigger:', error);
+    console.error('Error in maintenance entry trigger:', error);
     res.status(500).json({
       error: 'Failed to create maintenance entries',
       details: error instanceof Error ? error.message : 'Unknown error'
@@ -521,7 +536,6 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
   
-  // Start cron jobs
-  cronService.startScheduledTasks();
-  console.log(`⏰ Cron jobs initialized`);
+  // Note: Cron jobs now handled by Railway's cron service
+  console.log(`⏰ Cron service available for Railway scheduling (no internal scheduler)`);
 }); 

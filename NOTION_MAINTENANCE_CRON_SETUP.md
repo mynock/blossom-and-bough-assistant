@@ -57,14 +57,24 @@ The cron job starts automatically when the server starts and runs daily at 8PM P
 ### Manual Testing
 You can manually trigger the cron job for testing:
 
+#### **Option A: User Authentication (Manual Testing)**
 ```bash
-# Using curl (requires authentication)
-curl -X POST http://localhost:3001/api/cron/maintenance-entries \
+# Using curl with user auth (requires being logged in)
+curl -X POST https://your-app.railway.app/api/cron/maintenance-entries \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN"
+  -b "your-session-cookie"
 ```
 
-Or use the Admin panel in your CRM interface.
+#### **Option B: Cron Token (Testing Railway Setup)**  
+```bash
+# Using cron auth token (same as Railway uses)
+curl -X POST https://your-app.railway.app/api/cron/maintenance-entries \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_CRON_AUTH_TOKEN"
+```
+
+#### **Option C: Admin Panel**
+Use your CRM's admin interface to trigger the job manually.
 
 ### Monitoring
 Check the server logs for cron job execution:
@@ -205,15 +215,35 @@ curl http://localhost:3001/api/notion/health
 
 ## 🚀 Railway Deployment
 
-The cron job is designed to work seamlessly with Railway deployment:
+The system uses **Railway's built-in cron service** for reliable scheduling:
 
-1. **Automatic startup**: Cron job starts when the server starts
-2. **UTC timezone**: Configured for Railway's UTC environment
+1. **Separate cron service**: Runs independently of your web app
+2. **UTC timezone**: Configured for Railway's UTC environment  
 3. **Environment variables**: Uses Railway's environment variable system
 4. **Logging**: All operations logged for Railway's log viewer
 
-### Railway Configuration
-No additional Railway configuration is needed. The cron job runs within your existing server process.
+### Railway Configuration Required
+
+#### **1. Update railway.json**
+```json
+{
+  "cron": [
+    {
+      "command": "curl -X POST https://$RAILWAY_PUBLIC_DOMAIN/api/cron/maintenance-entries -H 'Content-Type: application/json' -H 'Authorization: Bearer $CRON_AUTH_TOKEN'",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}
+```
+
+#### **2. Add Environment Variable**
+In Railway dashboard, add:
+```bash
+CRON_AUTH_TOKEN=your_long_random_secret_token_here
+```
+
+#### **3. Deploy**
+Railway will automatically detect the cron configuration and set up the scheduled job.
 
 ## 🔄 Future Enhancements
 

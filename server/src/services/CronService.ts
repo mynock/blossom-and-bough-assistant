@@ -14,16 +14,18 @@ export class CronService {
   }
 
   public startScheduledTasks(): void {
+    // NOTE: This method is deprecated in favor of Railway's cron service
+    // Keeping for backwards compatibility, but Railway cron handles scheduling now
+    debugLog.info('⚠️ Internal scheduling disabled - using Railway cron service instead');
+    debugLog.info('✅ CronService ready for Railway cron calls at 3AM UTC (8PM PDT/7PM PST)');
+    
+    // Uncomment below to re-enable internal scheduling if needed:
+    /*
     if (this.isScheduled) {
       debugLog.info('🔄 Cron tasks already scheduled');
       return;
     }
 
-    // Schedule daily task at 8PM Pacific Time
-    // Note: Railway containers run in UTC, so we need to convert Pacific Time
-    // Pacific Standard Time (PST) = UTC-8, Pacific Daylight Time (PDT) = UTC-7
-    // For 8PM Pacific, we need 4AM UTC (PST) or 3AM UTC (PDT)
-    // Using 3AM UTC to accommodate most of the year (PDT is active longer)
     const cronExpression = '0 3 * * *'; // 3AM UTC = 8PM PDT, 7PM PST
     
     cron.schedule(cronExpression, async () => {
@@ -36,6 +38,7 @@ export class CronService {
 
     this.isScheduled = true;
     debugLog.info('✅ Daily Notion maintenance entry job scheduled for 8PM PDT/7PM PST (3AM UTC)');
+    */
   }
 
   public async createMaintenanceEntriesForTomorrow(): Promise<void> {
