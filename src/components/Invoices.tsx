@@ -29,6 +29,11 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Receipt,
@@ -42,6 +47,7 @@ import {
   TrendingUp,
   Schedule,
   OpenInNew,
+  Delete,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
@@ -81,6 +87,8 @@ const Invoices: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -155,6 +163,41 @@ const Invoices: React.FC = () => {
     }
   };
 
+  const deleteInvoice = async (invoiceId: number) => {
+    try {
+      console.log('deleteInvoice function called with ID:', invoiceId);
+      setDeleting(true);
+      setError(null);
+      
+      console.log('Making DELETE request to:', `/api/qbo/invoices/${invoiceId}`);
+      const response = await fetch(`/api/qbo/invoices/${invoiceId}`, {
+        method: 'DELETE',
+      });
+      
+      console.log('Delete response status:', response.status);
+      console.log('Delete response ok:', response.ok);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Delete failed with error data:', errorData);
+        throw new Error(errorData.details || 'Failed to delete invoice');
+      }
+      
+      const result = await response.json();
+      console.log('Delete successful, result:', result);
+      
+      await fetchInvoices(); // Refresh the list
+      setDeleteDialogOpen(false);
+      setSelectedInvoice(null);
+    } catch (err) {
+      console.error('Error deleting invoice:', err);
+      setError(err instanceof Error ? err.message : 'Failed to delete invoice');
+    } finally {
+      console.log('Delete operation finished, setting deleting to false');
+      setDeleting(false);
+    }
+  };
+
   const handleSort = (property: keyof Invoice) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
@@ -214,6 +257,28 @@ const Invoices: React.FC = () => {
   };
 
   const stats = calculateStats();
+
+  const handleDeleteClick = () => {
+    console.log('Delete clicked for invoice:', selectedInvoice);
+    setDeleteDialogOpen(true);
+    setAnchorEl(null);
+  };
+
+  const handleDeleteConfirm = () => {
+    console.log('Delete confirm clicked, selectedInvoice:', selectedInvoice);
+    if (selectedInvoice) {
+      console.log('Calling deleteInvoice with ID:', selectedInvoice.id);
+      deleteInvoice(selectedInvoice.id);
+    } else {
+      console.error('No selected invoice found!');
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    console.log('Delete cancelled');
+    setDeleteDialogOpen(false);
+    setSelectedInvoice(null);
+  };
 
   if (loading) {
     return (
@@ -517,7 +582,6 @@ const Invoices: React.FC = () => {
               </ListItemIcon>
               <ListItemText>Sync Status</ListItemText>
             </MenuItem>
-            <Divider />
             <MenuItem onClick={() => {
               if (selectedInvoice) {
                 navigate(`/clients/${selectedInvoice.clientId}`);
@@ -529,8 +593,79 @@ const Invoices: React.FC = () => {
               </ListItemIcon>
               <ListItemText>View Client</ListItemText>
             </MenuItem>
+            <Divider />
+            <MenuItem 
+              onClick={handleDeleteClick}
+              sx={{ color: 'error.main' }}
+            >
+              <ListItemIcon>
+                <Delete fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText>Delete Invoice</ListItemText>
+            </MenuItem>
           </MenuList>
         </Menu>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={handleDeleteCancel}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Delete Invoice</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              Are you sure you want to delete invoice <strong>
+                {selectedInvoice?.invoiceNumber || 'Unknown'}
+              </strong>?
+              {!selectedInvoice && (
+                <Typography color="error" variant="body2" sx={{ mt: 1 }}>
+                  Warning: No invoice selected!
+                </Typography>
+              )}
+            </DialogContentText>
+            <DialogContentText sx={{ mt: 2, color: 'warning.main' }}>
+              This action will:
+            </DialogContentText>
+            <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+              <Typography component="li" variant="body2" color="warning.main">
+                Remove the invoice from your local database
+              </Typography>
+              <Typography component="li" variant="body2" color="warning.main">
+                Revert associated work activities back to "completed" status
+              </Typography>
+              <Typography component="li" variant="body2" color="warning.main">
+                The invoice may need to be manually voided in QuickBooks
+              </Typography>
+            </Box>
+            <DialogContentText sx={{ mt: 2, color: 'error.main', fontWeight: 'medium' }}>
+              This action cannot be undone.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={handleDeleteCancel}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={(e) => {
+                console.log('DELETE INVOICE button clicked!', e);
+                e.preventDefault();
+                e.stopPropagation();
+                handleDeleteConfirm();
+              }}
+              color="error"
+              variant="contained"
+              disabled={deleting}
+              startIcon={deleting ? <CircularProgress size={16} /> : <Delete />}
+            >
+              {deleting ? 'Deleting...' : 'Delete Invoice'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </Container>
   );

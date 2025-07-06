@@ -174,34 +174,43 @@ router.get('/items', async (req, res) => {
  */
 router.post('/invoices', async (req, res) => {
   try {
-    const {
-      clientId,
-      workActivityIds,
-      includeOtherCharges = true,
-      dueDate,
-      memo
-    } = req.body;
-
-    // Validate required fields
-    if (!clientId || !workActivityIds || !Array.isArray(workActivityIds) || workActivityIds.length === 0) {
-      return res.status(400).json({ 
-        error: 'clientId and workActivityIds (array) are required' 
-      });
+    const { workActivityIds, clientId, dueDate, memo, includeOtherCharges, useAIGeneration } = req.body;
+    
+    if (!workActivityIds || !Array.isArray(workActivityIds) || workActivityIds.length === 0) {
+      return res.status(400).json({ error: 'Work activity IDs are required' });
     }
-
+    
+    if (!clientId) {
+      return res.status(400).json({ error: 'Client ID is required' });
+    }
+    
+    console.log(`Creating invoice for ${workActivityIds.length} work activities for client ${clientId}`);
+    if (useAIGeneration) {
+      console.log('🤖 AI enhancement requested');
+    }
+    
+    const invoiceService = new InvoiceService();
+    
     const result = await invoiceService.createInvoiceFromWorkActivities({
-      clientId,
       workActivityIds,
-      includeOtherCharges,
+      clientId,
       dueDate,
-      memo
+      memo,
+      includeOtherCharges: includeOtherCharges !== false, // Default to true
+      useAIGeneration: useAIGeneration === true // Default to false
     });
-
-    res.json(result);
+    
+    res.json({ 
+      success: true, 
+      result,
+      message: 'Invoice created successfully'
+    });
   } catch (error) {
     console.error('Error creating invoice:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to create invoice';
-    res.status(500).json({ error: errorMessage });
+    res.status(500).json({ 
+      error: 'Failed to create invoice', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
+    });
   }
 });
 
@@ -447,6 +456,33 @@ router.post('/seed', async (req, res) => {
     res.status(500).json({ 
       success: false,
       error: errorMessage 
+    });
+  }
+});
+
+// Delete invoice
+router.delete('/invoices/:invoiceId', async (req, res) => {
+  try {
+    const invoiceId = parseInt(req.params.invoiceId);
+    
+    if (isNaN(invoiceId)) {
+      return res.status(400).json({ error: 'Invalid invoice ID' });
+    }
+    
+    console.log(`Deleting invoice ID: ${invoiceId}`);
+    
+    const invoiceService = new InvoiceService();
+    await invoiceService.deleteInvoice(invoiceId);
+    
+    res.json({ 
+      success: true, 
+      message: 'Invoice deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting invoice:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete invoice', 
+      details: error instanceof Error ? error.message : 'Unknown error' 
     });
   }
 });

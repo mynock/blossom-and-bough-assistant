@@ -142,6 +142,7 @@ const WorkActivityManagement: React.FC = () => {
 
   const [invoiceCreationOpen, setInvoiceCreationOpen] = useState(false);
   const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<WorkActivity[]>([]);
+  const [useAIGeneration, setUseAIGeneration] = useState(false);
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning') => {
     setSnackbar({ open: true, message, severity: severity as 'success' | 'error' });
@@ -395,13 +396,14 @@ const WorkActivityManagement: React.FC = () => {
         body: JSON.stringify({
           clientId: clientId,
           workActivityIds: selectedActivitiesForInvoice.map(a => a.id),
+        useAIGeneration: useAIGeneration,
           includeOtherCharges: true,
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        showSnackbar(`Invoice created successfully! Invoice #${result.invoice.invoiceNumber}`, 'success');
+        showSnackbar(`Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`, 'success');
         setInvoiceCreationOpen(false);
         setSelectedActivitiesForInvoice([]);
         
@@ -618,6 +620,24 @@ const WorkActivityManagement: React.FC = () => {
           <Typography variant="body1" gutterBottom>
             Create an invoice for the following activities?
           </Typography>
+          
+          {/* AI Enhancement Option */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, bgcolor: 'blue.50', borderRadius: 1, mt: 2, mb: 2 }}>
+            <input
+              type="checkbox"
+              id="useAI-work-activities"
+              checked={useAIGeneration}
+              onChange={(e) => setUseAIGeneration(e.target.checked)}
+              style={{ borderRadius: '4px' }}
+            />
+            <label htmlFor="useAI-work-activities" style={{ fontSize: '14px', fontWeight: 500 }}>
+              ✨ Use AI to generate professional invoice descriptions
+            </label>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '12px' }}>
+            Transforms work notes into detailed, professional line items
+          </Typography>
+          
           <Box sx={{ mt: 2 }}>
             {selectedActivitiesForInvoice.map((activity) => (
               <Box key={activity.id} sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, mb: 1 }}>

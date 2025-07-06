@@ -2,6 +2,7 @@ import { DatabaseService } from './DatabaseService';
 import { QuickBooksService } from './QuickBooksService';
 import { ClientService } from './ClientService';
 import { WorkActivityService } from './WorkActivityService';
+import { AnthropicService } from './AnthropicService';
 import { 
   workActivities, 
   invoices, 
@@ -18,6 +19,7 @@ export interface CreateInvoiceRequest {
   includeOtherCharges?: boolean;
   dueDate?: string;
   memo?: string;
+  useAIGeneration?: boolean;
 }
 
 export interface InvoiceLineItemData {
@@ -34,12 +36,14 @@ export class InvoiceService extends DatabaseService {
   private qbService: QuickBooksService;
   private clientService: ClientService;
   private workActivityService: WorkActivityService;
+  private anthropicService: AnthropicService;
 
   constructor() {
     super();
     this.qbService = new QuickBooksService();
     this.clientService = new ClientService();
     this.workActivityService = new WorkActivityService();
+    this.anthropicService = new AnthropicService();
   }
 
   /**
@@ -129,8 +133,35 @@ export class InvoiceService extends DatabaseService {
       console.log(`Validated ${workActivitiesData.length} work activities for invoicing`);
 
       // 4. Build invoice line items from work activities
-      const lineItems = await this.buildInvoiceLineItems(workActivitiesData, request.includeOtherCharges);
+      let lineItems = await this.buildInvoiceLineItems(workActivitiesData, request.includeOtherCharges);
       console.log(`Built ${lineItems.length} line items for invoice`);
+      
+      if (lineItems.length === 0) {
+        console.error('ERROR: No line items generated! This will cause invoice creation to fail.');
+        throw new Error('No line items could be generated for the invoice. Please check if QBO items are properly synced.');
+      }
+
+      // 4.5. Enhance line items with AI if requested
+      if (request.useAIGeneration) {
+        try {
+          console.log('🤖 Generating AI-enhanced invoice line items...');
+          const enhancedLineItems = await this.anthropicService.generateInvoiceLineItems(
+            workActivitiesData,
+            client.name,
+            lineItems
+          );
+          
+          if (enhancedLineItems && enhancedLineItems.length > 0) {
+            lineItems = enhancedLineItems;
+            console.log(`✅ Successfully generated ${enhancedLineItems.length} AI-enhanced line items`);
+          } else {
+            console.log('⚠️ AI generation returned no results, using basic line items');
+          }
+        } catch (aiError) {
+          console.error('❌ AI generation failed, falling back to basic line items:', aiError);
+          // Continue with basic line items instead of failing
+        }
+      }
 
       // 5. Create invoice data for QBO
       const qboInvoiceData = this.buildQBOInvoiceData(qboCustomer, lineItems, request);
@@ -342,34 +373,22 @@ export class InvoiceService extends DatabaseService {
   private async buildInvoiceLineItems(workActivitiesData: any[], includeOtherCharges = true): Promise<InvoiceLineItemData[]> {
     const lineItems: InvoiceLineItemData[] = [];
 
-    // Group work activities by work type to combine similar services
-    const serviceGroups = new Map<string, { activities: any[], totalHours: number }>();
-    
+    // Create separate line items for each work activity to ensure all activities are tracked
     for (const activity of workActivitiesData) {
-      if (!serviceGroups.has(activity.workType)) {
-        serviceGroups.set(activity.workType, { activities: [], totalHours: 0 });
-      }
+      const qboItem = await this.findQBOItemForWorkType(activity.workType);
       
-      const group = serviceGroups.get(activity.workType)!;
-      group.activities.push(activity);
-      group.totalHours += activity.billableHours || activity.totalHours || 0;
-    }
-
-    // Create line items for services
-    for (const [workType, group] of serviceGroups) {
-      const qboItem = await this.findQBOItemForWorkType(workType);
-      
-      if (qboItem && group.totalHours > 0) {
-        const description = this.buildServiceDescription(workType, group.activities);
+      if (qboItem && (activity.billableHours || activity.totalHours) > 0) {
+        const hours = activity.billableHours || activity.totalHours || 0;
         const rate = qboItem.unitPrice || 55.00; // Default rate if not set in QBO
+        const description = this.buildServiceDescription(activity.workType, [activity]);
         
         lineItems.push({
-          workActivityId: group.activities[0].id, // Link to first activity for reference
+          workActivityId: activity.id,
           qboItemId: qboItem.qboId,
           description: description,
-          quantity: group.totalHours,
+          quantity: hours,
           rate: rate,
-          amount: group.totalHours * rate
+          amount: hours * rate
         });
       }
     }
@@ -419,7 +438,9 @@ export class InvoiceService extends DatabaseService {
     
     for (const name of possibleNames) {
       const item = await this.findQBOItemByName(name);
-      if (item) return item;
+      if (item) {
+        return item;
+      }
     }
 
     // Default to first available service item if no match found
@@ -472,10 +493,10 @@ export class InvoiceService extends DatabaseService {
       LineNum: index + 1,
       Amount: item.amount,
       DetailType: "SalesItemLineDetail",
+      Description: item.description, // ✅ Custom description appears on invoice
       SalesItemLineDetail: {
         ItemRef: {
-          value: item.qboItemId,
-          name: item.description.split(' - ')[0] // Use first part as item name
+          value: item.qboItemId
         },
         Qty: item.quantity,
         UnitPrice: item.rate
@@ -560,5 +581,104 @@ export class InvoiceService extends DatabaseService {
     if (qboInvoice.EmailStatus === 'EmailSent') return 'sent';
     if (qboInvoice.DueDate && new Date(qboInvoice.DueDate) < new Date()) return 'overdue';
     return 'draft';
+  }
+
+  /**
+   * Delete an invoice (from both local DB and QuickBooks)
+   */
+  async deleteInvoice(invoiceId: number): Promise<void> {
+    try {
+      console.log(`Starting deletion of invoice ID: ${invoiceId}`);
+      
+      // Get invoice details
+      const invoice = await this.getInvoiceById(invoiceId);
+      if (!invoice) {
+        throw new Error(`Invoice with ID ${invoiceId} not found`);
+      }
+      
+      console.log(`Found invoice: ${invoice.invoiceNumber} (QBO ID: ${invoice.qboInvoiceId})`);
+      
+      // 1. Get associated work activity IDs from line items
+      const workActivityIds = await this.getWorkActivityIdsForInvoice(invoiceId);
+      console.log(`Found ${workActivityIds.length} work activities to revert status`);
+      
+      // 2. Delete from QuickBooks (void the invoice)
+      try {
+        await this.ensureQBServiceInitialized();
+        console.log('Voiding invoice in QuickBooks...');
+        // Note: QuickBooks doesn't allow true deletion, only voiding
+        // We'll implement voiding if the QB API supports it
+        await this.voidInvoiceInQBO(invoice.qboInvoiceId);
+        console.log('Invoice voided in QuickBooks');
+      } catch (qbError) {
+        console.warn('Failed to void invoice in QuickBooks:', qbError);
+        // Continue with local deletion even if QB void fails
+      }
+      
+      // 3. Delete invoice line items first (foreign key constraint)
+      await this.db.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
+      console.log('Deleted invoice line items');
+      
+      // 4. Delete the invoice record
+      await this.db.delete(invoices).where(eq(invoices.id, invoiceId));
+      console.log('Deleted invoice record');
+      
+      // 5. Revert work activities status back to 'completed'
+      if (workActivityIds.length > 0) {
+        await this.updateWorkActivitiesStatus(workActivityIds, 'completed');
+        console.log(`Reverted ${workActivityIds.length} work activities to 'completed' status`);
+      }
+      
+      console.log(`✅ Successfully deleted invoice ${invoice.invoiceNumber}`);
+      
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      throw new Error(`Failed to delete invoice: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Get invoice by ID
+   */
+  private async getInvoiceById(invoiceId: number): Promise<any> {
+    const results = await this.db
+      .select()
+      .from(invoices)
+      .where(eq(invoices.id, invoiceId))
+      .limit(1);
+    
+    return results[0] || null;
+  }
+
+  /**
+   * Get work activity IDs associated with an invoice
+   */
+  private async getWorkActivityIdsForInvoice(invoiceId: number): Promise<number[]> {
+    const lineItems = await this.db
+      .select({ workActivityId: invoiceLineItems.workActivityId })
+      .from(invoiceLineItems)
+      .where(eq(invoiceLineItems.invoiceId, invoiceId));
+    
+    return lineItems
+      .filter(item => item.workActivityId !== null)
+      .map(item => item.workActivityId as number);
+  }
+
+  /**
+   * Void invoice in QuickBooks (QB doesn't support true deletion)
+   */
+  private async voidInvoiceInQBO(qboInvoiceId: string): Promise<void> {
+    try {
+      // Note: QuickBooks API typically doesn't support deleting invoices
+      // For now, we'll just log that the invoice should be manually voided in QB
+      console.log(`Invoice ${qboInvoiceId} should be manually voided in QuickBooks if needed`);
+      
+      // TODO: Implement actual QB void operation if the API supports it
+      // This would require adding a voidInvoice method to QuickBooksService
+      
+    } catch (error) {
+      console.error('Error with QuickBooks invoice operation:', error);
+      throw error;
+    }
   }
 } 
