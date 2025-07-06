@@ -1,4 +1,5 @@
 import { DatabaseService } from './DatabaseService';
+import { SettingsService } from './SettingsService';
 import { debugLog } from '../utils/logger';
 import { 
   workActivities, 
@@ -43,6 +44,12 @@ export interface WorkActivityWithDetails extends WorkActivity {
 }
 
 export class WorkActivityService extends DatabaseService {
+  private settingsService: SettingsService;
+
+  constructor() {
+    super();
+    this.settingsService = new SettingsService();
+  }
   
   /**
    * Get all work activities with related data, optionally filtered
@@ -267,10 +274,27 @@ export class WorkActivityService extends DatabaseService {
    * Create a new work activity with employees and charges
    */
   async createWorkActivity(data: CreateWorkActivityData): Promise<WorkActivity> {
+    // Apply rounding to billable hours if present
+    let workActivityData = { ...data.workActivity };
+    
+    if (workActivityData.billableHours !== undefined && workActivityData.billableHours !== null) {
+      try {
+        const roundedHours = await this.settingsService.roundHours(workActivityData.billableHours);
+        workActivityData = {
+          ...workActivityData,
+          billableHours: roundedHours
+        };
+        debugLog.info(`🧮 Applied rounding to billable hours for new work activity: ${data.workActivity.billableHours} -> ${roundedHours}`);
+      } catch (error) {
+        debugLog.warn(`⚠️ Failed to apply rounding to billable hours for new work activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Continue with unrounded hours if rounding fails
+      }
+    }
+    
     // Create the work activity
     const workActivity = await this.db
       .insert(workActivities)
-      .values(data.workActivity)
+      .values(workActivityData)
       .returning();
 
     const workActivityId = workActivity[0].id;
@@ -333,6 +357,21 @@ export class WorkActivityService extends DatabaseService {
     // If adjustedTravelTimeMinutes is being updated, recalculate billable hours
     let finalUpdateData = { ...data };
     
+    // Apply rounding to billable hours if being updated directly
+    if (data.billableHours !== undefined && data.billableHours !== null && data.adjustedTravelTimeMinutes === undefined) {
+      try {
+        const roundedHours = await this.settingsService.roundHours(data.billableHours);
+        finalUpdateData = {
+          ...finalUpdateData,
+          billableHours: roundedHours
+        };
+        debugLog.info(`🧮 Applied rounding to billable hours for work activity ${id}: ${data.billableHours} -> ${roundedHours}`);
+      } catch (error) {
+        debugLog.warn(`⚠️ Failed to apply rounding to billable hours for work activity ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Continue with unrounded hours if rounding fails
+      }
+    }
+    
     if (data.adjustedTravelTimeMinutes !== undefined) {
       // Get current work activity to access current billable/total hours
       const currentActivity = await this.getWorkActivityById(id);
@@ -345,15 +384,23 @@ export class WorkActivityService extends DatabaseService {
         const adjustedTravelHours = adjustedTravelMinutes / 60;
         
         // Calculate new billable hours: base work hours + adjusted travel hours
-        const newBillableHours = baseWorkHours + adjustedTravelHours;
+        let newBillableHours = baseWorkHours + adjustedTravelHours;
+        
+        // Apply rounding if enabled in settings
+        try {
+          const roundedHours = await this.settingsService.roundHours(newBillableHours);
+          debugLog.info(`🧮 Recalculated billable hours for work activity ${id}: ${baseWorkHours} base hours + ${adjustedTravelHours} travel hours = ${newBillableHours} total billable hours -> ${roundedHours} rounded billable hours`);
+          newBillableHours = roundedHours;
+        } catch (error) {
+          debugLog.warn(`⚠️ Failed to apply rounding to billable hours for work activity ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          // Continue with unrounded hours if rounding fails
+        }
         
         // Add the recalculated billable hours to the update data
         finalUpdateData = {
           ...finalUpdateData,
           billableHours: newBillableHours
         };
-        
-        debugLog.info(`🧮 Recalculated billable hours for work activity ${id}: ${baseWorkHours} base hours + ${adjustedTravelHours} travel hours = ${newBillableHours} total billable hours`);
       }
     }
     
