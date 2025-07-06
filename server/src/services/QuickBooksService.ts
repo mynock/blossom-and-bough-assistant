@@ -440,7 +440,11 @@ export class QuickBooksService extends DatabaseService {
           reject(err);
           return;
         }
-        resolve(customers.QueryResponse?.Customer || []);
+        
+        const customerList = customers.QueryResponse?.Customer || [];
+        console.log(`getAllCustomers: Found ${customerList.length} customers`);
+        
+        resolve(customerList);
       });
     });
   }
@@ -454,16 +458,95 @@ export class QuickBooksService extends DatabaseService {
     }
 
     return new Promise((resolve, reject) => {
-      this.qbo.findCustomers({
-        Name: name
-      }, (err: any, customers: any) => {
+      // Get all customers and filter by name (more reliable than direct search)
+      this.qbo.findCustomers({}, (err: any, customers: any) => {
         if (err) {
           reject(err);
           return;
         }
+        
         const customerList = customers.QueryResponse?.Customer || [];
-        resolve(customerList.length > 0 ? customerList[0] : null);
+        console.log(`findCustomerByName: Searching for "${name}" among ${customerList.length} customers`);
+        
+        // Debug: Show first few customer names
+        console.log(`First 5 customer names:`, customerList.slice(0, 5).map((c: any) => `"${c.DisplayName}"`).join(', '));
+        
+        // Case-insensitive search for exact match
+        const foundCustomer = customerList.find((customer: any) => {
+          const customerName = customer.DisplayName?.toLowerCase() || '';
+          const searchName = name.toLowerCase();
+          return customer.DisplayName && customerName === searchName;
+        });
+        
+        resolve(foundCustomer || null);
       });
     });
+  }
+
+  /**
+   * Sync QBO Customers to local database
+   */
+  async syncCustomers(): Promise<void> {
+    if (!this.qbo) {
+      throw new Error('QuickBooks client not initialized');
+    }
+
+    return new Promise((resolve, reject) => {
+      this.qbo.findCustomers({}, async (err: any, customers: any) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        try {
+          const qboCustomerList = customers.QueryResponse?.Customer || [];
+          
+          console.log(`Found ${qboCustomerList.length} customers in QuickBooks`);
+          
+          // Import customers into local database
+          const { ClientService } = await import('./ClientService');
+          const clientService = new ClientService();
+          
+          for (const customer of qboCustomerList) {
+            await this.upsertCustomer(customer, clientService);
+          }
+          
+          console.log(`Synced ${qboCustomerList.length} customers from QuickBooks`);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+  }
+
+  /**
+   * Upsert a customer from QuickBooks to local database
+   */
+  private async upsertCustomer(qboCustomer: any, clientService: any): Promise<void> {
+    try {
+      // Check if customer already exists locally by name
+      const existingClient = await clientService.getClientByName(qboCustomer.DisplayName);
+      
+      if (!existingClient) {
+        // Create new local client from QuickBooks customer
+        const newClient = {
+          clientId: `qbo-${qboCustomer.Id}`,
+          name: qboCustomer.DisplayName,
+          address: qboCustomer.BillAddr?.Line1 || '',
+          geoZone: '', // Can be filled in later
+          isRecurringMaintenance: false,
+          activeStatus: qboCustomer.Active ? 'active' : 'inactive'
+        };
+        
+        await clientService.createClient(newClient);
+        console.log(`Created local client from QuickBooks: ${qboCustomer.DisplayName}`);
+      } else {
+        console.log(`Customer already exists locally: ${qboCustomer.DisplayName}`);
+      }
+    } catch (error) {
+      console.error(`Error upserting customer ${qboCustomer.DisplayName}:`, error);
+      // Continue with other customers
+    }
   }
 } 

@@ -42,6 +42,9 @@ import {
   Note as NoteIcon,
   Add as AddIcon,
   Delete as DeleteIcon,
+  Receipt as ReceiptIcon,
+  AttachMoney as AttachMoneyIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
@@ -188,6 +191,11 @@ const ClientDetail: React.FC = () => {
   });
   const [editingNote, setEditingNote] = useState<ClientNote | null>(null);
 
+  const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<number[]>([]);
+  const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
+  const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const [useAIGeneration, setUseAIGeneration] = useState(false);
+
   useEffect(() => {
     const fetchClientData = async () => {
       try {
@@ -235,8 +243,6 @@ const ClientDetail: React.FC = () => {
       fetchClientData();
     }
   }, [id]);
-
-
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -464,6 +470,65 @@ const ClientDetail: React.FC = () => {
     setNoteDialogOpen(true);
   };
 
+  const completedActivities = workActivities.filter(activity => activity.status === 'completed');
+  const readyToInvoiceActivities = completedActivities.filter(activity => 
+    activity.billableHours && activity.billableHours > 0
+  );
+
+  // Removed unused invoice functions - now using new dialog implementation
+
+  const handleCreateInvoiceConfirm = async () => {
+    if (!client || selectedActivitiesForInvoice.length === 0) return;
+
+    setInvoiceCreationLoading(true);
+    try {
+      const response = await fetch('/api/qbo/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: client.id,
+          workActivityIds: selectedActivitiesForInvoice,
+          includeOtherCharges: true,
+          useAIGeneration: useAIGeneration,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setSnackbar({ 
+          open: true, 
+          message: `Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`, 
+          severity: 'success' 
+        });
+        setShowInvoiceDialog(false);
+        setSelectedActivitiesForInvoice([]);
+        
+        // Refresh work activities to update status
+        if (id) {
+          const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+          if (activitiesResponse.ok) {
+            const activitiesData = await activitiesResponse.json();
+            setWorkActivities(activitiesData.activities);
+            setSummary(activitiesData.summary);
+          }
+        }
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create invoice');
+      }
+    } catch (error) {
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to create invoice', 
+        severity: 'error' 
+      });
+    } finally {
+      setInvoiceCreationLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -671,6 +736,76 @@ const ClientDetail: React.FC = () => {
           </Grid>
         </Grid>
 
+        {/* Ready to Invoice Section */}
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ReceiptIcon sx={{ color: 'primary.main' }} />
+                  <Typography variant="h6">Ready to Invoice</Typography>
+                </Box>
+                <Button
+                  variant="contained"
+                  startIcon={<AttachMoneyIcon />}
+                  onClick={() => setShowInvoiceDialog(true)}
+                  disabled={readyToInvoiceActivities.length === 0}
+                >
+                  Create Invoice
+                </Button>
+              </Box>
+              
+              {readyToInvoiceActivities.length > 0 ? (
+                <Box>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                    {readyToInvoiceActivities.length} completed work {readyToInvoiceActivities.length === 1 ? 'activity' : 'activities'} ready to invoice
+                  </Typography>
+                  <Grid container spacing={2}>
+                    {readyToInvoiceActivities.slice(0, 3).map((activity) => (
+                      <Grid item xs={12} md={4} key={activity.id}>
+                        <Paper sx={{ p: 2, bgcolor: 'success.50' }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                            <Typography variant="body2" fontWeight="medium">
+                              {activity.workType.charAt(0).toUpperCase() + activity.workType.slice(1)}
+                            </Typography>
+                            <Chip
+                              icon={<CheckCircleIcon />}
+                              label="Completed"
+                              color="success"
+                              size="small"
+                            />
+                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatDatePacific(activity.date)}
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium" sx={{ mt: 1 }}>
+                            {activity.billableHours} hours
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                  {readyToInvoiceActivities.length > 3 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                      ... and {readyToInvoiceActivities.length - 3} more activities
+                    </Typography>
+                  )}
+                </Box>
+              ) : (
+                <Box sx={{ textAlign: 'center', py: 3 }}>
+                  <ReceiptIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="body1" color="text.secondary">
+                    No completed work activities ready to invoice
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Activities must be completed and have billable hours to be invoiced
+                  </Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
         {/* Upcoming Schedule */}
         <Grid item xs={12}>
           <Card>
@@ -844,6 +979,204 @@ const ClientDetail: React.FC = () => {
             />
           </Paper>
         </Grid>
+
+        {/* Invoice Creation Dialog */}
+        <Dialog open={showInvoiceDialog} onClose={() => setShowInvoiceDialog(false)} maxWidth="lg" fullWidth>
+          <DialogTitle sx={{ pb: 1 }}>
+            <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
+              Create Invoice
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Select work activities and customize invoice generation
+            </Typography>
+          </DialogTitle>
+          <DialogContent sx={{ px: 3, py: 2 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              
+              {/* AI Enhancement Option */}
+              <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                  <input
+                    type="checkbox"
+                    id="useAI"
+                    checked={useAIGeneration}
+                    onChange={(e) => setUseAIGeneration(e.target.checked)}
+                    style={{ marginTop: '2px', accentColor: '#2563eb' }}
+                  />
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.800', mb: 0.5 }}>
+                      ✨ AI-Enhanced Professional Descriptions
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                      Transforms basic work notes into detailed, professional invoice line items with specific tasks, dates, and value demonstration
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
+              
+              {/* Work Activities Selection */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                  Select Work Activities
+                </Typography>
+                
+                <Box sx={{ maxHeight: 400, overflowY: 'auto', border: '1px solid', borderColor: 'grey.300', borderRadius: 1 }}>
+                  {readyToInvoiceActivities.map((activity, index) => (
+                    <Box
+                      key={activity.id}
+                      sx={{
+                        p: 2,
+                        borderBottom: index < readyToInvoiceActivities.length - 1 ? '1px solid' : 'none',
+                        borderColor: 'grey.200',
+                        cursor: 'pointer',
+                        '&:hover': { bgcolor: 'grey.50' },
+                        bgcolor: selectedActivitiesForInvoice.includes(activity.id) ? 'primary.50' : 'transparent'
+                      }}
+                      onClick={() => {
+                        if (selectedActivitiesForInvoice.includes(activity.id)) {
+                          setSelectedActivitiesForInvoice(selectedActivitiesForInvoice.filter(id => id !== activity.id));
+                        } else {
+                          setSelectedActivitiesForInvoice([...selectedActivitiesForInvoice, activity.id]);
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedActivitiesForInvoice.includes(activity.id)}
+                          onChange={() => {}} // Handled by parent onClick
+                          style={{ marginTop: '2px', accentColor: '#2563eb' }}
+                        />
+                        
+                        <Box sx={{ flex: 1 }}>
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                            <Box>
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                                {new Date(activity.date).toLocaleDateString('en-US', { 
+                                  weekday: 'short', 
+                                  month: 'short', 
+                                  day: 'numeric',
+                                  year: 'numeric'
+                                })}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                                <Box component="span" sx={{ fontWeight: 500 }}>
+                                  {activity.billableHours || activity.totalHours}h
+                                </Box>
+                                {' @ '}
+                                <Box component="span" sx={{ fontWeight: 500 }}>
+                                  ${activity.hourlyRate || 55}/hr
+                                </Box>
+                                {' • '}
+                                <Box component="span" sx={{ textTransform: 'capitalize' }}>
+                                  {activity.workType.replace('_', ' ')}
+                                </Box>
+                              </Typography>
+                            </Box>
+                            
+                            <Box sx={{ textAlign: 'right' }}>
+                              <Typography variant="h6" sx={{ fontWeight: 600, color: 'success.main' }}>
+                                ${((activity.billableHours || activity.totalHours || 0) * (activity.hourlyRate || 55)).toFixed(2)}
+                              </Typography>
+                            </Box>
+                          </Box>
+                          
+                          {(activity.notes || activity.tasks) && (
+                            <Box sx={{ mt: 1, p: 1, bgcolor: 'grey.100', borderRadius: 0.5 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                                📝 {(activity.notes || activity.tasks || '').substring(0, 120)}
+                                {(activity.notes || activity.tasks || '').length > 120 && '...'}
+                              </Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      </Box>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+              
+              {/* Invoice Preview */}
+              {selectedActivitiesForInvoice.length > 0 && (
+                <Paper sx={{ p: 2, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.300' }}>
+                  <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                    Invoice Summary
+                  </Typography>
+                  
+                  <Grid container spacing={2}>
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
+                          {selectedActivitiesForInvoice.length}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Activities
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    
+                    <Grid item xs={6} sm={3}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h4" sx={{ fontWeight: 700, color: 'info.main' }}>
+                          {readyToInvoiceActivities
+                            .filter(a => selectedActivitiesForInvoice.includes(a.id))
+                            .reduce((sum, a) => sum + (a.billableHours || a.totalHours || 0), 0)
+                            .toFixed(1)}h
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Hours
+                        </Typography>
+                      </Box>
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <Typography variant="h3" sx={{ fontWeight: 700, color: 'success.main' }}>
+                          ${readyToInvoiceActivities
+                            .filter(a => selectedActivitiesForInvoice.includes(a.id))
+                            .reduce((sum, a) => sum + ((a.billableHours || a.totalHours || 0) * (a.hourlyRate || 55)), 0)
+                            .toFixed(2)}
+                        </Typography>
+                        <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+                          Total Amount
+                        </Typography>
+                      </Box>
+                    </Grid>
+                  </Grid>
+                  
+                  {/* AI Enhancement Preview */}
+                  {useAIGeneration && (
+                    <Box sx={{ mt: 2, p: 2, bgcolor: 'primary.50', borderRadius: 1, border: '1px solid', borderColor: 'primary.200' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.800' }}>
+                          🤖 AI Enhancement Active
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+                        Invoice descriptions will be enhanced with detailed task breakdowns, professional language, and value demonstration
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              variant="outlined" 
+              onClick={() => setShowInvoiceDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleCreateInvoiceConfirm}
+              variant="contained"
+              disabled={selectedActivitiesForInvoice.length === 0 || invoiceCreationLoading}
+            >
+              {invoiceCreationLoading ? 'Creating Invoice...' : 'Create Invoice'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Grid>
 
       {/* Edit Dialog */}

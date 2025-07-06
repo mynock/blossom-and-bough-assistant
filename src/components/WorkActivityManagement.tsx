@@ -16,6 +16,10 @@ import {
   AccordionSummary,
   AccordionDetails,
   Autocomplete,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -27,6 +31,7 @@ import {
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
 import { useSearchParams } from 'react-router-dom';
+import { formatDateShortPacific } from '../utils/dateUtils';
 
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
@@ -134,6 +139,10 @@ const WorkActivityManagement: React.FC = () => {
   // Filter state
   const [filters, setFilters] = useState<WorkActivityFilters>({});
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+
+  const [invoiceCreationOpen, setInvoiceCreationOpen] = useState(false);
+  const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<WorkActivity[]>([]);
+  const [useAIGeneration, setUseAIGeneration] = useState(false);
 
   const showSnackbar = useCallback((message: string, severity: 'success' | 'error' | 'warning') => {
     setSnackbar({ open: true, message, severity: severity as 'success' | 'error' });
@@ -335,6 +344,80 @@ const WorkActivityManagement: React.FC = () => {
     return Object.values(filters).filter(value => value !== undefined && value !== '').length;
   };
 
+  const handleCreateInvoiceFromActivities = (selectedActivities: WorkActivity[]) => {
+    // Group selected activities by client
+    const activitiesByClient = selectedActivities.reduce((groups, activity) => {
+      const clientId = activity.clientId;
+      if (!clientId) return groups;
+      
+      if (!groups[clientId]) {
+        groups[clientId] = {
+          clientName: activity.clientName || 'Unknown Client',
+          activities: []
+        };
+      }
+      groups[clientId].activities.push(activity);
+      return groups;
+    }, {} as Record<number, { clientName: string; activities: WorkActivity[] }>);
+
+    if (Object.keys(activitiesByClient).length === 0) {
+      showSnackbar('Selected activities must have valid clients', 'error');
+      return;
+    }
+
+    if (Object.keys(activitiesByClient).length > 1) {
+      showSnackbar('Please select activities from only one client at a time', 'error');
+      return;
+    }
+
+    // If all activities are from the same client, proceed with invoice creation
+    const clientId = Object.keys(activitiesByClient)[0];
+    const clientData = activitiesByClient[parseInt(clientId)];
+    
+    setSelectedActivitiesForInvoice(selectedActivities);
+    setInvoiceCreationOpen(true);
+  };
+
+  const handleCreateInvoiceConfirm = async () => {
+    if (selectedActivitiesForInvoice.length === 0) return;
+
+    const clientId = selectedActivitiesForInvoice[0].clientId;
+    if (!clientId) {
+      showSnackbar('Selected activities must have a valid client', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/qbo/invoices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientId: clientId,
+          workActivityIds: selectedActivitiesForInvoice.map(a => a.id),
+        useAIGeneration: useAIGeneration,
+          includeOtherCharges: true,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        showSnackbar(`Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`, 'success');
+        setInvoiceCreationOpen(false);
+        setSelectedActivitiesForInvoice([]);
+        
+        // Refresh work activities
+        fetchWorkActivities();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create invoice');
+      }
+    } catch (error) {
+      showSnackbar(error instanceof Error ? error.message : 'Failed to create invoice', 'error');
+    }
+  };
+
   if (loading) return <Typography>Loading work activities...</Typography>;
 
   return (
@@ -501,13 +584,15 @@ const WorkActivityManagement: React.FC = () => {
         </AccordionDetails>
       </Accordion>
 
-      {/* Work Activities Table */}
+      {/* Work Activities Table with Selection */}
       <WorkActivitiesTable
         activities={workActivities}
         onEdit={handleEdit}
         onDelete={handleDelete}
         showClientColumn={true}
-        emptyMessage="No work activities found"
+        emptyMessage="No work activities found. Try adjusting your filters or add a new work activity."
+        allowSelection={true}
+        onCreateInvoice={handleCreateInvoiceFromActivities}
       />
 
       {/* Work Activity Edit Dialog */}
@@ -522,6 +607,60 @@ const WorkActivityManagement: React.FC = () => {
         employees={employees}
         onShowSnackbar={showSnackbar}
       />
+
+      {/* Invoice Creation Confirmation Dialog */}
+      <Dialog 
+        open={invoiceCreationOpen} 
+        onClose={() => setInvoiceCreationOpen(false)} 
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>Create Invoice</DialogTitle>
+        <DialogContent>
+          <Typography variant="body1" gutterBottom>
+            Create an invoice for the following activities?
+          </Typography>
+          
+          {/* AI Enhancement Option */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, p: 2, bgcolor: 'blue.50', borderRadius: 1, mt: 2, mb: 2 }}>
+            <input
+              type="checkbox"
+              id="useAI-work-activities"
+              checked={useAIGeneration}
+              onChange={(e) => setUseAIGeneration(e.target.checked)}
+              style={{ borderRadius: '4px' }}
+            />
+            <label htmlFor="useAI-work-activities" style={{ fontSize: '14px', fontWeight: 500 }}>
+              ✨ Use AI to generate professional invoice descriptions
+            </label>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '12px' }}>
+            Transforms work notes into detailed, professional line items
+          </Typography>
+          
+          <Box sx={{ mt: 2 }}>
+            {selectedActivitiesForInvoice.map((activity) => (
+              <Box key={activity.id} sx={{ p: 1, bgcolor: 'grey.50', borderRadius: 1, mb: 1 }}>
+                <Typography variant="body2" fontWeight="medium">
+                  {activity.workType.charAt(0).toUpperCase() + activity.workType.slice(1)} - {formatDateShortPacific(activity.date)}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {activity.clientName} • {activity.billableHours} hours
+                </Typography>
+              </Box>
+            ))}
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            This will create an invoice in QuickBooks and mark these activities as "invoiced".
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInvoiceCreationOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreateInvoiceConfirm} variant="contained">
+            Create Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Snackbar for notifications */}
       <Snackbar

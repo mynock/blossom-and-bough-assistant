@@ -1682,4 +1682,153 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
       return nameMap[trimmed] || trimmed;
     });
   }
+
+  /**
+   * Generate enhanced invoice line items using AI
+   */
+  async generateInvoiceLineItems(
+    workActivities: any[],
+    clientName: string,
+    basicLineItems: any[]
+  ): Promise<any[]> {
+    if (!this.client) {
+      throw new Error('Anthropic API client not initialized');
+    }
+
+    console.log(`🤖 Generating AI-enhanced invoice line items for ${clientName}...`);
+
+    const systemPrompt = `You are an expert landscaping invoice generator. Your task is to transform basic work activity data into detailed, professional invoice line items that clients will find clear, valuable, and comprehensive.
+
+Transform basic entries like "Specialized garden care - 31.81 hours" into detailed line items that include:
+- Specific dates and work performed
+- Detailed descriptions of tasks completed
+- Materials used and plants installed
+- Professional presentation that justifies the value
+
+Focus on creating line items that demonstrate the expertise, care, and value provided during the work.`;
+
+    const userPrompt = `Transform this basic invoice data into detailed professional line items for ${clientName}.
+
+Work Activities Data:
+${JSON.stringify(workActivities, null, 2)}
+
+Basic Line Items:
+${JSON.stringify(basicLineItems, null, 2)}
+
+Create enhanced line items that include:
+1. Specific dates and detailed work descriptions
+2. Professional task descriptions that show expertise
+3. Materials, plants, and supplies used
+4. Clear value demonstration
+
+CRITICAL REQUIREMENTS:
+- Keep the EXACT same quantity (hours) and rate ($55/hour) from the basic line items
+- ONLY enhance the description - do NOT change quantity, rate, or amount
+- Preserve the hourly billing structure
+
+Return a JSON array of enhanced line items with this structure:
+[
+  {
+    "description": "Enhanced professional description with dates and specific work details",
+    "quantity": 11.06,  // KEEP EXACT SAME HOURS from basic line item
+    "rate": 55.00,      // KEEP EXACT SAME HOURLY RATE
+    "amount": 608.30,   // KEEP EXACT SAME TOTAL AMOUNT
+    "workActivityId": 123,
+    "qboItemId": "original-qbo-item-id"
+  }
+]
+
+CRITICAL: 
+- ONLY enhance descriptions, preserve all numbers exactly
+- Return ONLY a valid JSON array
+- Transform ALL provided work activities into detailed line items`;
+
+    try {
+      const response = await this.client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 4000,
+        temperature: 0.3,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }]
+      });
+
+      const textContent = response.content.find((c: any) => c.type === 'text');
+      if (!textContent || textContent.type !== 'text') {
+        throw new Error('No text response from Claude');
+      }
+
+      const responseText = (textContent as any).text;
+      console.log(`📝 Claude AI invoice response: ${responseText.length} characters`);
+
+      // Extract JSON from response
+      let enhancedLineItems: any[] = [];
+      
+      try {
+        // Look for JSON array in the response
+        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          enhancedLineItems = JSON.parse(jsonMatch[0]);
+          console.log(`✅ Successfully generated ${enhancedLineItems.length} enhanced line items`);
+        } else {
+          // Try to extract from code blocks
+          const codeBlockMatch = responseText.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
+          if (codeBlockMatch) {
+            enhancedLineItems = JSON.parse(codeBlockMatch[1]);
+            console.log(`✅ Generated ${enhancedLineItems.length} enhanced line items from code block`);
+          } else {
+            console.error(`❌ No JSON found in AI response:`, responseText.substring(0, 500));
+            throw new Error('No JSON array found in AI response');
+          }
+        }
+      } catch (parseError) {
+        console.error(`❌ Failed to parse AI response JSON:`, parseError);
+        console.log('Response text (first 500 chars):', responseText.substring(0, 500));
+        throw new Error(`Failed to parse AI-enhanced line items`);
+      }
+
+      // Validate and normalize the enhanced line items, preserving original numbers
+      enhancedLineItems = enhancedLineItems.map((item: any, index: number) => {
+        const originalItem = basicLineItems[index];
+        if (!originalItem) {
+          console.warn(`AI returned more line items than provided, using basic item`);
+          return basicLineItems[basicLineItems.length - 1];
+        }
+
+        // Validate that AI preserved the numbers correctly
+        const aiQuantity = parseFloat(item.quantity?.toString() || '0');
+        const aiRate = parseFloat(item.rate?.toString() || '0');
+        const aiAmount = parseFloat(item.amount?.toString() || '0');
+
+        const originalQuantity = originalItem.quantity;
+        const originalRate = originalItem.rate;
+        const originalAmount = originalItem.amount;
+
+        // Check if AI changed the numbers (allow small floating point differences)
+        const quantityChanged = Math.abs(aiQuantity - originalQuantity) > 0.01;
+        const rateChanged = Math.abs(aiRate - originalRate) > 0.01;
+        const amountChanged = Math.abs(aiAmount - originalAmount) > 0.01;
+
+        if (quantityChanged || rateChanged || amountChanged) {
+          console.warn(`AI changed numbers for line item ${index + 1}, preserving original values`);
+          console.warn(`Original: qty=${originalQuantity}, rate=${originalRate}, amount=${originalAmount}`);
+          console.warn(`AI: qty=${aiQuantity}, rate=${aiRate}, amount=${aiAmount}`);
+        }
+
+        return {
+          description: item.description || originalItem.description,
+          quantity: originalQuantity, // Always use original quantity
+          rate: originalRate, // Always use original rate
+          amount: originalAmount, // Always use original amount
+          workActivityId: originalItem.workActivityId,
+          qboItemId: originalItem.qboItemId
+        };
+      });
+
+      return enhancedLineItems;
+
+    } catch (error) {
+      console.error('❌ Error generating AI-enhanced invoice line items:', error);
+      throw new Error(`Failed to generate AI-enhanced invoice: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
 }
