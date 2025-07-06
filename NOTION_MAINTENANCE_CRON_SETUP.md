@@ -9,9 +9,11 @@ This document describes the automated system that creates Notion maintenance ent
 ### Daily Automated Process
 - **Runs at 8PM Pacific Time** (3AM UTC) every day
 - **Fetches tomorrow's calendar events** from Google Calendar
-- **Filters for client visits only** (yellow entries - non-all-day events)
+- **Filters for yellow client visits** using Google Calendar colorId property
+- **Extracts helper assignments** from orange all-day events
 - **Creates or updates Notion maintenance entries** for each client visit
 - **Includes carryover tasks** from previous incomplete visits
+- **Assigns correct team members** based on orange helper events
 - **Handles duplicate prevention** by checking for existing entries
 
 ### Smart Entry Management
@@ -74,16 +76,20 @@ Check the server logs for cron job execution:
 ### Calendar Event Processing
 The system processes calendar events as follows:
 
-1. **Yellow Client Visits (Timed Events)**:
+1. **Yellow Client Visits (colorId: "5" or "11")**:
    - ✅ Creates Notion maintenance entries
    - ✅ Extracts client name from event title
    - ✅ Includes carryover tasks from previous visits
+   - ✅ Must be timed events (not all-day)
 
-2. **Orange All-Day Events (Staff Schedules)**:
-   - ❌ Skipped - these represent staff assignments, not client visits
+2. **Orange All-Day Events (colorId: "6")**:
+   - ✅ Extracted as helper assignments
+   - ✅ Assigned to corresponding client visits on same day
+   - ✅ Simple names like "Virginia", "Andrea"
 
-3. **Purple/Other Events**:
+3. **Other Colored Events**:
    - ❌ Skipped - these represent other activities, not client visits
+   - ❌ Includes purple tasks, meetings, etc.
 
 ### Client Name Extraction
 The system extracts client names from calendar event titles using these patterns:

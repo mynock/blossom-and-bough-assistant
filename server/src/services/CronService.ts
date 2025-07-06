@@ -59,7 +59,11 @@ export class CronService {
       // Get calendar events for the target day
       const events = await this.googleCalendarService.getEvents(1);
       
-      // Filter for target day's events that are client visits (non-all-day events)
+      // First, extract helper information from all-day events (orange staff assignments)
+      const helperAssignments = this.extractHelperAssignments(events, targetDateString);
+      debugLog.info(`👥 Found helper assignments: ${JSON.stringify(helperAssignments)}`);
+      
+      // Filter for target day's events that are client visits (timed events, not all-day)
       const targetDayClientVisits = events.filter(event => {
         const eventDate = new Date(event.start);
         const eventDateString = eventDate.toISOString().split('T')[0];
@@ -76,7 +80,10 @@ export class CronService {
         // Must have a client name/title
         const hasClientInfo = event.title && event.title.trim().length > 0;
         
-        return isTimedEvent && hasClientInfo;
+        // Use color information to identify yellow client visits
+        const isYellowClientVisit = this.isYellowClientVisit(event);
+        
+        return isTimedEvent && hasClientInfo && isYellowClientVisit;
       });
       
       debugLog.info(`📋 Found ${targetDayClientVisits.length} client visits for target day`);
@@ -112,15 +119,15 @@ export class CronService {
           if (existingEntry) {
             debugLog.info(`📝 Entry already exists for ${clientName} on ${targetDateString}, updating it`);
             
-            // Update the existing entry
-            await this.updateExistingEntry(existingEntry.id, clientName);
+            // Update the existing entry with helper assignments
+            await this.updateExistingEntry(existingEntry.id, clientName, helperAssignments);
             results.updated++;
             
           } else {
             debugLog.info(`🆕 Creating new entry for ${clientName} on ${targetDateString}`);
             
-            // Create new entry with target date and carryover tasks
-            const result = await this.createMaintenanceEntryForDate(clientName, targetDateString);
+            // Create new entry with target date, carryover tasks, and helper assignments
+            const result = await this.createMaintenanceEntryForDate(clientName, targetDateString, helperAssignments);
             
             if (result.success) {
               debugLog.info(`✅ Successfully created Notion entry for ${clientName}`);
@@ -189,7 +196,7 @@ export class CronService {
     }
   }
 
-  private async updateExistingEntry(pageId: string, clientName: string): Promise<void> {
+  private async updateExistingEntry(pageId: string, clientName: string, helperAssignments: string[] = []): Promise<void> {
     try {
       debugLog.info(`📝 Updating existing entry ${pageId} for ${clientName}`);
       
@@ -211,11 +218,21 @@ export class CronService {
         ? currentTitle.replace(/\(Auto-updated.*?\)/, `(Auto-updated ${new Date().toLocaleTimeString()})`)
         : `${currentTitle} (Auto-updated ${new Date().toLocaleTimeString()})`;
       
+      // Determine team members from helper assignments or keep existing
+      const teamMembers = helperAssignments.length > 0 
+        ? helperAssignments.map(helper => ({ name: helper }))
+        : (currentPage as any).properties?.['Team Members']?.multi_select || [{ name: 'Andrea' }];
+      
+      debugLog.info(`👥 Updating team members: ${helperAssignments.join(', ') || 'keeping existing/default'}`);
+      
       await notion.pages.update({
         page_id: pageId,
         properties: {
           Title: {
             title: [{ text: { content: updatedTitle } }],
+          },
+          'Team Members': {
+            multi_select: teamMembers,
           }
         }
       });
@@ -228,7 +245,7 @@ export class CronService {
     }
   }
 
-  private async createMaintenanceEntryForDate(clientName: string, dateString: string): Promise<any> {
+  private async createMaintenanceEntryForDate(clientName: string, dateString: string, helperAssignments: string[] = []): Promise<any> {
     try {
       debugLog.info(`🆕 Creating maintenance entry for ${clientName} on ${dateString}`);
       
@@ -253,6 +270,13 @@ export class CronService {
       // Ensure client exists in database options
       await (this.notionService as any).ensureClientExistsInDatabase(clientName);
       
+      // Determine team members from helper assignments or default to Andrea
+      const teamMembers = helperAssignments.length > 0 
+        ? helperAssignments.map(helper => ({ name: helper }))
+        : [{ name: 'Andrea' }]; // Default fallback
+      
+      debugLog.info(`👥 Assigning team members: ${helperAssignments.join(', ') || 'Andrea (default)'}`);
+      
       // Create new page with the specified date (tomorrow)
       const pageTitle = `${clientName} (Maintenance)`;
       const response = await notion.pages.create({
@@ -268,7 +292,7 @@ export class CronService {
             select: { name: 'Maintenance' },
           },
           'Team Members': {
-            multi_select: [{ name: 'Andrea' }],
+            multi_select: teamMembers,
           },
           Title: {
             title: [{ text: { content: pageTitle } }],
@@ -376,6 +400,91 @@ export class CronService {
     }
     
     return null;
+  }
+
+  private extractHelperAssignments(events: any[], targetDateString: string): string[] {
+    const helpers: string[] = [];
+    
+    for (const event of events) {
+      const eventDate = new Date(event.start);
+      const eventDateString = eventDate.toISOString().split('T')[0];
+      
+      // Must be target date and all-day event (orange staff assignments)
+      if (eventDateString === targetDateString && !event.start.includes('T')) {
+        // Extract helper names from orange all-day events
+        // Expected formats: "Virginia", "Andrea", "Helper Name", etc.
+        const title = event.title?.trim();
+        if (title && this.isOrangeHelperEvent(event)) {
+          helpers.push(title);
+          debugLog.info(`👥 Found helper assignment: ${title}`);
+        }
+      }
+    }
+    
+    return helpers;
+  }
+
+  private isYellowClientVisit(event: any): boolean {
+    // Google Calendar color IDs for yellow are typically "5" or "11"
+    // We'll check both the event colorId and some basic heuristics
+    const colorId = event.colorId;
+    
+    // Yellow is typically colorId "5" in Google Calendar
+    if (colorId === '5' || colorId === '11') {
+      debugLog.info(`🟡 Event "${event.title}" identified as yellow (colorId: ${colorId})`);
+      return true;
+    }
+    
+    // Fallback: Use title-based heuristics if no color info
+    if (!colorId) {
+      const title = event.title?.toLowerCase() || '';
+      
+      // Exclude obvious non-client events
+      const excludePatterns = [
+        'meeting', 'office', 'admin', 'break', 'lunch', 'call', 'travel',
+        'team', 'training', 'review', 'planning', 'errand'
+      ];
+      
+      const isExcluded = excludePatterns.some(pattern => title.includes(pattern));
+      
+      if (!isExcluded) {
+        debugLog.info(`🟡 Event "${event.title}" assumed to be client visit (no color info, passes heuristics)`);
+        return true;
+      }
+    }
+    
+    debugLog.debug(`⚪ Event "${event.title}" not identified as yellow client visit (colorId: ${colorId})`);
+    return false;
+  }
+
+  private isOrangeHelperEvent(event: any): boolean {
+    // Orange is typically colorId "6" in Google Calendar
+    const colorId = event.colorId;
+    
+    if (colorId === '6') {
+      debugLog.info(`🟠 Event "${event.title}" identified as orange helper assignment (colorId: ${colorId})`);
+      return true;
+    }
+    
+    // Fallback: Check if it's a simple name (likely a helper assignment)
+    if (!colorId) {
+      const title = event.title?.trim() || '';
+      
+      // Simple heuristics: short names without special characters, likely helper names
+      const isSimpleName = title.length <= 20 && 
+                          !title.includes('-') && 
+                          !title.includes('(') && 
+                          !title.includes('@') &&
+                          title.split(' ').length <= 2;
+      
+      if (isSimpleName) {
+        debugLog.info(`🟠 Event "${event.title}" assumed to be helper assignment (no color info, appears to be name)`);
+        return true;
+      }
+    }
+    
+    debugLog.debug(`⚪ Event "${event.title}" not identified as orange helper assignment (colorId: ${colorId})`);
+    return false;
   }
 
   public async runManualTest(): Promise<void> {
