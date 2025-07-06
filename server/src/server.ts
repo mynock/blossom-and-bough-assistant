@@ -17,6 +17,7 @@ import { GoogleCalendarService } from './services/GoogleCalendarService';
 import { AnthropicService } from './services/AnthropicService';
 import { TravelTimeService } from './services/TravelTimeService';
 import { AuthService } from './services/AuthService';
+import { CronService } from './services/CronService';
 import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
@@ -115,6 +116,7 @@ const googleCalendarService = new GoogleCalendarService();
 const anthropicService = new AnthropicService();
 const travelTimeService = new TravelTimeService();
 const authService = new AuthService();
+const cronService = new CronService();
 const schedulingService = new SchedulingService(
   googleSheetsService,
   googleCalendarService,
@@ -436,6 +438,25 @@ app.post('/api/calendar/template', async (req, res) => {
   }
 });
 
+// Manual trigger for maintenance entry cron job (for testing)
+app.post('/api/cron/maintenance-entries', requireAuth, async (req, res) => {
+  try {
+    console.log('🧪 Manual trigger for maintenance entry creation');
+    await cronService.runManualTest();
+    res.json({ 
+      success: true, 
+      message: 'Maintenance entry creation job executed successfully',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error in manual maintenance entry trigger:', error);
+    res.status(500).json({
+      error: 'Failed to create maintenance entries',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Special handling for embed routes - set headers to allow embedding and prevent caching
 app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
@@ -499,4 +520,8 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
+  
+  // Start cron jobs
+  cronService.startScheduledTasks();
+  console.log(`⏰ Cron jobs initialized`);
 }); 
