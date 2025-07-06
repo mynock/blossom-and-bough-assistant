@@ -18,7 +18,6 @@ import {
 } from '@mui/material';
 import { 
   Assignment,
-  Schedule,
   People,
   Business,
   Add,
@@ -27,6 +26,7 @@ import {
   AccessTime,
   AttachMoney,
   ArrowForward,
+  Receipt,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS } from '../config/api';
@@ -220,26 +220,26 @@ const Dashboard: React.FC = () => {
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>
-          Work Activity Management 📋
+          Garden Care CRM 🌱
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Transform your work notes into structured data for better business insights
+          Review work entries from Notion and manage invoices efficiently
         </Typography>
       </Box>
 
       {/* Primary Action Card */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)', color: 'white' }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>
-                <Add sx={{ fontSize: 40, mr: 2 }} />
+                <Assignment sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography variant="h6" gutterBottom>
-                    Log Work Activity
+                    Review Work Entries
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    Manually record work activities with detailed time tracking and billing
+                    View and review recent work activities synced from Notion
                   </Typography>
                 </Box>
               </Box>
@@ -247,38 +247,38 @@ const Dashboard: React.FC = () => {
                 variant="contained" 
                 sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
                 startIcon={<Assignment />}
-                onClick={() => navigate('/work-activities?create=true')}
+                onClick={() => navigate('/work-activities')}
                 fullWidth
               >
-                Log Activity
+                View Work Activities
               </Button>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Upcoming Schedule Card */}
+        {/* Invoices Card */}
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)', color: 'white' }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>
-                <Schedule sx={{ fontSize: 40, mr: 2 }} />
+                <AttachMoney sx={{ fontSize: 40, mr: 2 }} />
                 <Box>
                   <Typography variant="h6" gutterBottom>
-                    Upcoming Schedule
+                    Manage Invoices
                   </Typography>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    View and manage your upcoming work activities and appointments
+                    Create and review invoices from completed work activities
                   </Typography>
                 </Box>
               </Box>
               <Button 
                 variant="contained" 
                 sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
-                startIcon={<Schedule />}
-                onClick={() => navigate('/schedule')}
+                startIcon={<AttachMoney />}
+                onClick={() => navigate('/invoices')}
                 fullWidth
               >
-                View Schedule
+                Manage Invoices
               </Button>
             </CardContent>
           </Card>
@@ -568,7 +568,7 @@ const Dashboard: React.FC = () => {
                     </Box>
                     <Box display="flex" alignItems="center" justifyContent="space-between">
                       <Box display="flex" alignItems="center">
-                        <Schedule sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
+                        <Today sx={{ fontSize: 20, mr: 1, color: 'text.secondary' }} />
                         <Typography variant="body2">Visits This Week</Typography>
                       </Box>
                       <Typography variant="h6">{quickStats.visitsThisWeek}</Typography>
@@ -587,7 +587,7 @@ const Dashboard: React.FC = () => {
                   </Typography>
                   {workStats.upcomingActivities.length === 0 ? (
                     <Box sx={{ textAlign: 'center', py: 3 }}>
-                      <Schedule sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                      <Today sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
                       <Typography variant="body2" color="text.secondary">
                         No upcoming activities scheduled
                       </Typography>
@@ -606,7 +606,7 @@ const Dashboard: React.FC = () => {
                           }}
                         >
                           <ListItemIcon>
-                            <Schedule color="info" />
+                            <Today color="info" />
                           </ListItemIcon>
                           <ListItemText
                             primary={
@@ -651,27 +651,27 @@ const Dashboard: React.FC = () => {
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     <Button 
                       variant="outlined" 
+                      startIcon={<Assignment />}
+                      onClick={() => navigate('/notion-sync')}
+                      fullWidth
+                    >
+                      Notion Sync
+                    </Button>
+                    <Button 
+                      variant="outlined" 
+                      startIcon={<Receipt />}
+                      onClick={() => navigate('/invoices')}
+                      fullWidth
+                    >
+                      View Invoices
+                    </Button>
+                    <Button 
+                      variant="outlined" 
                       startIcon={<Business />}
                       onClick={() => navigate('/clients')}
                       fullWidth
                     >
                       Manage Clients
-                    </Button>
-                    <Button 
-                      variant="outlined" 
-                      startIcon={<People />}
-                      onClick={() => navigate('/employees')}
-                      fullWidth
-                    >
-                      Manage Employees
-                    </Button>
-                    <Button 
-                      variant="outlined" 
-                      startIcon={<Analytics />}
-                      onClick={() => navigate('/debug')}
-                      fullWidth
-                    >
-                      View Reports
                     </Button>
                   </Box>
                 </CardContent>
