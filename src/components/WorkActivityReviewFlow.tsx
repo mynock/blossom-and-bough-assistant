@@ -89,11 +89,15 @@ const WorkActivityReviewFlow: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editedActivity, setEditedActivity] = useState<Partial<WorkActivity>>({});
-
+  const [approvedActivityIds, setApprovedActivityIds] = useState<Set<number>>(new Set());
 
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
-  const progress = activitiesNeedingReview.length > 0 ? ((currentIndex + 1) / activitiesNeedingReview.length) * 100 : 0;
+  const totalActivities = activitiesNeedingReview.length;
+  const processedCount = approvedActivityIds.size;
+  const progress = totalActivities > 0 ? (processedCount / totalActivities) * 100 : 0;
+  const remainingCount = totalActivities - processedCount;
+  const isCurrentActivityApproved = currentActivity ? approvedActivityIds.has(currentActivity.id) : false;
 
   const fetchActivitiesNeedingReview = useCallback(async () => {
     try {
@@ -132,13 +136,15 @@ const WorkActivityReviewFlow: React.FC = () => {
         throw new Error('Failed to approve activity');
       }
 
-      // Remove from list and move to next
-      const newActivities = activitiesNeedingReview.filter(a => a.id !== activityId);
-      setActivitiesNeedingReview(newActivities);
+      // Mark as approved locally (keep in list for navigation)
+      setApprovedActivityIds(prev => new Set([...prev, activityId]));
       
-      // Adjust current index if needed
-      if (currentIndex >= newActivities.length && newActivities.length > 0) {
-        setCurrentIndex(newActivities.length - 1);
+      // Move to next unprocessed activity if available
+      const nextUnprocessedIndex = findNextUnprocessedActivity();
+      if (nextUnprocessedIndex !== null) {
+        setCurrentIndex(nextUnprocessedIndex);
+      } else if (!isLastActivity) {
+        handleNext();
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve activity');
@@ -174,22 +180,40 @@ const WorkActivityReviewFlow: React.FC = () => {
         throw new Error('Failed to save changes');
       }
 
-      // Remove from list and move to next
-      const newActivities = activitiesNeedingReview.filter(a => a.id !== currentActivity.id);
-      setActivitiesNeedingReview(newActivities);
-      
-      // Adjust current index if needed
-      if (currentIndex >= newActivities.length && newActivities.length > 0) {
-        setCurrentIndex(newActivities.length - 1);
-      }
+      // Update local activity data and mark as approved
+      setActivitiesNeedingReview(prev => 
+        prev.map(activity => 
+          activity.id === currentActivity.id 
+            ? { ...activity, ...editedActivity }
+            : activity
+        )
+      );
+      setApprovedActivityIds(prev => new Set([...prev, currentActivity.id]));
 
       setEditDialogOpen(false);
       setEditedActivity({});
+      
+      // Move to next unprocessed activity if available
+      const nextUnprocessedIndex = findNextUnprocessedActivity();
+      if (nextUnprocessedIndex !== null) {
+        setCurrentIndex(nextUnprocessedIndex);
+      } else if (!isLastActivity) {
+        handleNext();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
     } finally {
       setSaving(false);
     }
+  };
+
+  const findNextUnprocessedActivity = () => {
+    for (let i = currentIndex + 1; i < activitiesNeedingReview.length; i++) {
+      if (!approvedActivityIds.has(activitiesNeedingReview[i].id)) {
+        return i;
+      }
+    }
+    return null;
   };
 
   const handleNext = () => {
@@ -201,6 +225,13 @@ const WorkActivityReviewFlow: React.FC = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
+    }
+  };
+
+  const handleSkipToNextUnprocessed = () => {
+    const nextUnprocessedIndex = findNextUnprocessedActivity();
+    if (nextUnprocessedIndex !== null) {
+      setCurrentIndex(nextUnprocessedIndex);
     }
   };
 
@@ -254,6 +285,31 @@ const WorkActivityReviewFlow: React.FC = () => {
     );
   }
 
+  // Show completion state when all activities are processed
+  if (remainingCount === 0) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Paper sx={{ p: 4, textAlign: 'center' }}>
+          <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+          <Typography variant="h4" gutterBottom>
+            Review Session Complete! 🎉
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            You've reviewed and approved all {totalActivities} work activities.
+          </Typography>
+          <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
+            <Button variant="contained" onClick={() => navigate('/work-activities')}>
+              View All Activities
+            </Button>
+            <Button variant="outlined" onClick={() => window.location.reload()}>
+              Check for New Reviews
+            </Button>
+          </Stack>
+        </Paper>
+      </Container>
+    );
+  }
+
   if (!currentActivity) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -281,17 +337,17 @@ const WorkActivityReviewFlow: React.FC = () => {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">
-              Activity {currentIndex + 1} of {activitiesNeedingReview.length}
+              Activity {currentIndex + 1} of {totalActivities}
             </Typography>
             <Chip 
-              label={`${activitiesNeedingReview.length} remaining`} 
-              color="warning" 
+              label={`${remainingCount} remaining`} 
+              color={remainingCount === 0 ? "success" : "warning"} 
               icon={<PendingActions />} 
             />
           </Box>
           <LinearProgress variant="determinate" value={progress} sx={{ mb: 1 }} />
           <Typography variant="body2" color="text.secondary">
-            {Math.round(progress)}% complete
+            {Math.round(progress)}% complete ({processedCount} of {totalActivities} approved)
           </Typography>
         </CardContent>
       </Card>
@@ -303,9 +359,19 @@ const WorkActivityReviewFlow: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
                 <Box>
-                  <Typography variant="h5" gutterBottom>
-                    {currentActivity.clientName}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    <Typography variant="h5" gutterBottom>
+                      {currentActivity.clientName}
+                    </Typography>
+                    {isCurrentActivityApproved && (
+                      <Chip 
+                        label="Approved" 
+                        color="success" 
+                        size="small" 
+                        icon={<CheckCircle />}
+                      />
+                    )}
+                  </Box>
                   <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
                     <Chip 
                       label={formatDateLongPacific(currentActivity.date)} 
@@ -453,14 +519,14 @@ const WorkActivityReviewFlow: React.FC = () => {
               <Stack spacing={2}>
                 <Button
                   variant="contained"
-                  color="success"
+                  color={isCurrentActivityApproved ? "success" : "success"}
                   fullWidth
                   size="large"
                   startIcon={<CheckCircle />}
                   onClick={() => handleApprove(currentActivity.id)}
-                  disabled={saving}
+                  disabled={saving || isCurrentActivityApproved}
                 >
-                  {saving ? <CircularProgress size={20} /> : 'Approve'}
+                  {saving ? <CircularProgress size={20} /> : isCurrentActivityApproved ? 'Already Approved' : 'Approve'}
                 </Button>
 
                 <Button
@@ -472,6 +538,18 @@ const WorkActivityReviewFlow: React.FC = () => {
                 >
                   Edit & Approve
                 </Button>
+
+                {findNextUnprocessedActivity() !== null && (
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={handleSkipToNextUnprocessed}
+                    disabled={saving}
+                    color="primary"
+                  >
+                    Skip to Next Unprocessed
+                  </Button>
+                )}
 
                 <Divider />
 
