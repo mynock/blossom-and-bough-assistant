@@ -1,6 +1,6 @@
-import { eq } from 'drizzle-orm';
+import { eq, gt, isNotNull } from 'drizzle-orm';
 import { db } from '../db';
-import { settings, NewSetting, Setting } from '../db/schema';
+import { settings, NewSetting, Setting, workActivities, WorkActivity } from '../db/schema';
 
 export interface SettingDefinition {
   key: string;
@@ -191,5 +191,209 @@ export class SettingsService {
     }
 
     return roundedHalfHours / 2;
+  }
+
+  /**
+   * Apply billable hours rounding to existing work activities
+   * This will update all work activities that have billable hours set
+   */
+  async applyRoundingToExistingWorkActivities(): Promise<{
+    success: boolean;
+    totalActivities: number;
+    updatedActivities: number;
+    skippedActivities: number;
+    error?: string;
+    updates: Array<{
+      id: number;
+      oldHours: number;
+      newHours: number;
+      workType: string;
+      date: string;
+    }>;
+  }> {
+    try {
+      const billingSettings = await this.getBillingSettings();
+      
+      if (!billingSettings.roundBillableHours) {
+        return {
+          success: false,
+          totalActivities: 0,
+          updatedActivities: 0,
+          skippedActivities: 0,
+          error: 'Billable hours rounding is not enabled',
+          updates: []
+        };
+      }
+
+      // Get all work activities that have billable hours set
+      const workActivitiesWithBillableHours = await db
+        .select()
+        .from(workActivities)
+        .where(
+          isNotNull(workActivities.billableHours)
+        );
+
+      const totalActivities = workActivitiesWithBillableHours.length;
+      let updatedActivities = 0;
+      let skippedActivities = 0;
+      const updates: Array<{
+        id: number;
+        oldHours: number;
+        newHours: number;
+        workType: string;
+        date: string;
+      }> = [];
+
+      // Process each work activity
+      for (const activity of workActivitiesWithBillableHours) {
+        if (activity.billableHours === null || activity.billableHours === undefined) {
+          skippedActivities++;
+          continue;
+        }
+
+        const originalHours = activity.billableHours;
+        const roundedHours = await this.roundHours(originalHours);
+
+        // Only update if the rounded hours are different
+        if (Math.abs(roundedHours - originalHours) > 0.001) { // Use small epsilon for floating point comparison
+          await db
+            .update(workActivities)
+            .set({ 
+              billableHours: roundedHours,
+              updatedAt: new Date()
+            })
+            .where(eq(workActivities.id, activity.id));
+
+          updates.push({
+            id: activity.id,
+            oldHours: originalHours,
+            newHours: roundedHours,
+            workType: activity.workType,
+            date: activity.date
+          });
+
+          updatedActivities++;
+        } else {
+          skippedActivities++;
+        }
+      }
+
+      return {
+        success: true,
+        totalActivities,
+        updatedActivities,
+        skippedActivities,
+        updates
+      };
+    } catch (error) {
+      console.error('Error applying rounding to existing work activities:', error);
+      return {
+        success: false,
+        totalActivities: 0,
+        updatedActivities: 0,
+        skippedActivities: 0,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        updates: []
+      };
+    }
+  }
+
+  /**
+   * Preview what would happen if we apply rounding to existing work activities
+   * This doesn't actually update the database, just returns what would change
+   */
+  async previewRoundingForExistingWorkActivities(): Promise<{
+    success: boolean;
+    totalActivities: number;
+    activitiesAffected: number;
+    activitiesUnchanged: number;
+    error?: string;
+    previews: Array<{
+      id: number;
+      workType: string;
+      date: string;
+      currentHours: number;
+      roundedHours: number;
+      change: number;
+    }>;
+  }> {
+    try {
+      const billingSettings = await this.getBillingSettings();
+      
+      if (!billingSettings.roundBillableHours) {
+        return {
+          success: false,
+          totalActivities: 0,
+          activitiesAffected: 0,
+          activitiesUnchanged: 0,
+          error: 'Billable hours rounding is not enabled',
+          previews: []
+        };
+      }
+
+      // Get all work activities that have billable hours set
+      const workActivitiesWithBillableHours = await db
+        .select()
+        .from(workActivities)
+        .where(
+          isNotNull(workActivities.billableHours)
+        );
+
+      const totalActivities = workActivitiesWithBillableHours.length;
+      let activitiesAffected = 0;
+      let activitiesUnchanged = 0;
+      const previews: Array<{
+        id: number;
+        workType: string;
+        date: string;
+        currentHours: number;
+        roundedHours: number;
+        change: number;
+      }> = [];
+
+      // Process each work activity
+      for (const activity of workActivitiesWithBillableHours) {
+        if (activity.billableHours === null || activity.billableHours === undefined) {
+          activitiesUnchanged++;
+          continue;
+        }
+
+        const originalHours = activity.billableHours;
+        const roundedHours = await this.roundHours(originalHours);
+        const change = roundedHours - originalHours;
+
+        if (Math.abs(change) > 0.001) { // Use small epsilon for floating point comparison
+          previews.push({
+            id: activity.id,
+            workType: activity.workType,
+            date: activity.date,
+            currentHours: originalHours,
+            roundedHours: roundedHours,
+            change: change
+          });
+          activitiesAffected++;
+        } else {
+          activitiesUnchanged++;
+        }
+      }
+
+      return {
+        success: true,
+        totalActivities,
+        activitiesAffected,
+        activitiesUnchanged,
+        previews
+      };
+    } catch (error) {
+      console.error('Error previewing rounding for existing work activities:', error);
+      return {
+        success: false,
+        totalActivities: 0,
+        activitiesAffected: 0,
+        activitiesUnchanged: 0,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        previews: []
+      };
+    }
   }
 } 

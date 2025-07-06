@@ -197,4 +197,38 @@ router.get('/billing/config', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/settings/billing/preview-rounding
+ * Preview what would happen if we apply rounding to existing work activities
+ */
+router.post('/billing/preview-rounding', async (req, res) => {
+  try {
+    const result = await settingsService.previewRoundingForExistingWorkActivities();
+    res.json(result);
+  } catch (error) {
+    console.error('Error previewing rounding for existing work activities:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to preview rounding for existing work activities' 
+    });
+  }
+});
+
+/**
+ * POST /api/settings/billing/apply-rounding
+ * Apply billable hours rounding to existing work activities
+ */
+router.post('/billing/apply-rounding', async (req, res) => {
+  try {
+    const result = await settingsService.applyRoundingToExistingWorkActivities();
+    res.json(result);
+  } catch (error) {
+    console.error('Error applying rounding to existing work activities:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to apply rounding to existing work activities' 
+    });
+  }
+});
+
 export default router; 

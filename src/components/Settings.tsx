@@ -40,6 +40,9 @@ import {
   Notifications,
   Schedule,
   Refresh,
+  Preview,
+  PlayArrow,
+  InfoOutlined,
 } from '@mui/icons-material';
 import { apiClient } from '../config/api';
 
@@ -76,6 +79,23 @@ const Settings: React.FC = () => {
   const [generalSettings, setGeneralSettings] = useState({
     appName: 'Garden Care CRM',
   });
+
+  // Rounding preview/apply state
+  const [roundingPreview, setRoundingPreview] = useState<{
+    totalActivities: number;
+    activitiesAffected: number;
+    activitiesUnchanged: number;
+    previews: Array<{
+      id: number;
+      workType: string;
+      date: string;
+      currentHours: number;
+      roundedHours: number;
+      change: number;
+    }>;
+  } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [applyLoading, setApplyLoading] = useState(false);
 
   const showSnackbar = (message: string, severity: 'success' | 'error' = 'success') => {
     setSnackbar({ open: true, message, severity });
@@ -220,6 +240,46 @@ const Settings: React.FC = () => {
         ? prev.filter(c => c !== category)
         : [...prev, category]
     );
+  };
+
+  const previewRoundingApplication = async () => {
+    try {
+      setPreviewLoading(true);
+      const response = await apiClient.post('/api/settings/billing/preview-rounding');
+      const data = await response.json();
+      
+      if (data.success) {
+        setRoundingPreview(data);
+        showSnackbar(`Preview complete: ${data.activitiesAffected} activities would be affected`, 'success');
+      } else {
+        throw new Error(data.error || 'Failed to preview rounding');
+      }
+    } catch (error) {
+      console.error('Error previewing rounding:', error);
+      showSnackbar('Failed to preview rounding changes', 'error');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const applyRoundingToExisting = async () => {
+    try {
+      setApplyLoading(true);
+      const response = await apiClient.post('/api/settings/billing/apply-rounding');
+      const data = await response.json();
+      
+      if (data.success) {
+        showSnackbar(`Successfully updated ${data.updatedActivities} work activities with rounded hours`, 'success');
+        setRoundingPreview(null); // Clear preview since data has changed
+      } else {
+        throw new Error(data.error || 'Failed to apply rounding');
+      }
+    } catch (error) {
+      console.error('Error applying rounding:', error);
+      showSnackbar('Failed to apply rounding to existing activities', 'error');
+    } finally {
+      setApplyLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -392,6 +452,108 @@ const Settings: React.FC = () => {
                     </CardContent>
                   </Card>
                 </Grid>
+
+                {/* Apply Rounding to Existing Activities */}
+                {billingSettings.roundBillableHours && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <InfoOutlined color="info" />
+                          Apply Rounding to Existing Work Activities
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          Since you've enabled billable hours rounding, you can apply this rounding to existing work activities 
+                          that were created before this setting was enabled.
+                        </Typography>
+
+                        <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
+                          <Button
+                            variant="outlined"
+                            startIcon={<Preview />}
+                            onClick={previewRoundingApplication}
+                            disabled={previewLoading || applyLoading}
+                          >
+                            {previewLoading ? 'Previewing...' : 'Preview Changes'}
+                          </Button>
+                          <Button
+                            variant="contained"
+                            startIcon={<PlayArrow />}
+                            onClick={applyRoundingToExisting}
+                            disabled={!roundingPreview || previewLoading || applyLoading}
+                            color="primary"
+                          >
+                            {applyLoading ? 'Applying...' : 'Apply Rounding to Existing Activities'}
+                          </Button>
+                        </Box>
+
+                        {roundingPreview && (
+                          <Box sx={{ mt: 3, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                            <Typography variant="subtitle2" gutterBottom>
+                              Preview Results:
+                            </Typography>
+                            <Box sx={{ display: 'flex', gap: 3, mb: 2 }}>
+                              <Chip 
+                                label={`${roundingPreview.totalActivities} Total Activities`} 
+                                color="info" 
+                                size="small" 
+                              />
+                              <Chip 
+                                label={`${roundingPreview.activitiesAffected} Will Change`} 
+                                color="warning" 
+                                size="small" 
+                              />
+                              <Chip 
+                                label={`${roundingPreview.activitiesUnchanged} Unchanged`} 
+                                color="success" 
+                                size="small" 
+                              />
+                            </Box>
+
+                            {roundingPreview.previews.length > 0 && (
+                              <Box sx={{ mt: 2 }}>
+                                <Typography variant="subtitle2" gutterBottom>
+                                  Activities that will be updated:
+                                </Typography>
+                                <Box sx={{ maxHeight: 200, overflow: 'auto' }}>
+                                  <List dense>
+                                    {roundingPreview.previews.slice(0, 10).map((preview) => (
+                                      <ListItem key={preview.id} divider>
+                                        <ListItemText
+                                          primary={`${preview.workType} - ${preview.date}`}
+                                          secondary={
+                                            <span>
+                                              {preview.currentHours.toFixed(2)}h → {preview.roundedHours.toFixed(2)}h 
+                                              <span style={{ 
+                                                color: preview.change > 0 ? 'green' : 'red',
+                                                fontWeight: 'bold',
+                                                marginLeft: 8
+                                              }}>
+                                                ({preview.change > 0 ? '+' : ''}{preview.change.toFixed(2)}h)
+                                              </span>
+                                            </span>
+                                          }
+                                        />
+                                      </ListItem>
+                                    ))}
+                                    {roundingPreview.previews.length > 10 && (
+                                      <ListItem>
+                                        <ListItemText 
+                                          primary={`... and ${roundingPreview.previews.length - 10} more activities`}
+                                          sx={{ fontStyle: 'italic', color: 'text.secondary' }}
+                                        />
+                                      </ListItem>
+                                    )}
+                                  </List>
+                                </Box>
+                              </Box>
+                            )}
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
               </Grid>
             </AccordionDetails>
           </Accordion>
