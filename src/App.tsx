@@ -15,6 +15,7 @@ import EmployeeDetail from './components/EmployeeDetail';
 import ProjectManagement from './components/ProjectManagement';
 import WorkActivityManagement from './components/WorkActivityManagement';
 import WorkActivityDetail from './components/WorkActivityDetail';
+import WorkActivityReviewFlow from './components/WorkActivityReviewFlow';
 import WorkNotesImport from './components/WorkNotesImport';
 import { NotionSync } from './components/NotionSync';
 import Admin from './components/Admin';
@@ -66,6 +67,7 @@ function App() {
                     <Navigation />
                     <Routes>
                       <Route path="/" element={<Dashboard />} />
+                      <Route path="/review" element={<WorkActivityReviewFlow />} />
                       <Route path="/chat" element={<Chat />} />
                       <Route path="/schedule" element={<Schedule />} />
                       <Route path="/clients" element={<ClientManagement />} />

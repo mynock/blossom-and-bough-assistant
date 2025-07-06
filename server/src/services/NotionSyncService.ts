@@ -534,7 +534,7 @@ export class NotionSyncService {
       const workActivity: NewWorkActivity = {
         workType: parsedActivity.workType || 'MAINTENANCE',
         date: parsedActivity.date,
-        status: 'completed',
+        status: 'needs_review',
         startTime: parsedActivity.startTime || null,
         endTime: parsedActivity.endTime || null,
         billableHours: billableHours,

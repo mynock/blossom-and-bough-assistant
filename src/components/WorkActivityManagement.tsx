@@ -112,6 +112,7 @@ const WORK_TYPES = [
 ];
 
 const WORK_STATUSES = [
+  'needs_review',
   'planned',
   'in_progress',
   'completed',

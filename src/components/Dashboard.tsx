@@ -37,6 +37,7 @@ interface WorkActivityStats {
   thisWeekActivities: number;
   totalHours: number;
   billableHours: number;
+  needsReviewCount: number;
   recentActivities: Array<{
     id: number;
     date: string;
@@ -71,6 +72,7 @@ const Dashboard: React.FC = () => {
     thisWeekActivities: 0,
     totalHours: 0,
     billableHours: 0,
+    needsReviewCount: 0,
     recentActivities: [],
     upcomingActivities: [],
   });
@@ -114,6 +116,11 @@ const Dashboard: React.FC = () => {
           sum + (activity.billableHours || 0), 0
         );
 
+        // Count activities that need review
+        const needsReviewCount = workActivities.filter((activity: any) => 
+          activity.status === 'needs_review'
+        ).length;
+
         // Get recent activities (last 5)
         const recentActivities = workActivities
           .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -148,6 +155,7 @@ const Dashboard: React.FC = () => {
           thisWeekActivities: thisWeekActivities.length,
           totalHours,
           billableHours,
+          needsReviewCount,
           recentActivities,
           upcomingActivities,
         });
@@ -230,16 +238,38 @@ const Dashboard: React.FC = () => {
       {/* Primary Action Card */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%', background: 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)', color: 'white' }}>
+          <Card sx={{ 
+            height: '100%', 
+            background: workStats.needsReviewCount > 0 
+              ? 'linear-gradient(135deg, #ff9800 0%, #f57c00 100%)' 
+              : 'linear-gradient(135deg, #4caf50 0%, #2e7d32 100%)', 
+            color: 'white' 
+          }}>
             <CardContent sx={{ p: 3 }}>
               <Box display="flex" alignItems="center" mb={2}>
                 <Assignment sx={{ fontSize: 40, mr: 2 }} />
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Review Work Entries
-                  </Typography>
+                <Box sx={{ flex: 1 }}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    <Typography variant="h6" gutterBottom>
+                      Review Work Entries
+                    </Typography>
+                    {workStats.needsReviewCount > 0 && (
+                      <Chip 
+                        label={workStats.needsReviewCount} 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: 'rgba(255,255,255,0.3)', 
+                          color: 'white',
+                          fontWeight: 'bold'
+                        }} 
+                      />
+                    )}
+                  </Box>
                   <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    View and review recent work activities synced from Notion
+                    {workStats.needsReviewCount > 0 
+                      ? `${workStats.needsReviewCount} activities need review from Notion sync`
+                      : 'View and review recent work activities synced from Notion'
+                    }
                   </Typography>
                 </Box>
               </Box>
@@ -247,10 +277,10 @@ const Dashboard: React.FC = () => {
                 variant="contained" 
                 sx={{ bgcolor: 'rgba(255,255,255,0.2)', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' } }}
                 startIcon={<Assignment />}
-                onClick={() => navigate('/work-activities')}
+                onClick={() => navigate(workStats.needsReviewCount > 0 ? '/review' : '/work-activities')}
                 fullWidth
               >
-                View Work Activities
+                {workStats.needsReviewCount > 0 ? 'Review Activities' : 'View Work Activities'}
               </Button>
             </CardContent>
           </Card>
@@ -347,6 +377,24 @@ const Dashboard: React.FC = () => {
               <Box display="flex" alignItems="center" justifyContent="space-between">
                 <Box>
                   <Typography color="text.secondary" gutterBottom>
+                    Needs Review
+                  </Typography>
+                  <Typography variant="h4" color={workStats.needsReviewCount > 0 ? 'warning.main' : 'text.primary'}>
+                    {workStats.needsReviewCount}
+                  </Typography>
+                </Box>
+                <Assignment color={workStats.needsReviewCount > 0 ? 'warning' : 'primary'} sx={{ fontSize: 40 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <Card>
+            <CardContent>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Box>
+                  <Typography color="text.secondary" gutterBottom>
                     Billable Hours
                   </Typography>
                   <Typography variant="h4">
@@ -388,6 +436,15 @@ const Dashboard: React.FC = () => {
                   sx={{ minWidth: 'auto' }}
                 >
                   All
+                </Button>
+                <Button
+                  size="small"
+                  variant={activeFilter === 'needs_review' ? 'contained' : 'outlined'}
+                  onClick={() => setActiveFilter('needs_review')}
+                  sx={{ minWidth: 'auto' }}
+                  color={activeFilter === 'needs_review' ? 'warning' : 'primary'}
+                >
+                  Needs Review
                 </Button>
                 <Button
                   size="small"
@@ -444,7 +501,7 @@ const Dashboard: React.FC = () => {
                 <List>
                   {workStats.recentActivities.filter(activity => {
                     if (activeFilter === 'all') return true;
-                    if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned') {
+                    if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned' || activeFilter === 'needs_review') {
                       return activity.status === activeFilter;
                     }
                     if (activeFilter === 'maintenance') {
@@ -518,7 +575,7 @@ const Dashboard: React.FC = () => {
                       </ListItem>
                       {index < workStats.recentActivities.filter(activity => {
                         if (activeFilter === 'all') return true;
-                        if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned') {
+                        if (activeFilter === 'completed' || activeFilter === 'in_progress' || activeFilter === 'planned' || activeFilter === 'needs_review') {
                           return activity.status === activeFilter;
                         }
                         if (activeFilter === 'maintenance') {

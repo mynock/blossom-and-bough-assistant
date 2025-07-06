@@ -132,8 +132,9 @@ const WorkActivityDetail: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
+      case 'needs_review': return 'warning';
       case 'completed': return 'success';
-      case 'in_progress': return 'warning';
+      case 'in_progress': return 'secondary';
       case 'planned': return 'info';
       case 'invoiced': return 'primary';
       case 'cancelled': return 'error';
@@ -143,8 +144,9 @@ const WorkActivityDetail: React.FC = () => {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case 'needs_review': return <PendingActions />;
       case 'completed': return <CheckCircle />;
-      case 'in_progress': return <PendingActions />;
+      case 'in_progress': return <Work />;
       case 'planned': return <Schedule />;
       case 'invoiced': return <AttachMoney />;
       case 'cancelled': return <Cancel />;
