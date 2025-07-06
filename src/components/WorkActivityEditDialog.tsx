@@ -752,8 +752,8 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                     fullWidth
                     size="small"
                     value={chargeFormData.quantity}
-                    onChange={(e) => handleChargeFormChange('quantity', parseInt(e.target.value) || 1)}
-                    inputProps={{ min: 1 }}
+                    onChange={(e) => handleChargeFormChange('quantity', parseFloat(e.target.value) || 1)}
+                    inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
                 
@@ -865,8 +865,8 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                     fullWidth
                     size="small"
                     value={plantFormData.quantity}
-                    onChange={(e) => handlePlantFormChange('quantity', parseInt(e.target.value) || 1)}
-                    inputProps={{ min: 1 }}
+                    onChange={(e) => handlePlantFormChange('quantity', parseFloat(e.target.value) || 1)}
+                    inputProps={{ min: 0, step: 0.1 }}
                   />
                 </Grid>
                 
