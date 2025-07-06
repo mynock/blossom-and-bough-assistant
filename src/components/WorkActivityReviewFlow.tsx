@@ -153,6 +153,36 @@ const WorkActivityReviewFlow: React.FC = () => {
     }
   };
 
+  const handleUnapprove = async (activityId: number) => {
+    try {
+      setSaving(true);
+      const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${activityId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: 'needs_review'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to unapprove activity');
+      }
+
+      // Remove from approved set
+      setApprovedActivityIds(prev => {
+        const newSet = new Set([...prev]);
+        newSet.delete(activityId);
+        return newSet;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to unapprove activity');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleEdit = () => {
     setEditedActivity({
       ...currentActivity,
@@ -165,6 +195,10 @@ const WorkActivityReviewFlow: React.FC = () => {
 
     try {
       setSaving(true);
+      
+      // Determine status based on whether it's already approved
+      const newStatus = isCurrentActivityApproved ? 'completed' : 'completed';
+      
       const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${currentActivity.id}`, {
         method: 'PUT',
         headers: {
@@ -172,7 +206,7 @@ const WorkActivityReviewFlow: React.FC = () => {
         },
         body: JSON.stringify({
           ...editedActivity,
-          status: 'completed' // Mark as completed when edited and saved
+          status: newStatus
         }),
       });
 
@@ -180,7 +214,7 @@ const WorkActivityReviewFlow: React.FC = () => {
         throw new Error('Failed to save changes');
       }
 
-      // Update local activity data and mark as approved
+      // Update local activity data
       setActivitiesNeedingReview(prev => 
         prev.map(activity => 
           activity.id === currentActivity.id 
@@ -188,17 +222,23 @@ const WorkActivityReviewFlow: React.FC = () => {
             : activity
         )
       );
-      setApprovedActivityIds(prev => new Set([...prev, currentActivity.id]));
+      
+      // Mark as approved if it wasn't already
+      if (!isCurrentActivityApproved) {
+        setApprovedActivityIds(prev => new Set([...prev, currentActivity.id]));
+      }
 
       setEditDialogOpen(false);
       setEditedActivity({});
       
-      // Move to next unprocessed activity if available
-      const nextUnprocessedIndex = findNextUnprocessedActivity();
-      if (nextUnprocessedIndex !== null) {
-        setCurrentIndex(nextUnprocessedIndex);
-      } else if (!isLastActivity) {
-        handleNext();
+      // Move to next unprocessed activity if available (only if this wasn't already approved)
+      if (!isCurrentActivityApproved) {
+        const nextUnprocessedIndex = findNextUnprocessedActivity();
+        if (nextUnprocessedIndex !== null) {
+          setCurrentIndex(nextUnprocessedIndex);
+        } else if (!isLastActivity) {
+          handleNext();
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
@@ -517,17 +557,31 @@ const WorkActivityReviewFlow: React.FC = () => {
               </Typography>
               
               <Stack spacing={2}>
-                <Button
-                  variant="contained"
-                  color={isCurrentActivityApproved ? "success" : "success"}
-                  fullWidth
-                  size="large"
-                  startIcon={<CheckCircle />}
-                  onClick={() => handleApprove(currentActivity.id)}
-                  disabled={saving || isCurrentActivityApproved}
-                >
-                  {saving ? <CircularProgress size={20} /> : isCurrentActivityApproved ? 'Already Approved' : 'Approve'}
-                </Button>
+                {isCurrentActivityApproved ? (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    fullWidth
+                    size="large"
+                    startIcon={<Cancel />}
+                    onClick={() => handleUnapprove(currentActivity.id)}
+                    disabled={saving}
+                  >
+                    {saving ? <CircularProgress size={20} /> : 'Unapprove'}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    fullWidth
+                    size="large"
+                    startIcon={<CheckCircle />}
+                    onClick={() => handleApprove(currentActivity.id)}
+                    disabled={saving}
+                  >
+                    {saving ? <CircularProgress size={20} /> : 'Approve'}
+                  </Button>
+                )}
 
                 <Button
                   variant="outlined"
@@ -536,7 +590,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                   onClick={handleEdit}
                   disabled={saving}
                 >
-                  Edit & Approve
+                  {isCurrentActivityApproved ? 'Edit' : 'Edit & Approve'}
                 </Button>
 
                 {findNextUnprocessedActivity() !== null && (
@@ -703,7 +757,7 @@ const WorkActivityReviewFlow: React.FC = () => {
             startIcon={<Save />}
             disabled={saving}
           >
-            {saving ? <CircularProgress size={20} /> : 'Save & Approve'}
+            {saving ? <CircularProgress size={20} /> : isCurrentActivityApproved ? 'Save Changes' : 'Save & Approve'}
           </Button>
         </DialogActions>
       </Dialog>
