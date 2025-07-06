@@ -67,6 +67,7 @@ const Settings: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
   const [expandedCategories, setExpandedCategories] = useState<string[]>(['billing', 'general']);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   // Form state for billing settings
   const [billingSettings, setBillingSettings] = useState({
@@ -79,6 +80,17 @@ const Settings: React.FC = () => {
   const [generalSettings, setGeneralSettings] = useState({
     appName: 'Garden Care CRM',
   });
+
+  // Track changes to mark unsaved state
+  const handleBillingSettingsChange = (newSettings: Partial<typeof billingSettings>) => {
+    setBillingSettings(prev => ({ ...prev, ...newSettings }));
+    setHasUnsavedChanges(true);
+  };
+
+  const handleGeneralSettingsChange = (newSettings: Partial<typeof generalSettings>) => {
+    setGeneralSettings(prev => ({ ...prev, ...newSettings }));
+    setHasUnsavedChanges(true);
+  };
 
   // Rounding preview/apply state
   const [roundingPreview, setRoundingPreview] = useState<{
@@ -149,6 +161,9 @@ const Settings: React.FC = () => {
     setGeneralSettings({
       appName: settingsMap.app_name || 'Garden Care CRM',
     });
+
+    // Reset unsaved changes flag since we just loaded from database
+    setHasUnsavedChanges(false);
   };
 
   const saveSetting = async (key: string, value: string, category: string, description?: string) => {
@@ -205,6 +220,7 @@ const Settings: React.FC = () => {
       ]);
 
       showSnackbar('Settings saved successfully!');
+      setHasUnsavedChanges(false); // Reset unsaved changes flag
       await fetchSettings(); // Refresh settings
     } catch (error) {
       console.error('Error saving settings:', error);
@@ -344,8 +360,18 @@ const Settings: React.FC = () => {
           startIcon={<Save />}
           onClick={saveSettings}
           disabled={saving}
+          color={hasUnsavedChanges ? 'primary' : 'inherit'}
+          sx={{
+            ...(hasUnsavedChanges && {
+              background: 'linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)',
+              '&:hover': {
+                background: 'linear-gradient(45deg, #FE6B8B 30%, #FF8E53 90%)',
+                filter: 'brightness(1.1)',
+              }
+            })
+          }}
         >
-          {saving ? 'Saving...' : 'Save Settings'}
+          {saving ? 'Saving...' : hasUnsavedChanges ? 'Save Settings*' : 'Save Settings'}
         </Button>
         <Button
           variant="outlined"
@@ -392,10 +418,9 @@ const Settings: React.FC = () => {
                         control={
                           <Switch
                             checked={billingSettings.roundBillableHours}
-                            onChange={(e) => setBillingSettings(prev => ({
-                              ...prev,
+                            onChange={(e) => handleBillingSettingsChange({
                               roundBillableHours: e.target.checked
-                            }))}
+                            })}
                           />
                         }
                         label="Round billable hours to nearest half hour"
@@ -411,10 +436,9 @@ const Settings: React.FC = () => {
                             <Select
                               value={billingSettings.roundingMethod}
                               label="Rounding Method"
-                              onChange={(e) => setBillingSettings(prev => ({
-                                ...prev,
+                              onChange={(e) => handleBillingSettingsChange({
                                 roundingMethod: e.target.value as 'up' | 'down' | 'nearest'
-                              }))}
+                              })}
                             >
                               <MenuItem value="up">Round Up (Always favor client)</MenuItem>
                               <MenuItem value="down">Round Down (Always favor business)</MenuItem>
@@ -438,10 +462,9 @@ const Settings: React.FC = () => {
                         type="number"
                         label="Default Hourly Rate"
                         value={billingSettings.defaultHourlyRate}
-                        onChange={(e) => setBillingSettings(prev => ({
-                          ...prev,
+                        onChange={(e) => handleBillingSettingsChange({
                           defaultHourlyRate: parseFloat(e.target.value) || 0
-                        }))}
+                        })}
                         InputProps={{
                           startAdornment: <Typography>$</Typography>,
                         }}
@@ -467,12 +490,18 @@ const Settings: React.FC = () => {
                           that were created before this setting was enabled.
                         </Typography>
 
+                        {hasUnsavedChanges && (
+                          <Alert severity="warning" sx={{ mb: 2 }}>
+                            You have unsaved changes to your rounding settings. Please save your settings first before previewing or applying changes to existing activities.
+                          </Alert>
+                        )}
+
                         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
                           <Button
                             variant="outlined"
                             startIcon={<Preview />}
                             onClick={previewRoundingApplication}
-                            disabled={previewLoading || applyLoading}
+                            disabled={hasUnsavedChanges || previewLoading || applyLoading}
                           >
                             {previewLoading ? 'Previewing...' : 'Preview Changes'}
                           </Button>
@@ -480,7 +509,7 @@ const Settings: React.FC = () => {
                             variant="contained"
                             startIcon={<PlayArrow />}
                             onClick={applyRoundingToExisting}
-                            disabled={!roundingPreview || previewLoading || applyLoading}
+                            disabled={hasUnsavedChanges || !roundingPreview || previewLoading || applyLoading}
                             color="primary"
                           >
                             {applyLoading ? 'Applying...' : 'Apply Rounding to Existing Activities'}
@@ -584,10 +613,9 @@ const Settings: React.FC = () => {
                         fullWidth
                         label="Application Name"
                         value={generalSettings.appName}
-                        onChange={(e) => setGeneralSettings(prev => ({
-                          ...prev,
+                        onChange={(e) => handleGeneralSettingsChange({
                           appName: e.target.value
-                        }))}
+                        })}
                         sx={{ mb: 2 }}
                       />
                       <Typography variant="body2" color="text.secondary">
