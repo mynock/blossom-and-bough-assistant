@@ -218,12 +218,19 @@ export class CronService {
         ? currentTitle.replace(/\(Auto-updated.*?\)/, `(Auto-updated ${new Date().toLocaleTimeString()})`)
         : `${currentTitle} (Auto-updated ${new Date().toLocaleTimeString()})`;
       
-      // Determine team members from helper assignments or keep existing
-      const teamMembers = helperAssignments.length > 0 
-        ? helperAssignments.map(helper => ({ name: helper }))
-        : (currentPage as any).properties?.['Team Members']?.multi_select || [{ name: 'Andrea' }];
+      // Always include Andrea, plus any additional helpers from orange events
+      const teamMembers = [
+        { name: 'Andrea' }, // Always include Andrea
+        ...helperAssignments.map(helper => ({ name: helper }))
+      ];
       
-      debugLog.info(`👥 Updating team members: ${helperAssignments.join(', ') || 'keeping existing/default'}`);
+      // Remove duplicates in case Andrea is also in helperAssignments
+      const uniqueTeamMembers = teamMembers.filter((member, index, self) => 
+        index === self.findIndex(m => m.name === member.name)
+      );
+      
+      const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
+      debugLog.info(`👥 Updating team members: ${memberNames}`);
       
       await notion.pages.update({
         page_id: pageId,
@@ -232,7 +239,7 @@ export class CronService {
             title: [{ text: { content: updatedTitle } }],
           },
           'Team Members': {
-            multi_select: teamMembers,
+            multi_select: uniqueTeamMembers,
           }
         }
       });
@@ -270,12 +277,19 @@ export class CronService {
       // Ensure client exists in database options
       await (this.notionService as any).ensureClientExistsInDatabase(clientName);
       
-      // Determine team members from helper assignments or default to Andrea
-      const teamMembers = helperAssignments.length > 0 
-        ? helperAssignments.map(helper => ({ name: helper }))
-        : [{ name: 'Andrea' }]; // Default fallback
+      // Always include Andrea, plus any additional helpers from orange events
+      const teamMembers = [
+        { name: 'Andrea' }, // Always include Andrea
+        ...helperAssignments.map(helper => ({ name: helper }))
+      ];
       
-      debugLog.info(`👥 Assigning team members: ${helperAssignments.join(', ') || 'Andrea (default)'}`);
+      // Remove duplicates in case Andrea is also in helperAssignments
+      const uniqueTeamMembers = teamMembers.filter((member, index, self) => 
+        index === self.findIndex(m => m.name === member.name)
+      );
+      
+      const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
+      debugLog.info(`👥 Assigning team members: ${memberNames}`);
       
       // Create new page with the specified date (tomorrow)
       const pageTitle = `${clientName} (Maintenance)`;
@@ -292,7 +306,7 @@ export class CronService {
             select: { name: 'Maintenance' },
           },
           'Team Members': {
-            multi_select: teamMembers,
+            multi_select: uniqueTeamMembers,
           },
           Title: {
             title: [{ text: { content: pageTitle } }],

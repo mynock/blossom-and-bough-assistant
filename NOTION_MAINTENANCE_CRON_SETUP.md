@@ -84,7 +84,7 @@ The system processes calendar events as follows:
 
 2. **Orange All-Day Events (colorId: "6")**:
    - ✅ Extracted as helper assignments
-   - ✅ Assigned to corresponding client visits on same day
+   - ✅ Added to client visits in addition to Andrea (default)
    - ✅ Simple names like "Virginia", "Andrea"
 
 3. **Other Colored Events**:
@@ -102,12 +102,22 @@ The system extracts client names from calendar event titles using these patterns
 For each valid client visit, the system:
 
 1. **Checks for existing entry** for tomorrow's date
-2. **If exists**: Updates the entry with a timestamp
+2. **If exists**: Updates the entry with a timestamp and current team members
 3. **If doesn't exist**: 
    - Gets carryover tasks from last client visit
    - Creates new entry with tomorrow's date
    - Includes all uncompleted tasks from previous visit
    - Adds basic template structure (Tasks, Notes sections)
+   - Assigns team members (Andrea + any helpers from orange events)
+
+### Team Member Assignment
+- **Andrea is always included** as the default team member
+- **Additional helpers** from orange all-day events are added
+- **Duplicates are removed** (e.g., if "Andrea" appears in orange events)
+- **Examples**:
+  - No orange events → "Andrea"  
+  - Orange event "Virginia" → "Andrea, Virginia"
+  - Orange events "Andrea, Virginia" → "Andrea, Virginia" (no duplicate)
 
 ## 🛠️ Configuration
 
@@ -135,10 +145,12 @@ To customize, modify the `templateBlocks` array in `createMaintenanceEntryForDat
 ```
 🕐 Daily Notion maintenance entry cron job started
 📅 Processing calendar events for date: 2024-01-16
-📋 Found 3 client visits for tomorrow
+� Found helper assignments: ["Virginia"]
+�📋 Found 3 client visits for tomorrow
 🏡 Processing client visit: Anne
 🆕 Creating new entry for Anne on 2024-01-16
 📋 Found 2 carryover tasks from last entry
+👥 Assigning team members: Andrea, Virginia
 ✅ Successfully created Notion entry for Anne
 📊 Daily maintenance entry creation completed:
    🆕 Created: 2
