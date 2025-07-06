@@ -42,25 +42,30 @@ export class CronService {
     try {
       debugLog.info('📅 Starting to create maintenance entries for tomorrow');
       
-      // Get tomorrow's date
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      tomorrow.setHours(0, 0, 0, 0); // Start of tomorrow
+      // TIMEZONE FIX: When this runs at 3AM UTC, it's 8PM Pacific the previous day
+      // So "tomorrow" from Pacific perspective is actually "today" in UTC
+      // We want to create entries for the next day from Pacific time perspective
+      const now = new Date();
+      const targetDate = new Date(now);
+      targetDate.setHours(0, 0, 0, 0); // Start of the target day
       
-      const tomorrowDateString = tomorrow.toISOString().split('T')[0];
+      const targetDateString = targetDate.toISOString().split('T')[0];
       
-      debugLog.info(`📅 Processing calendar events for date: ${tomorrowDateString}`);
+      debugLog.info(`🕐 Current UTC time: ${now.toISOString()}`);
+      debugLog.info(`📅 Target date (tomorrow from Pacific perspective): ${targetDateString}`);
       
-      // Get calendar events for tomorrow (1 day ahead)
+      debugLog.info(`📅 Processing calendar events for date: ${targetDateString}`);
+      
+      // Get calendar events for the target day
       const events = await this.googleCalendarService.getEvents(1);
       
-      // Filter for tomorrow's events that are client visits (non-all-day events)
-      const tomorrowClientVisits = events.filter(event => {
+      // Filter for target day's events that are client visits (non-all-day events)
+      const targetDayClientVisits = events.filter(event => {
         const eventDate = new Date(event.start);
         const eventDateString = eventDate.toISOString().split('T')[0];
         
-        // Must be tomorrow's date
-        if (eventDateString !== tomorrowDateString) {
+        // Must be target date
+        if (eventDateString !== targetDateString) {
           return false;
         }
         
@@ -74,10 +79,10 @@ export class CronService {
         return isTimedEvent && hasClientInfo;
       });
       
-      debugLog.info(`📋 Found ${tomorrowClientVisits.length} client visits for tomorrow`);
+      debugLog.info(`📋 Found ${targetDayClientVisits.length} client visits for target day`);
       
-      if (tomorrowClientVisits.length === 0) {
-        debugLog.info('ℹ️ No client visits scheduled for tomorrow');
+      if (targetDayClientVisits.length === 0) {
+        debugLog.info('ℹ️ No client visits scheduled for target day');
         return;
       }
       
@@ -88,7 +93,7 @@ export class CronService {
         errors: 0
       };
       
-      for (const event of tomorrowClientVisits) {
+      for (const event of targetDayClientVisits) {
         try {
           // Extract client name from event title
           const clientName = this.extractClientNameFromEvent(event);
@@ -101,21 +106,21 @@ export class CronService {
           
           debugLog.info(`🏡 Processing client visit: ${clientName}`);
           
-          // Check if an entry already exists for this client for tomorrow
-          const existingEntry = await this.getEntryForClientAndDate(clientName, tomorrowDateString);
+          // Check if an entry already exists for this client for target date
+          const existingEntry = await this.getEntryForClientAndDate(clientName, targetDateString);
           
           if (existingEntry) {
-            debugLog.info(`📝 Entry already exists for ${clientName} on ${tomorrowDateString}, updating it`);
+            debugLog.info(`📝 Entry already exists for ${clientName} on ${targetDateString}, updating it`);
             
             // Update the existing entry
             await this.updateExistingEntry(existingEntry.id, clientName);
             results.updated++;
             
           } else {
-            debugLog.info(`🆕 Creating new entry for ${clientName} on ${tomorrowDateString}`);
+            debugLog.info(`🆕 Creating new entry for ${clientName} on ${targetDateString}`);
             
-            // Create new entry with tomorrow's date and carryover tasks
-            const result = await this.createMaintenanceEntryForDate(clientName, tomorrowDateString);
+            // Create new entry with target date and carryover tasks
+            const result = await this.createMaintenanceEntryForDate(clientName, targetDateString);
             
             if (result.success) {
               debugLog.info(`✅ Successfully created Notion entry for ${clientName}`);
