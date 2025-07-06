@@ -170,6 +170,17 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// Settings table for application configuration
+export const settings = pgTable('settings', {
+  id: serial('id').primaryKey(),
+  key: text('key').unique().notNull(), // e.g., 'billable_hours_rounding'
+  value: text('value').notNull(), // JSON string for complex values
+  description: text('description'), // Human-readable description
+  category: text('category').notNull().default('general'), // e.g., 'billing', 'general', 'notifications'
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
 // Export types for use in the application
 export type Client = typeof clients.$inferSelect;
 export type NewClient = typeof clients.$inferInsert;
@@ -202,4 +213,7 @@ export type Invoice = typeof invoices.$inferSelect;
 export type NewInvoice = typeof invoices.$inferInsert;
 
 export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
-export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert; 
+export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
+
+export type Setting = typeof settings.$inferSelect;
+export type NewSetting = typeof settings.$inferInsert; 
