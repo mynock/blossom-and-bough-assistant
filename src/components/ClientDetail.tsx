@@ -28,6 +28,8 @@ import {
   FormControl,
   InputLabel,
   Snackbar,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -45,8 +47,11 @@ import {
   Receipt as ReceiptIcon,
   AttachMoney as AttachMoneyIcon,
   CheckCircle as CheckCircleIcon,
+  TableChart as TableChartIcon,
+  ViewList as ViewListIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
+import { ClientTasksList } from './ClientTasksList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
 import { formatDatePacific } from '../utils/dateUtils';
 
@@ -195,6 +200,7 @@ const ClientDetail: React.FC = () => {
   const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [useAIGeneration, setUseAIGeneration] = useState(false);
+  const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date'>('table');
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -967,16 +973,44 @@ const ClientDetail: React.FC = () => {
         {/* Work Activities */}
         <Grid item xs={12}>
           <Paper sx={{ p: 3, mt: 2 }}>
-            <Typography variant="h5" gutterBottom>Work Activities</Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h5">Work Activities</Typography>
+              <ToggleButtonGroup
+                value={workActivitiesView}
+                exclusive
+                onChange={(event, newView) => {
+                  if (newView !== null) {
+                    setWorkActivitiesView(newView);
+                  }
+                }}
+                size="small"
+              >
+                <ToggleButton value="table" aria-label="table view">
+                  <TableChartIcon sx={{ mr: 1 }} />
+                  Table View
+                </ToggleButton>
+                <ToggleButton value="date" aria-label="date view">
+                  <ViewListIcon sx={{ mr: 1 }} />
+                  Tasks List
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
             <Divider sx={{ mb: 2 }} />
             
-            <WorkActivitiesTable
-              activities={workActivities}
-              onEdit={handleWorkActivityEdit}
-              onDelete={handleWorkActivityDelete}
-              showClientColumn={false}
-              emptyMessage="No work activities found for this client."
-            />
+            {workActivitiesView === 'table' ? (
+              <WorkActivitiesTable
+                activities={workActivities}
+                onEdit={handleWorkActivityEdit}
+                onDelete={handleWorkActivityDelete}
+                showClientColumn={false}
+                emptyMessage="No work activities found for this client."
+              />
+            ) : (
+              <ClientTasksList
+                activities={workActivities}
+                emptyMessage="No tasks found for this client."
+              />
+            )}
           </Paper>
         </Grid>
 
