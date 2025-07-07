@@ -6,6 +6,7 @@ export class CronService {
   private googleCalendarService: GoogleCalendarService;
   private notionService: NotionService;
   private isScheduled = false;
+  private processingLocks = new Map<string, Promise<void>>(); // Race condition prevention
 
   constructor() {
     this.googleCalendarService = new GoogleCalendarService();
@@ -175,7 +176,8 @@ export class CronService {
             continue;
           }
           
-          debugLog.info(`🏡 Processing client visit: ${clientName}`);
+          debugLog.info(`🏡 Processing client visit: "${clientName}" on ${targetDateString}`);
+          debugLog.info(`🔍 Event title: "${event.title}"`);
           
           // Check if an entry already exists for this client for target date
           const existingEntry = await this.getEntryForClientAndDate(clientName, targetDateString);
@@ -222,7 +224,7 @@ export class CronService {
 
   private async getEntryForClientAndDate(clientName: string, dateString: string): Promise<any> {
     try {
-      debugLog.info(`🔍 Checking for existing entry: ${clientName} on ${dateString}`);
+      debugLog.info(`🔍 Checking for existing entry: "${clientName}" on ${dateString}`);
       
       // Use the proper getters to access the notion client and database ID
       const notion = this.notionService.client;
@@ -233,29 +235,76 @@ export class CronService {
         return null;
       }
       
-      const response = await notion.databases.query({
-        database_id: DATABASE_ID,
-        filter: {
-          and: [
-            {
-              property: 'Client Name',
-              select: { equals: clientName },
-            },
-            {
-              property: 'Date',
-              date: { equals: dateString },
-            }
-          ]
+      // Try multiple query strategies to catch duplicates
+      const queries = [
+        // Exact match on Client Name and Date
+        {
+          database_id: DATABASE_ID,
+          filter: {
+            and: [
+              {
+                property: 'Client Name',
+                select: { equals: clientName },
+              },
+              {
+                property: 'Date',
+                date: { equals: dateString },
+              }
+            ]
+          },
+          page_size: 10,
         },
-        page_size: 1,
-      });
+        // Also check by title containing the client name (fallback)
+        {
+          database_id: DATABASE_ID,
+          filter: {
+            and: [
+              {
+                property: 'Title',
+                title: { contains: clientName },
+              },
+              {
+                property: 'Date',
+                date: { equals: dateString },
+              }
+            ]
+          },
+          page_size: 10,
+        }
+      ];
 
-      const entry = response.results[0] || null;
-      debugLog.info(`🔍 Found ${response.results.length} existing entries for ${clientName} on ${dateString}`);
+      let allEntries: any[] = [];
       
-      return entry;
+      for (const query of queries) {
+        try {
+          const response = await notion.databases.query(query);
+          allEntries.push(...response.results);
+          debugLog.info(`🔍 Query found ${response.results.length} entries`);
+        } catch (queryError) {
+          debugLog.warn(`⚠️  Query failed, trying next strategy:`, queryError);
+        }
+      }
+      
+      // Remove duplicates by ID
+      const uniqueEntries = allEntries.filter((entry, index, self) => 
+        index === self.findIndex(e => e.id === entry.id)
+      );
+      
+      debugLog.info(`🔍 Found ${uniqueEntries.length} unique existing entries for "${clientName}" on ${dateString}`);
+      
+      if (uniqueEntries.length > 0) {
+        // Log details of found entries for debugging
+        uniqueEntries.forEach((entry: any, index: number) => {
+          const title = entry.properties?.Title?.title?.[0]?.text?.content || 'No title';
+          const clientNameProp = entry.properties?.['Client Name']?.select?.name || 'No client name';
+          const dateProp = entry.properties?.Date?.date?.start || 'No date';
+          debugLog.info(`📋 Entry ${index + 1}: "${title}" | Client: "${clientNameProp}" | Date: ${dateProp}`);
+        });
+      }
+      
+      return uniqueEntries[0] || null;
     } catch (error) {
-      debugLog.error(`❌ Error checking for existing entry: ${clientName} on ${dateString}`, error);
+      debugLog.error(`❌ Error checking for existing entry: "${clientName}" on ${dateString}`, error);
       return null;
     }
   }
@@ -338,8 +387,10 @@ export class CronService {
         throw new Error('Cannot access Notion client or database ID');
       }
       
-      // Ensure client exists in database options
-      await this.notionService.ensureClientExistsInDatabase(clientName);
+      // Use the NotionService's proper template creation method
+      debugLog.info(`🎨 Creating entry using NotionService template for ${clientName}`);
+      
+      const notionResponse = await this.notionService.createEntryWithCarryover(clientName, carryoverTasks);
       
       // Always include Andrea, plus any additional helpers from orange events
       const teamMembers = [
@@ -355,85 +406,24 @@ export class CronService {
       const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
       debugLog.info(`👥 Assigning team members: ${memberNames}`);
       
-      // Create new page with the specified date (tomorrow)
-      const pageTitle = `${clientName} (Maintenance)`;
-      const response = await notion.pages.create({
-        parent: { database_id: DATABASE_ID },
+      // Update the page with the specific date and team members
+      await notion.pages.update({
+        page_id: notionResponse.id,
         properties: {
-          'Client Name': {
-            select: { name: clientName },
-          },
           Date: {
-            date: { start: dateString }, // Use tomorrow's date instead of today
-          },
-          'Work Type': {
-            select: { name: 'Maintenance' },
+            date: { start: dateString }, // Use the specified date
           },
           'Team Members': {
             multi_select: uniqueTeamMembers,
           },
-          Title: {
-            title: [{ text: { content: pageTitle } }],
-          }
         },
       });
       
-      // Add basic template structure with carryover tasks
-      const templateBlocks = [
-        // Tasks section
-        {
-          object: 'block' as const,
-          type: 'heading_2' as const,
-          heading_2: {
-            rich_text: [{ text: { content: 'Tasks' } }],
-          },
-        },
-        // Add carryover tasks if any
-        ...carryoverTasks.map(task => ({
-          object: 'block' as const,
-          type: 'to_do' as const,
-          to_do: {
-            rich_text: [{ text: { content: task } }],
-            checked: false,
-          },
-        })),
-        // Add a default to-do item if no carryover tasks
-        ...(carryoverTasks.length === 0 ? [{
-          object: 'block' as const,
-          type: 'to_do' as const,
-          to_do: {
-            rich_text: [{ text: { content: 'To-do' } }],
-            checked: false,
-          },
-        }] : []),
-        // Notes section
-        {
-          object: 'block' as const,
-          type: 'heading_2' as const,
-          heading_2: {
-            rich_text: [{ text: { content: 'Notes' } }],
-          },
-        },
-        {
-          object: 'block' as const,
-          type: 'paragraph' as const,
-          paragraph: {
-            rich_text: [],
-          },
-        },
-      ];
-      
-      // Add the template blocks to the page
-      await notion.blocks.children.append({
-        block_id: response.id,
-        children: templateBlocks,
-      });
-      
-      debugLog.info(`✅ Successfully created entry for ${clientName} on ${dateString}`);
+      debugLog.info(`✅ Successfully created and updated entry for ${clientName} on ${dateString}`);
       
       return {
         success: true,
-        page_url: (response as any).url || `https://notion.so/${response.id.replace(/-/g, '')}`,
+        page_url: (notionResponse as any).url || `https://notion.so/${notionResponse.id.replace(/-/g, '')}`,
         carryover_tasks: carryoverTasks,
       };
       
@@ -454,29 +444,63 @@ export class CronService {
     // Try different formats to extract client name
     const title = event.title.trim();
     
+    debugLog.info(`🔍 Extracting client name from title: "${title}"`);
+    
     // Format 1: "Client Name - Service Type - Helper Name"
     const dashFormat = title.split(' - ');
-    if (dashFormat.length >= 1) {
+    if (dashFormat.length >= 2) {
       const clientName = dashFormat[0].trim();
+      debugLog.info(`📝 Extracted client name (dash format): "${clientName}"`);
       if (clientName.length > 0) {
         return clientName;
       }
     }
     
-    // Format 2: "Client Name (Service Type)"
+    // Format 2: "Client Name (Service Type)" or "Client Name DESCRIPTION (Service Type)"
     const parenMatch = title.match(/^([^(]+)\s*\(/);
     if (parenMatch) {
-      const clientName = parenMatch[1].trim();
-      if (clientName.length > 0) {
+      const beforeParen = parenMatch[1].trim();
+      
+      // If it looks like "Client Name DESCRIPTION", try to extract just the client name
+      // Common patterns: "Condon BRING BLANK 1/2" LINE, DAPHNE" -> "Condon"
+      const words = beforeParen.split(/\s+/);
+      
+      // If first word is capitalized and looks like a name, use it
+      if (words.length > 0 && words[0].match(/^[A-Z][a-z]+$/)) {
+        const clientName = words[0];
+        debugLog.info(`📝 Extracted client name (first word): "${clientName}"`);
         return clientName;
+      }
+      
+      // If first two words look like a name, use them
+      if (words.length >= 2 && words[0].match(/^[A-Z][a-z]+$/) && words[1].match(/^[A-Z][a-z]+$/)) {
+        const clientName = `${words[0]} ${words[1]}`;
+        debugLog.info(`📝 Extracted client name (first two words): "${clientName}"`);
+        return clientName;
+      }
+      
+      // Fallback to everything before parentheses
+      debugLog.info(`📝 Extracted client name (before paren): "${beforeParen}"`);
+      if (beforeParen.length > 0) {
+        return beforeParen;
       }
     }
     
-    // Format 3: Use the whole title as client name if it's reasonable
+    // Format 3: Simple client name without special formatting
+    const words = title.split(/\s+/);
+    if (words.length > 0 && words[0].match(/^[A-Z][a-z]+$/)) {
+      const clientName = words[0];
+      debugLog.info(`📝 Extracted client name (simple): "${clientName}"`);
+      return clientName;
+    }
+    
+    // Format 4: Use the whole title as client name if it's reasonable
     if (title.length > 0 && title.length <= 100) {
+      debugLog.info(`📝 Using full title as client name: "${title}"`);
       return title;
     }
     
+    debugLog.warn(`⚠️  Could not extract client name from: "${title}"`);
     return null;
   }
 
