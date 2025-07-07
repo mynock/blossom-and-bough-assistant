@@ -51,7 +51,7 @@ import {
   ViewList as ViewListIcon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
-import { WorkActivitiesByDate } from './WorkActivitiesByDate';
+import { ClientTasksList } from './ClientTasksList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
 import { formatDatePacific } from '../utils/dateUtils';
 
@@ -991,7 +991,7 @@ const ClientDetail: React.FC = () => {
                 </ToggleButton>
                 <ToggleButton value="date" aria-label="date view">
                   <ViewListIcon sx={{ mr: 1 }} />
-                  By Date
+                  Tasks List
                 </ToggleButton>
               </ToggleButtonGroup>
             </Box>
@@ -1006,12 +1006,9 @@ const ClientDetail: React.FC = () => {
                 emptyMessage="No work activities found for this client."
               />
             ) : (
-              <WorkActivitiesByDate
+              <ClientTasksList
                 activities={workActivities}
-                onEdit={handleWorkActivityEdit}
-                onDelete={handleWorkActivityDelete}
-                showClientColumn={false}
-                emptyMessage="No work activities found for this client."
+                emptyMessage="No tasks found for this client."
               />
             )}
           </Paper>
