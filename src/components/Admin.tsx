@@ -117,6 +117,9 @@ const Admin: React.FC = () => {
   const [result, setResult] = useState<ScriptResult | null>(null);
   const [showConfirmation, setShowConfirmation] = useState<string | null>(null);
   
+  // Maintenance Entries State
+  const [maintenanceEntryDate, setMaintenanceEntryDate] = useState<string>('');
+  
   // Work Activities Import State
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [importOptions, setImportOptions] = useState<WorkActivityImportOptions>({
@@ -153,14 +156,21 @@ const Admin: React.FC = () => {
     }
   };
 
-  const executeScript = async (endpoint: string, actionName: string) => {
+  const executeScript = async (endpoint: string, actionName: string, additionalData?: any) => {
     setLoading(true);
     setResult(null);
     
     try {
       // Handle special cron endpoints differently
       const apiPath = endpoint.startsWith('cron/') ? `/${endpoint}` : `/admin/${endpoint}`;
-      const response = await api.post(apiPath);
+      
+      // Prepare request body for cron endpoints with date
+      let requestBody = {};
+      if (endpoint.startsWith('cron/') && additionalData) {
+        requestBody = additionalData;
+      }
+      
+      const response = await api.post(apiPath, requestBody);
       
       setResult({
         success: response.data.success,
@@ -192,6 +202,15 @@ const Admin: React.FC = () => {
     } else {
       executeScript(endpoint, actionName);
     }
+  };
+
+  const handleMaintenanceEntriesClick = () => {
+    const additionalData = maintenanceEntryDate ? { date: maintenanceEntryDate } : {};
+    const actionName = maintenanceEntryDate ? 
+      `create maintenance entries for ${maintenanceEntryDate}` : 
+      'create maintenance entries for tomorrow';
+    
+    executeScript('cron/maintenance-entries', actionName, additionalData);
   };
 
   const confirmAction = () => {
@@ -754,21 +773,38 @@ const Admin: React.FC = () => {
         <CardContent>
           <Grid container spacing={2}>
             <Grid item xs={12} md={8}>
-              <Button
-                fullWidth
-                variant="contained"
-                color="success"
-                onClick={() => handleActionClick('cron/maintenance-entries', 'create maintenance entries for tomorrow', false)}
-                disabled={loading}
-                sx={{ p: 2, height: 80 }}
-              >
-                <Box sx={{ textAlign: 'left', width: '100%' }}>
-                  <Typography variant="subtitle1">🌱 Create Tomorrow's Maintenance Entries</Typography>
-                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
-                    Generate Notion maintenance entries for tomorrow's calendar events (normally runs at 8PM Pacific)
-                  </Typography>
-                </Box>
-              </Button>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <TextField
+                  label="Target Date (Optional)"
+                  type="date"
+                  value={maintenanceEntryDate}
+                  onChange={(e) => setMaintenanceEntryDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  helperText={maintenanceEntryDate ? 
+                    `Create entries for ${maintenanceEntryDate}` : 
+                    "Leave empty to create entries for tomorrow"
+                  }
+                  size="small"
+                  disabled={loading}
+                />
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="success"
+                  onClick={handleMaintenanceEntriesClick}
+                  disabled={loading}
+                  sx={{ p: 2, height: 80 }}
+                >
+                  <Box sx={{ textAlign: 'left', width: '100%' }}>
+                    <Typography variant="subtitle1">
+                      🌱 Create {maintenanceEntryDate ? `${maintenanceEntryDate}` : "Tomorrow's"} Maintenance Entries
+                    </Typography>
+                    <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                      Generate Notion maintenance entries for {maintenanceEntryDate || "tomorrow's"} calendar events
+                    </Typography>
+                  </Box>
+                </Button>
+              </Box>
             </Grid>
             
             <Grid item xs={12} md={4}>

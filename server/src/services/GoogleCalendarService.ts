@@ -32,7 +32,13 @@ export class GoogleCalendarService {
   }
 
   async getEvents(daysAhead: number = 7): Promise<CalendarEvent[]> {
+    const events = await this.getAllEvents(daysAhead);
+    return events.filter(event => event !== null);
+  }
+
+  async getAllEvents(daysAhead: number = 7): Promise<any[]> {
     if (!this.calendar) {
+      console.log('📅 No calendar client available, returning mock events');
       return this.getMockEvents();
     }
 
@@ -44,6 +50,12 @@ export class GoogleCalendarService {
       // Use the calendar ID from environment variables, fallback to 'primary'
       const calendarId = process.env.GOOGLE_CALENDAR_ID || 'primary';
 
+      console.log('📅 GoogleCalendarService.getAllEvents() called with:');
+      console.log(`   daysAhead: ${daysAhead}`);
+      console.log(`   timeMin: ${now.toISOString()}`);
+      console.log(`   timeMax: ${endTime.toISOString()}`);
+      console.log(`   calendarId: ${calendarId}`);
+
       const response = await this.calendar.events.list({
         calendarId: calendarId,
         timeMin: now.toISOString(),
@@ -52,26 +64,48 @@ export class GoogleCalendarService {
         orderBy: 'startTime',
       });
 
-      const events = response.data.items || [];
-      return events.map((event: any) => this.parseGoogleEvent(event)).filter(Boolean);
+      const rawEvents = response.data.items || [];
+      console.log(`📅 Raw events from Google Calendar API: ${rawEvents.length}`);
+      
+      // Log raw events for debugging
+      rawEvents.forEach((event: any, index: number) => {
+        console.log(`📋 Raw Event ${index + 1}:`);
+        console.log(`   ID: ${event.id}`);
+        console.log(`   Summary: "${event.summary}"`);
+        console.log(`   Start: ${JSON.stringify(event.start)}`);
+        console.log(`   End: ${JSON.stringify(event.end)}`);
+        console.log(`   Status: ${event.status}`);
+        console.log(`   Full Event: ${JSON.stringify(event, null, 2)}`);
+      });
+
+      // Return ALL raw events (including all-day events) for helper assignment detection
+      return rawEvents;
     } catch (error) {
-      console.error('Error fetching calendar events:', error);
+      console.error('❌ Error fetching calendar events:', error);
       console.error('Calendar ID used:', process.env.GOOGLE_CALENDAR_ID || 'primary');
-      return this.getMockEvents();
+      console.log('📅 Falling back to mock events due to error');
+      return [];
     }
   }
 
   private parseGoogleEvent(googleEvent: any): CalendarEvent | null {
-    if (!googleEvent.id || !googleEvent.summary) return null;
+    if (!googleEvent.id || !googleEvent.summary) {
+      console.log(`❌ Event filtered out: missing ID or summary`);
+      return null;
+    }
 
     const start = googleEvent.start?.dateTime || googleEvent.start?.date;
     const end = googleEvent.end?.dateTime || googleEvent.end?.date;
 
-    if (!start || !end) return null;
+    if (!start || !end) {
+      console.log(`❌ Event "${googleEvent.summary}" filtered out: missing start or end time`);
+      return null;
+    }
 
     // Filter out all-day events (they represent todo items or helper schedules, not client visits)
     const isAllDay = !googleEvent.start?.dateTime && googleEvent.start?.date;
     if (isAllDay) {
+      console.log(`❌ Event "${googleEvent.summary}" filtered out: all-day event (these are helper assignments!)`);
       return null; // Skip all-day events
     }
 

@@ -1,4 +1,3 @@
-import * as cron from 'node-cron';
 import { GoogleCalendarService } from './GoogleCalendarService';
 import { NotionService } from './NotionService';
 import { debugLog } from '../utils/logger';
@@ -57,36 +56,98 @@ export class CronService {
       debugLog.info(`🕐 Current UTC time: ${now.toISOString()}`);
       debugLog.info(`📅 Target date (tomorrow from Pacific perspective): ${targetDateString}`);
       
+      // Use the new method with the calculated date
+      await this.createMaintenanceEntriesForDate(targetDateString);
+      
+    } catch (error) {
+      debugLog.error('❌ Error in daily maintenance entry creation:', error);
+    }
+  }
+
+  public async createMaintenanceEntriesForDate(targetDateString: string): Promise<void> {
+    try {
+      debugLog.info(`📅 Starting to create maintenance entries for date: ${targetDateString}`);
+      
       debugLog.info(`📅 Processing calendar events for date: ${targetDateString}`);
       
-      // Get calendar events for the target day
-      const events = await this.googleCalendarService.getEvents(1);
+      // Calculate how many days ahead the target date is
+      const now = new Date();
+      const targetDate = new Date(targetDateString);
+      const daysAhead = Math.ceil((targetDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      debugLog.info(`📅 Target date: ${targetDateString}, Current date: ${now.toISOString().split('T')[0]}, Days ahead: ${daysAhead}`);
+      
+      // Get ALL calendar events (including all-day events for helper assignments)
+      const rawEvents = await this.googleCalendarService.getAllEvents(daysAhead);
+      
+      // Process timed events for client visits
+      const events = rawEvents.map((event: any) => this.parseGoogleEventForCron(event)).filter(Boolean);
+      
+      debugLog.info(`📅 Raw events from calendar: ${rawEvents.length}, Processed events: ${events.length}`);
+      
+      // Log all events found
+      debugLog.info(`🔍 Total events retrieved from calendar: ${events.length}`);
+      
+      // Log events for the target date
+      const targetDateEvents = events.filter(event => {
+        const eventDate = new Date(event.start);
+        const eventDateString = eventDate.toISOString().split('T')[0];
+        return eventDateString === targetDateString;
+      });
+      
+      debugLog.info(`📅 Events found for target date ${targetDateString}: ${targetDateEvents.length}`);
+      
+      // Log details of each event on target date
+      targetDateEvents.forEach((event, index) => {
+        debugLog.info(`📋 Event ${index + 1}:`);
+        debugLog.info(`   Title: "${event.title}"`);
+        debugLog.info(`   Start: ${event.start}`);
+        debugLog.info(`   Event Type: ${event.eventType}`);
+        debugLog.info(`   Is Timed Event: ${event.start.includes('T')}`);
+        debugLog.info(`   Event Object: ${JSON.stringify(event, null, 2)}`);
+      });
       
       // First, extract helper information from all-day events (orange staff assignments)
-      const helperAssignments = this.extractHelperAssignments(events, targetDateString);
+      const helperAssignments = this.extractHelperAssignments(rawEvents, targetDateString);
       debugLog.info(`👥 Found helper assignments: ${JSON.stringify(helperAssignments)}`);
       
       // Filter for target day's events that are client visits (timed events, not all-day)
+      debugLog.info(`🔍 Now filtering events for client visits...`);
+      
       const targetDayClientVisits = events.filter(event => {
         const eventDate = new Date(event.start);
         const eventDateString = eventDate.toISOString().split('T')[0];
         
         // Must be target date
         if (eventDateString !== targetDateString) {
+          debugLog.debug(`❌ Event "${event.title}" excluded: wrong date (${eventDateString} vs ${targetDateString})`);
           return false;
         }
         
         // Must be a client visit (non-all-day event with dateTime, not just date)
         // All-day events have only 'date' property, timed events have 'dateTime'
         const isTimedEvent = event.start.includes('T'); // ISO datetime format includes 'T'
+        if (!isTimedEvent) {
+          debugLog.info(`❌ Event "${event.title}" excluded: all-day event (not timed)`);
+          return false;
+        }
         
         // Must have a client name/title
         const hasClientInfo = event.title && event.title.trim().length > 0;
+        if (!hasClientInfo) {
+          debugLog.info(`❌ Event excluded: no title/client info`);
+          return false;
+        }
         
         // Use color information to identify yellow client visits
         const isYellowClientVisit = this.isYellowClientVisit(event);
+        if (!isYellowClientVisit) {
+          debugLog.info(`❌ Event "${event.title}" excluded: not yellow client visit (eventType: ${event.eventType})`);
+          return false;
+        }
         
-        return isTimedEvent && hasClientInfo && isYellowClientVisit;
+        debugLog.info(`✅ Event "${event.title}" ACCEPTED as client visit`);
+        return true;
       });
       
       debugLog.info(`📋 Found ${targetDayClientVisits.length} client visits for target day`);
@@ -163,9 +224,9 @@ export class CronService {
     try {
       debugLog.info(`🔍 Checking for existing entry: ${clientName} on ${dateString}`);
       
-      // Use reflection to access the notion client and database ID from NotionService
-      const notion = (this.notionService as any).notion || (this.notionService as any).client;
-      const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+      // Use the proper getters to access the notion client and database ID
+      const notion = this.notionService.client;
+      const DATABASE_ID = this.notionService.databaseId;
       
       if (!notion || !DATABASE_ID) {
         debugLog.error('❌ Cannot access Notion client or database ID');
@@ -205,7 +266,7 @@ export class CronService {
       
       // For now, we'll just update the page title to indicate it was refreshed
       // In the future, you could add logic to merge carryover tasks or update other fields
-      const notion = (this.notionService as any).notion || (this.notionService as any).client;
+      const notion = this.notionService.client;
       
       if (!notion) {
         debugLog.error('❌ Cannot access Notion client for update');
@@ -268,9 +329,9 @@ export class CronService {
         debugLog.info(`📋 Found ${carryoverTasks.length} carryover tasks from last entry`);
       }
       
-      // Use reflection to access the notion client and create entry with specific date
-      const notion = (this.notionService as any).notion || (this.notionService as any).client;
-      const DATABASE_ID = process.env.NOTION_DATABASE_ID;
+      // Use the proper getters to access the notion client and database ID
+      const notion = this.notionService.client;
+      const DATABASE_ID = this.notionService.databaseId;
       const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID;
       
       if (!notion || !DATABASE_ID) {
@@ -278,7 +339,7 @@ export class CronService {
       }
       
       // Ensure client exists in database options
-      await (this.notionService as any).ensureClientExistsInDatabase(clientName);
+      await this.notionService.ensureClientExistsInDatabase(clientName);
       
       // Always include Andrea, plus any additional helpers from orange events
       const teamMembers = [
@@ -419,18 +480,50 @@ export class CronService {
     return null;
   }
 
+  private parseGoogleEventForCron(googleEvent: any): any | null {
+    if (!googleEvent.id || !googleEvent.summary) {
+      return null;
+    }
+
+    const start = googleEvent.start?.dateTime || googleEvent.start?.date;
+    const end = googleEvent.end?.dateTime || googleEvent.end?.date;
+
+    if (!start || !end) {
+      return null;
+    }
+
+    // Don't filter out all-day events here - we need them for helper assignments
+    return {
+      id: googleEvent.id,
+      title: googleEvent.summary,
+      start: start,
+      end: end,
+      eventType: this.inferEventType(googleEvent.summary),
+      rawEvent: googleEvent, // Keep the raw event for detailed analysis
+    };
+  }
+
+  private inferEventType(title: string): string {
+    const titleLower = title.toLowerCase();
+    if (titleLower.includes('maintenance')) return 'maintenance';
+    if (titleLower.includes('client') || titleLower.includes('visit')) return 'ad_hoc';
+    return 'maintenance';
+  }
+
   private extractHelperAssignments(events: any[], targetDateString: string): string[] {
     const helpers: string[] = [];
     
     for (const event of events) {
-      const eventDate = new Date(event.start);
+      const start = event.start?.dateTime || event.start?.date;
+      const eventDate = new Date(start);
       const eventDateString = eventDate.toISOString().split('T')[0];
       
       // Must be target date and all-day event (orange staff assignments)
-      if (eventDateString === targetDateString && !event.start.includes('T')) {
+      const isAllDay = !event.start?.dateTime && event.start?.date;
+      if (eventDateString === targetDateString && isAllDay) {
         // Extract helper names from orange all-day events
         // Expected formats: "Virginia", "Andrea", "Helper Name", etc.
-        const title = event.title?.trim();
+        const title = event.summary?.trim();
         if (title && this.isOrangeHelperEvent(event)) {
           helpers.push(title);
           debugLog.info(`👥 Found helper assignment: ${title}`);
@@ -442,71 +535,73 @@ export class CronService {
   }
 
   private isYellowClientVisit(event: any): boolean {
-    // Google Calendar color IDs for yellow are typically "5" or "11"
-    // We'll check both the event colorId and some basic heuristics
-    const colorId = event.colorId;
+    // Since we're working with processed CalendarEvent objects, use eventType and heuristics
+    const title = event.title?.toLowerCase() || '';
     
-    // Yellow is typically colorId "5" in Google Calendar
-    if (colorId === '5' || colorId === '11') {
-      debugLog.info(`🟡 Event "${event.title}" identified as yellow (colorId: ${colorId})`);
+    // Exclude obvious non-client events
+    const excludePatterns = [
+      'meeting', 'office', 'admin', 'break', 'lunch', 'call', 'travel',
+      'team', 'training', 'review', 'planning', 'errand'
+    ];
+    
+    const isExcluded = excludePatterns.some(pattern => title.includes(pattern));
+    
+    if (isExcluded) {
+      debugLog.info(`⚪ Event "${event.title}" excluded by pattern matching`);
+      return false;
+    }
+    
+    // Check if it's a maintenance or client-related event type
+    if (event.eventType === 'maintenance' || event.eventType === 'ad_hoc') {
+      debugLog.info(`🟡 Event "${event.title}" identified as client visit (eventType: ${event.eventType})`);
       return true;
     }
     
-    // Fallback: Use title-based heuristics if no color info
-    if (!colorId) {
-      const title = event.title?.toLowerCase() || '';
-      
-      // Exclude obvious non-client events
-      const excludePatterns = [
-        'meeting', 'office', 'admin', 'break', 'lunch', 'call', 'travel',
-        'team', 'training', 'review', 'planning', 'errand'
-      ];
-      
-      const isExcluded = excludePatterns.some(pattern => title.includes(pattern));
-      
-      if (!isExcluded) {
-        debugLog.info(`🟡 Event "${event.title}" assumed to be client visit (no color info, passes heuristics)`);
-        return true;
-      }
+    // Check for typical client names/patterns in title
+    const hasClientPattern = /^[A-Z][a-z]+/.test(event.title); // Starts with capitalized word
+    const hasTimePattern = /\d{1,2}:\d{2}/.test(event.title); // Contains time
+    
+    if (hasClientPattern && !isExcluded) {
+      debugLog.info(`🟡 Event "${event.title}" assumed to be client visit (client name pattern)`);
+      return true;
     }
     
-    debugLog.debug(`⚪ Event "${event.title}" not identified as yellow client visit (colorId: ${colorId})`);
+    debugLog.info(`⚪ Event "${event.title}" not identified as client visit`);
     return false;
   }
 
   private isOrangeHelperEvent(event: any): boolean {
-    // Orange is typically colorId "6" in Google Calendar
-    const colorId = event.colorId;
+    // Check if it's a simple name (likely a helper assignment)
+    const title = (event.summary || event.title || '').trim();
     
-    if (colorId === '6') {
-      debugLog.info(`🟠 Event "${event.title}" identified as orange helper assignment (colorId: ${colorId})`);
+    // Simple heuristics: short names without special characters, likely helper names
+    const isSimpleName = title.length <= 20 && 
+                        !title.includes('-') && 
+                        !title.includes('(') && 
+                        !title.includes('@') &&
+                        title.split(' ').length <= 2;
+    
+    // Also check for known helper names
+    const helperNames = ['anne', 'virginia', 'sarah', 'mike', 'andrea'];
+    const isKnownHelper = helperNames.some(name => title.toLowerCase().includes(name));
+    
+    if (isSimpleName || isKnownHelper) {
+      debugLog.info(`🟠 Event "${title}" assumed to be helper assignment (appears to be name)`);
       return true;
     }
     
-    // Fallback: Check if it's a simple name (likely a helper assignment)
-    if (!colorId) {
-      const title = event.title?.trim() || '';
-      
-      // Simple heuristics: short names without special characters, likely helper names
-      const isSimpleName = title.length <= 20 && 
-                          !title.includes('-') && 
-                          !title.includes('(') && 
-                          !title.includes('@') &&
-                          title.split(' ').length <= 2;
-      
-      if (isSimpleName) {
-        debugLog.info(`🟠 Event "${event.title}" assumed to be helper assignment (no color info, appears to be name)`);
-        return true;
-      }
-    }
-    
-    debugLog.debug(`⚪ Event "${event.title}" not identified as orange helper assignment (colorId: ${colorId})`);
+    debugLog.info(`⚪ Event "${title}" not identified as helper assignment`);
     return false;
   }
 
-  public async runManualTest(): Promise<void> {
-    debugLog.info('🧪 Running manual test of maintenance entry creation');
-    await this.createMaintenanceEntriesForTomorrow();
+  public async runManualTest(targetDate?: string): Promise<void> {
+    if (targetDate) {
+      debugLog.info(`🧪 Running manual test of maintenance entry creation for date: ${targetDate}`);
+      await this.createMaintenanceEntriesForDate(targetDate);
+    } else {
+      debugLog.info('🧪 Running manual test of maintenance entry creation');
+      await this.createMaintenanceEntriesForTomorrow();
+    }
   }
 
   public stop(): void {

@@ -40,6 +40,14 @@ export class NotionService {
     }
   }
 
+  get client() {
+    return notion;
+  }
+
+  get databaseId() {
+    return DATABASE_ID;
+  }
+
   async getLastEntryForClient(clientName: string) {
     try {
       debugLog.info(`Fetching last entry for client: ${clientName}`);

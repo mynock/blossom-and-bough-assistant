@@ -455,13 +455,32 @@ app.post('/api/cron/maintenance-entries', async (req, res) => {
     const triggerSource = isRailwayCron ? 'Railway cron service' : 'manual user trigger';
     console.log(`🧪 Maintenance entry creation triggered by: ${triggerSource}`);
     
-    await cronService.runManualTest();
+    // Check for date parameter in request body
+    const { date } = req.body;
+    
+    if (date) {
+      // Validate date format (YYYY-MM-DD)
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(date)) {
+        return res.status(400).json({
+          error: 'Invalid date format. Use YYYY-MM-DD format.'
+        });
+      }
+      
+      console.log(`📅 Running maintenance entry creation for specific date: ${date}`);
+      await cronService.runManualTest(date);
+    } else {
+      await cronService.runManualTest();
+    }
     
     res.json({ 
       success: true, 
-      message: 'Maintenance entry creation job executed successfully',
+      message: date ? 
+        `Maintenance entry creation job executed successfully for ${date}` : 
+        'Maintenance entry creation job executed successfully',
       timestamp: new Date().toISOString(),
-      triggeredBy: triggerSource
+      triggeredBy: triggerSource,
+      targetDate: date || 'tomorrow'
     });
   } catch (error) {
     console.error('Error in maintenance entry trigger:', error);
