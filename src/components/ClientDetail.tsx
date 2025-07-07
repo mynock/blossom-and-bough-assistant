@@ -742,6 +742,50 @@ const ClientDetail: React.FC = () => {
           </Grid>
         </Grid>
 
+        {/* Work Activities */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3, mt: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h5">Work Activities</Typography>
+              <ToggleButtonGroup
+                value={workActivitiesView}
+                exclusive
+                onChange={(event, newView) => {
+                  if (newView !== null) {
+                    setWorkActivitiesView(newView);
+                  }
+                }}
+                size="small"
+              >
+                <ToggleButton value="table" aria-label="table view">
+                  <TableChartIcon sx={{ mr: 1 }} />
+                  Table View
+                </ToggleButton>
+                <ToggleButton value="date" aria-label="date view">
+                  <ViewListIcon sx={{ mr: 1 }} />
+                  Tasks List
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+            <Divider sx={{ mb: 2 }} />
+            
+            {workActivitiesView === 'table' ? (
+              <WorkActivitiesTable
+                activities={workActivities}
+                onEdit={handleWorkActivityEdit}
+                onDelete={handleWorkActivityDelete}
+                showClientColumn={false}
+                emptyMessage="No work activities found for this client."
+              />
+            ) : (
+              <ClientTasksList
+                activities={workActivities}
+                emptyMessage="No tasks found for this client."
+              />
+            )}
+          </Paper>
+        </Grid>
+
         {/* Ready to Invoice Section */}
         <Grid item xs={12}>
           <Card>
@@ -970,49 +1014,7 @@ const ClientDetail: React.FC = () => {
           </Card>
         </Grid>
 
-        {/* Work Activities */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3, mt: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h5">Work Activities</Typography>
-              <ToggleButtonGroup
-                value={workActivitiesView}
-                exclusive
-                onChange={(event, newView) => {
-                  if (newView !== null) {
-                    setWorkActivitiesView(newView);
-                  }
-                }}
-                size="small"
-              >
-                <ToggleButton value="table" aria-label="table view">
-                  <TableChartIcon sx={{ mr: 1 }} />
-                  Table View
-                </ToggleButton>
-                <ToggleButton value="date" aria-label="date view">
-                  <ViewListIcon sx={{ mr: 1 }} />
-                  Tasks List
-                </ToggleButton>
-              </ToggleButtonGroup>
-            </Box>
-            <Divider sx={{ mb: 2 }} />
-            
-            {workActivitiesView === 'table' ? (
-              <WorkActivitiesTable
-                activities={workActivities}
-                onEdit={handleWorkActivityEdit}
-                onDelete={handleWorkActivityDelete}
-                showClientColumn={false}
-                emptyMessage="No work activities found for this client."
-              />
-            ) : (
-              <ClientTasksList
-                activities={workActivities}
-                emptyMessage="No tasks found for this client."
-              />
-            )}
-          </Paper>
-        </Grid>
+
 
         {/* Invoice Creation Dialog */}
         <Dialog open={showInvoiceDialog} onClose={() => setShowInvoiceDialog(false)} maxWidth="lg" fullWidth>
