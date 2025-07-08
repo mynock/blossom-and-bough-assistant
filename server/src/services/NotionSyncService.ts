@@ -347,20 +347,10 @@ export class NotionSyncService {
         start_cursor: startCursor,
         page_size: 100,
         filter: {
-          or: [
-            {
-              property: "Date",
-              date: {
-                on_or_before: todayStr
-              }
-            },
-            {
-              property: "Work Date",
-              date: {
-                on_or_before: todayStr
-              }
-            }
-          ]
+          property: "Date",
+          date: {
+            on_or_before: todayStr
+          }
         }
       });
 
