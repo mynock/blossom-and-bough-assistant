@@ -36,9 +36,11 @@ import {
   Close,
   Save,
   Cancel,
+  DirectionsCar,
+  Warning,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { API_ENDPOINTS } from '../config/api';
+import { API_ENDPOINTS, apiClient } from '../config/api';
 import { formatDateLongPacific } from '../utils/dateUtils';
 
 interface WorkActivity {
@@ -54,6 +56,7 @@ interface WorkActivity {
   clientId?: number;
   clientName?: string;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number;
   breakTimeMinutes?: number;
   nonBillableTimeMinutes?: number;
   notes: string | null;
@@ -64,6 +67,25 @@ interface WorkActivity {
   chargesList: Array<any>;
   plantsList: Array<any>;
   totalCharges: number;
+}
+
+interface TravelTimeAllocationItem {
+  workActivityId: number;
+  clientName: string;
+  hoursWorked: number;
+  originalTravelMinutes: number;
+  allocatedTravelMinutes: number;
+  newBillableHours: number;
+  hasZeroTravel: boolean;
+}
+
+interface TravelTimeAllocationResult {
+  date: string;
+  totalTravelMinutes: number;
+  totalWorkHours: number;
+  allocations: TravelTimeAllocationItem[];
+  updatedActivities: number;
+  warnings: string[];
 }
 
 
@@ -90,6 +112,16 @@ const WorkActivityReviewFlow: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editedActivity, setEditedActivity] = useState<Partial<WorkActivity>>({});
   const [approvedActivityIds, setApprovedActivityIds] = useState<Set<number>>(new Set());
+  
+  // Travel time allocation state
+  const [travelTimePreview, setTravelTimePreview] = useState<TravelTimeAllocationResult | null>(null);
+  const [travelTimeDialogOpen, setTravelTimeDialogOpen] = useState(false);
+  const [allocatingTravelTime, setAllocatingTravelTime] = useState(false);
+  const [completionTravelSummary, setCompletionTravelSummary] = useState<{ 
+    datesWithUnallocatedTravel: string[]; 
+    totalUnallocatedMinutes: number;
+    activitiesWithTravel: number;
+  } | null>(null);
 
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
@@ -282,6 +314,172 @@ const WorkActivityReviewFlow: React.FC = () => {
     }).format(amount);
   };
 
+  const handleTravelTimePreview = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingTravelTime(true);
+      const response = await apiClient.post('/api/travel-time/calculate', {
+        date: currentActivity.date
+      });
+      const data = await response.json();
+      setTravelTimePreview(data);
+      setTravelTimeDialogOpen(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to preview travel time allocation');
+    } finally {
+      setAllocatingTravelTime(false);
+    }
+  };
+
+  const handleTravelTimeApply = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingTravelTime(true);
+      await apiClient.post('/api/travel-time/apply', {
+        date: currentActivity.date
+      });
+      
+      // Refresh activities to show updated travel time allocations
+      await fetchActivitiesNeedingReview();
+      
+      setTravelTimeDialogOpen(false);
+      setTravelTimePreview(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply travel time allocation');
+    } finally {
+      setAllocatingTravelTime(false);
+    }
+  };
+
+  const formatMinutes = (minutes: number | undefined | null) => {
+    if (minutes === undefined || minutes === null || isNaN(minutes)) {
+      return '0 min';
+    }
+    return `${minutes} min`;
+  };
+
+  const handleEmployeeHoursChange = (employeeIndex: number, newHours: number) => {
+    setEditedActivity(prev => {
+      const updatedEmployeesList = [...(prev.employeesList || [])];
+      if (updatedEmployeesList[employeeIndex]) {
+        updatedEmployeesList[employeeIndex] = {
+          ...updatedEmployeesList[employeeIndex],
+          hours: newHours
+        };
+      }
+      return {
+        ...prev,
+        employeesList: updatedEmployeesList
+      };
+    });
+  };
+
+  const calculateEmployeeHoursTotal = () => {
+    if (!editedActivity.employeesList) return 0;
+    return editedActivity.employeesList.reduce((sum, employee) => sum + (employee.hours || 0), 0);
+  };
+
+  const distributeHoursProportionally = () => {
+    if (!editedActivity.employeesList || editedActivity.employeesList.length === 0) return;
+    
+    const totalHours = editedActivity.totalHours || 0;
+    const currentEmployeeTotal = calculateEmployeeHoursTotal();
+    
+    if (currentEmployeeTotal === 0) {
+      // If no current hours, distribute equally
+      const hoursPerEmployee = totalHours / editedActivity.employeesList.length;
+      setEditedActivity(prev => ({
+        ...prev,
+        employeesList: prev.employeesList?.map(emp => ({
+          ...emp,
+          hours: Math.round(hoursPerEmployee * 4) / 4 // Round to nearest quarter hour
+        })) || []
+      }));
+    } else {
+      // Distribute proportionally based on current distribution
+      setEditedActivity(prev => ({
+        ...prev,
+        employeesList: prev.employeesList?.map(emp => {
+          const proportion = (emp.hours || 0) / currentEmployeeTotal;
+          const newHours = totalHours * proportion;
+          return {
+            ...emp,
+            hours: Math.round(newHours * 4) / 4 // Round to nearest quarter hour
+          };
+        }) || []
+      }));
+    }
+  };
+
+  const calculateTravelTimeSummary = useCallback(() => {
+    const approvedActivities = activitiesNeedingReview.filter(activity => 
+      approvedActivityIds.has(activity.id)
+    );
+
+    const datesWithUnallocatedTravel: string[] = [];
+    const datesProcessed = new Set<string>();
+    let totalUnallocatedMinutes = 0;
+    let activitiesWithTravel = 0;
+
+    approvedActivities.forEach(activity => {
+      if (activity.travelTimeMinutes && activity.travelTimeMinutes > 0) {
+        activitiesWithTravel++;
+        if (!activity.adjustedTravelTimeMinutes && !datesProcessed.has(activity.date)) {
+          datesWithUnallocatedTravel.push(activity.date);
+          datesProcessed.add(activity.date);
+          
+          // Calculate total unallocated travel for this date
+          const dateActivities = approvedActivities.filter(a => a.date === activity.date);
+          const dateUnallocatedMinutes = dateActivities.reduce((sum, a) => {
+            return sum + ((a.travelTimeMinutes && !a.adjustedTravelTimeMinutes) ? a.travelTimeMinutes : 0);
+          }, 0);
+          totalUnallocatedMinutes += dateUnallocatedMinutes;
+        }
+      }
+    });
+
+    setCompletionTravelSummary({
+      datesWithUnallocatedTravel,
+      totalUnallocatedMinutes,
+      activitiesWithTravel
+    });
+  }, [activitiesNeedingReview, approvedActivityIds]);
+
+  const handleBatchTravelTimeAllocation = async () => {
+    if (!completionTravelSummary || completionTravelSummary.datesWithUnallocatedTravel.length === 0) {
+      return;
+    }
+
+    try {
+      setAllocatingTravelTime(true);
+      
+      // Apply travel time allocation for each date with unallocated travel
+      for (const date of completionTravelSummary.datesWithUnallocatedTravel) {
+        await apiClient.post('/api/travel-time/apply', { date });
+      }
+      
+      // Refresh activities to show updated allocations
+      await fetchActivitiesNeedingReview();
+      
+      // Recalculate summary
+      calculateTravelTimeSummary();
+      
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply batch travel time allocation');
+    } finally {
+      setAllocatingTravelTime(false);
+    }
+  };
+
+  // Calculate travel time summary when completion state is reached
+  useEffect(() => {
+    if (remainingCount === 0 && totalActivities > 0) {
+      calculateTravelTimeSummary();
+    }
+  }, [remainingCount, totalActivities, calculateTravelTimeSummary]);
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -329,14 +527,85 @@ const WorkActivityReviewFlow: React.FC = () => {
   if (remainingCount === 0) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
-          <Typography variant="h4" gutterBottom>
-            Review Session Complete! 🎉
-          </Typography>
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            You've reviewed and approved all {totalActivities} work activities.
-          </Typography>
+        <Paper sx={{ p: 4 }}>
+          <Box sx={{ textAlign: 'center', mb: 4 }}>
+            <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+            <Typography variant="h4" gutterBottom>
+              Review Session Complete! 🎉
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              You've reviewed and approved all {totalActivities} work activities.
+            </Typography>
+          </Box>
+
+          {/* Travel Time Summary */}
+          {completionTravelSummary && completionTravelSummary.activitiesWithTravel > 0 && (
+            <Card sx={{ mb: 4 }}>
+              <CardContent>
+                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <DirectionsCar color="primary" />
+                  Travel Time Allocation Summary
+                </Typography>
+                
+                <Grid container spacing={3} sx={{ mb: 3 }}>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Activities with Travel Time
+                    </Typography>
+                    <Typography variant="h6">
+                      {completionTravelSummary.activitiesWithTravel}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Dates Needing Allocation
+                    </Typography>
+                    <Typography variant="h6" color={completionTravelSummary.datesWithUnallocatedTravel.length > 0 ? 'warning.main' : 'success.main'}>
+                      {completionTravelSummary.datesWithUnallocatedTravel.length}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Unallocated Travel Time
+                    </Typography>
+                    <Typography variant="h6" color={completionTravelSummary.totalUnallocatedMinutes > 0 ? 'warning.main' : 'success.main'}>
+                      {formatMinutes(completionTravelSummary.totalUnallocatedMinutes)}
+                    </Typography>
+                  </Grid>
+                </Grid>
+
+                {completionTravelSummary.datesWithUnallocatedTravel.length > 0 ? (
+                  <Box>
+                    <Alert severity="warning" sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Travel time allocation needed for {completionTravelSummary.datesWithUnallocatedTravel.length} date(s):
+                      </Typography>
+                      <Typography variant="body2">
+                        {completionTravelSummary.datesWithUnallocatedTravel.map(date => formatDateLongPacific(date)).join(', ')}
+                      </Typography>
+                    </Alert>
+                    <Button
+                      variant="contained"
+                      startIcon={<DirectionsCar />}
+                      onClick={handleBatchTravelTimeAllocation}
+                      disabled={allocatingTravelTime}
+                      color="warning"
+                      fullWidth
+                    >
+                      {allocatingTravelTime ? <CircularProgress size={20} /> : 'Allocate Travel Time for All Dates'}
+                    </Button>
+                  </Box>
+                ) : (
+                  <Alert severity="success">
+                    <Typography variant="body2">
+                      ✅ All travel time has been properly allocated!
+                    </Typography>
+                  </Alert>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
             <Button variant="contained" onClick={() => navigate('/work-activities')}>
               View All Activities
@@ -471,6 +740,35 @@ const WorkActivityReviewFlow: React.FC = () => {
                     {currentActivity.totalHours}h
                   </Typography>
                 </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <DirectionsCar fontSize="small" />
+                    Original Travel Time
+                  </Typography>
+                  <Typography variant="body1">
+                    {currentActivity.travelTimeMinutes ? `${currentActivity.travelTimeMinutes} min` : 'None'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <DirectionsCar fontSize="small" />
+                    Allocated Travel Time
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">
+                      {currentActivity.adjustedTravelTimeMinutes ? `${currentActivity.adjustedTravelTimeMinutes} min` : 'Not allocated'}
+                    </Typography>
+                    {(currentActivity.travelTimeMinutes || 0) > 0 && !currentActivity.adjustedTravelTimeMinutes && (
+                      <Chip 
+                        label="Needs Allocation" 
+                        color="warning" 
+                        size="small" 
+                        icon={<Warning />}
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Box>
+                </Grid>
               </Grid>
 
               {/* Employees */}
@@ -591,6 +889,17 @@ const WorkActivityReviewFlow: React.FC = () => {
                   disabled={saving}
                 >
                   {isCurrentActivityApproved ? 'Edit' : 'Edit & Approve'}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<DirectionsCar />}
+                  onClick={handleTravelTimePreview}
+                  disabled={allocatingTravelTime}
+                  color="info"
+                >
+                  {allocatingTravelTime ? <CircularProgress size={20} /> : 'Allocate Travel Time'}
                 </Button>
 
                 {findNextUnprocessedActivity() !== null && (
@@ -725,6 +1034,89 @@ const WorkActivityReviewFlow: React.FC = () => {
                 inputProps={{ step: 0.25, min: 0 }}
               />
             </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Travel Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.travelTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, travelTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <DirectionsCar sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                helperText="Original travel time from work notes"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Allocated Travel Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.adjustedTravelTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, adjustedTravelTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <DirectionsCar sx={{ mr: 1, color: 'primary.main' }} />
+                }}
+                helperText="Proportionally allocated travel time"
+              />
+            </Grid>
+            
+            {/* Employee Hours Section */}
+            {editedActivity.employeesList && editedActivity.employeesList.length > 0 && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+                  <Person color="primary" />
+                  Employee Hours
+                </Typography>
+                <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                  <Grid container spacing={2}>
+                    {editedActivity.employeesList.map((employee, index) => (
+                      <Grid item xs={12} sm={6} key={employee.employeeId}>
+                        <TextField
+                          label={employee.employeeName || `Employee ${employee.employeeId}`}
+                          type="number"
+                          fullWidth
+                          value={employee.hours || ''}
+                          onChange={(e) => handleEmployeeHoursChange(index, parseFloat(e.target.value) || 0)}
+                          inputProps={{ step: 0.25, min: 0 }}
+                          InputProps={{
+                            startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />,
+                            endAdornment: <Typography variant="body2" color="text.secondary">hours</Typography>
+                          }}
+                        />
+                      </Grid>
+                    ))}
+                    <Grid item xs={12}>
+                      <Box sx={{ mt: 1, p: 1, bgcolor: 'info.light', borderRadius: 1 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="body2" color="info.dark">
+                            Employee Hours Total: {calculateEmployeeHoursTotal()}h | Activity Total Hours: {editedActivity.totalHours || 0}h
+                          </Typography>
+                          {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={distributeHoursProportionally}
+                              sx={{ ml: 1 }}
+                            >
+                              Auto-Distribute
+                            </Button>
+                          )}
+                        </Box>
+                        {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
+                          <Typography variant="body2" color="warning.dark">
+                            ⚠️ Employee hours don't match total hours. Click "Auto-Distribute" to distribute hours proportionally.
+                          </Typography>
+                        )}
+                      </Box>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
+            
             <Grid item xs={12}>
               <TextField
                 label="Tasks"
@@ -758,6 +1150,147 @@ const WorkActivityReviewFlow: React.FC = () => {
             disabled={saving}
           >
             {saving ? <CircularProgress size={20} /> : isCurrentActivityApproved ? 'Save Changes' : 'Save & Approve'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Travel Time Allocation Dialog */}
+      <Dialog 
+        open={travelTimeDialogOpen} 
+        onClose={() => setTravelTimeDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Travel Time Allocation Preview
+          <IconButton
+            onClick={() => setTravelTimeDialogOpen(false)}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {travelTimePreview && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Date: {formatDateLongPacific(travelTimePreview.date)}
+              </Typography>
+              
+              {/* Summary */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Allocation Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Travel Time
+                    </Typography>
+                    <Typography variant="h6">
+                      {formatMinutes(travelTimePreview.totalTravelMinutes)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Work Hours
+                    </Typography>
+                    <Typography variant="h6">
+                      {travelTimePreview.totalWorkHours}h
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Activities Updated
+                    </Typography>
+                    <Typography variant="h6">
+                      {travelTimePreview.updatedActivities}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Warnings */}
+              {travelTimePreview.warnings.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Warnings:
+                  </Typography>
+                  {travelTimePreview.warnings.map((warning, index) => (
+                    <Typography key={index} variant="body2">
+                      • {warning}
+                    </Typography>
+                  ))}
+                </Alert>
+              )}
+
+              {/* Allocation Details */}
+              <Typography variant="subtitle1" gutterBottom>
+                Allocation Details
+              </Typography>
+              <Stack spacing={2}>
+                {travelTimePreview.allocations.map((allocation, index) => (
+                  <Paper key={index} sx={{ p: 2, border: '1px solid', borderColor: 'grey.200' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                        {allocation.clientName}
+                      </Typography>
+                      {allocation.hasZeroTravel && (
+                        <Chip label="Zero Travel" size="small" color="info" />
+                      )}
+                    </Box>
+                    <Grid container spacing={1}>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Work Hours
+                        </Typography>
+                        <Typography variant="body2">
+                          {allocation.hoursWorked}h
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Original Travel
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatMinutes(allocation.originalTravelMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Allocated Travel
+                        </Typography>
+                        <Typography variant="body2" color="primary.main" sx={{ fontWeight: 'medium' }}>
+                          {formatMinutes(allocation.allocatedTravelMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          New Billable Hours
+                        </Typography>
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 'medium' }}>
+                          {allocation.newBillableHours}h
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTravelTimeDialogOpen(false)} startIcon={<Cancel />}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleTravelTimeApply} 
+            variant="contained" 
+            startIcon={<DirectionsCar />}
+            disabled={allocatingTravelTime}
+            color="primary"
+          >
+            {allocatingTravelTime ? <CircularProgress size={20} /> : 'Apply Allocation'}
           </Button>
         </DialogActions>
       </Dialog>
