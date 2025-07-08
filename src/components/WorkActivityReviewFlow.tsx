@@ -369,9 +369,29 @@ const WorkActivityReviewFlow: React.FC = () => {
           hours: newHours
         };
       }
+      
+      // Calculate new total hours from employee hours
+      const newTotalHours = updatedEmployeesList.reduce((sum, emp) => sum + (emp.hours || 0), 0);
+      
+      // Proportionally adjust billable hours if we had a previous total
+      const oldTotalHours = prev.totalHours || 0;
+      const oldBillableHours = prev.billableHours || 0;
+      let newBillableHours = oldBillableHours;
+      
+      if (oldTotalHours > 0 && oldBillableHours > 0) {
+        // Maintain the same ratio of billable to total hours
+        const billableRatio = oldBillableHours / oldTotalHours;
+        newBillableHours = Math.round(newTotalHours * billableRatio * 4) / 4; // Round to quarter hour
+      } else if (oldBillableHours === oldTotalHours) {
+        // If billable hours equaled total hours, keep them equal
+        newBillableHours = newTotalHours;
+      }
+      
       return {
         ...prev,
-        employeesList: updatedEmployeesList
+        employeesList: updatedEmployeesList,
+        totalHours: Math.round(newTotalHours * 4) / 4, // Round to quarter hour
+        billableHours: Math.round(newBillableHours * 4) / 4
       };
     });
   };
@@ -1093,28 +1113,24 @@ const WorkActivityReviewFlow: React.FC = () => {
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Box>
                           <Typography variant="body2" color="text.secondary">
-                            Employee Total: <strong>{calculateEmployeeHoursTotal()}h</strong> | Activity Total: <strong>{editedActivity.totalHours || 0}h</strong>
+                            Employee Total: <strong>{calculateEmployeeHoursTotal()}h</strong> | Activity Total: <strong>{editedActivity.totalHours || 0}h</strong> | Billable: <strong>{editedActivity.billableHours || 0}h</strong>
                           </Typography>
-                          {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
-                            <Typography variant="body2" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                              <Warning fontSize="small" />
-                              Hours don't match - click Auto-Distribute to fix
-                            </Typography>
-                          )}
+                          <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                            <CheckCircle fontSize="small" />
+                            Totals automatically calculated from employee hours
+                          </Typography>
                         </Box>
                         {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
                           <Button
                             size="small"
-                            variant="contained"
+                            variant="outlined"
                             onClick={distributeHoursProportionally}
                             sx={{ 
-                              bgcolor: 'warning.main', 
-                              '&:hover': { bgcolor: 'warning.dark' },
                               minWidth: 'auto',
                               px: 2
                             }}
                           >
-                            Auto-Distribute
+                            Reset Distribution
                           </Button>
                         )}
                       </Box>
