@@ -88,6 +88,14 @@ interface TravelTimeAllocationResult {
   warnings: string[];
 }
 
+interface BulkTravelTimeDate {
+  date: string;
+  activitiesCount: number;
+  totalTravelMinutes: number;
+  hasUnallocatedTravel: boolean;
+  clientsInvolved: string[];
+}
+
 
 
 const WORK_TYPES = [
@@ -122,6 +130,12 @@ const WorkActivityReviewFlow: React.FC = () => {
     totalUnallocatedMinutes: number;
     activitiesWithTravel: number;
   } | null>(null);
+  
+  // Bulk travel time allocation state
+  const [showBulkTravelAllocation, setShowBulkTravelAllocation] = useState(false);
+  const [bulkTravelDates, setBulkTravelDates] = useState<BulkTravelTimeDate[]>([]);
+  const [bulkAllocationResults, setBulkAllocationResults] = useState<Record<string, TravelTimeAllocationResult>>({});
+  const [selectedBulkDates, setSelectedBulkDates] = useState<Set<string>>(new Set());
 
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
@@ -139,13 +153,58 @@ const WorkActivityReviewFlow: React.FC = () => {
         throw new Error('Failed to fetch activities needing review');
       }
       const data = await response.json();
-      setActivitiesNeedingReview(Array.isArray(data) ? data : []);
+      const activities = Array.isArray(data) ? data : [];
+      setActivitiesNeedingReview(activities);
+      
+      // Analyze activities for bulk travel time allocation
+      analyzeBulkTravelTimeNeeds(activities);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities');
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const analyzeBulkTravelTimeNeeds = (activities: WorkActivity[]) => {
+    const dateMap = new Map<string, BulkTravelTimeDate>();
+    
+    activities.forEach(activity => {
+      if (!dateMap.has(activity.date)) {
+        dateMap.set(activity.date, {
+          date: activity.date,
+          activitiesCount: 0,
+          totalTravelMinutes: 0,
+          hasUnallocatedTravel: false,
+          clientsInvolved: []
+        });
+      }
+      
+      const dateInfo = dateMap.get(activity.date)!;
+      dateInfo.activitiesCount++;
+      
+      if (activity.travelTimeMinutes && activity.travelTimeMinutes > 0) {
+        dateInfo.totalTravelMinutes += activity.travelTimeMinutes;
+        if (!activity.adjustedTravelTimeMinutes) {
+          dateInfo.hasUnallocatedTravel = true;
+        }
+      }
+      
+      if (activity.clientName && !dateInfo.clientsInvolved.includes(activity.clientName)) {
+        dateInfo.clientsInvolved.push(activity.clientName);
+      }
+    });
+    
+    const datesNeedingAllocation = Array.from(dateMap.values())
+      .filter(date => date.hasUnallocatedTravel && date.totalTravelMinutes > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    setBulkTravelDates(datesNeedingAllocation);
+    
+    // Show bulk allocation step if there are dates needing allocation
+    if (datesNeedingAllocation.length > 0) {
+      setShowBulkTravelAllocation(true);
+    }
+  };
 
   useEffect(() => {
     fetchActivitiesNeedingReview();
@@ -509,6 +568,67 @@ const WorkActivityReviewFlow: React.FC = () => {
     }
   }, [remainingCount, totalActivities, calculateTravelTimeSummary]);
 
+  const handleBulkTravelTimePreview = async (date: string) => {
+    try {
+      setAllocatingTravelTime(true);
+      const response = await apiClient.post('/api/travel-time/calculate', { date });
+      const data = await response.json();
+      setBulkAllocationResults(prev => ({ ...prev, [date]: data }));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to preview travel time allocation');
+    } finally {
+      setAllocatingTravelTime(false);
+    }
+  };
+
+  const handleBulkTravelTimeApply = async (dates: string[]) => {
+    try {
+      setAllocatingTravelTime(true);
+      
+      for (const date of dates) {
+        await apiClient.post('/api/travel-time/apply', { date });
+      }
+      
+      // Refresh activities to show updated allocations
+      await fetchActivitiesNeedingReview();
+      
+      // Clear bulk allocation state and proceed to normal review
+      setShowBulkTravelAllocation(false);
+      setBulkAllocationResults({});
+      setSelectedBulkDates(new Set());
+      
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply bulk travel time allocation');
+    } finally {
+      setAllocatingTravelTime(false);
+    }
+  };
+
+  const handleSkipBulkAllocation = () => {
+    setShowBulkTravelAllocation(false);
+  };
+
+  const handleSelectAllBulkDates = () => {
+    const allDates = new Set(bulkTravelDates.map(d => d.date));
+    setSelectedBulkDates(allDates);
+  };
+
+  const handleDeselectAllBulkDates = () => {
+    setSelectedBulkDates(new Set());
+  };
+
+  const toggleBulkDateSelection = (date: string) => {
+    setSelectedBulkDates(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(date)) {
+        newSet.delete(date);
+      } else {
+        newSet.add(date);
+      }
+      return newSet;
+    });
+  };
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -529,6 +649,142 @@ const WorkActivityReviewFlow: React.FC = () => {
         <Button onClick={() => window.location.reload()}>
           Try Again
         </Button>
+      </Container>
+    );
+  }
+
+  // Show bulk travel time allocation step first
+  if (showBulkTravelAllocation && bulkTravelDates.length > 0) {
+    return (
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Paper sx={{ p: 4 }}>
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h4" gutterBottom>
+              Bulk Travel Time Allocation
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Allocate travel time for multiple dates before reviewing individual activities
+            </Typography>
+          </Box>
+
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              Found {bulkTravelDates.length} date(s) with unallocated travel time. You can allocate travel time in bulk here, or skip to review activities individually.
+            </Typography>
+          </Alert>
+
+          <Box sx={{ mb: 3 }}>
+            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                onClick={handleSelectAllBulkDates}
+                disabled={selectedBulkDates.size === bulkTravelDates.length}
+              >
+                Select All
+              </Button>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                onClick={handleDeselectAllBulkDates}
+                disabled={selectedBulkDates.size === 0}
+              >
+                Deselect All
+              </Button>
+            </Stack>
+
+            <Grid container spacing={2}>
+              {bulkTravelDates.map((dateInfo) => (
+                <Grid item xs={12} md={6} key={dateInfo.date}>
+                  <Card 
+                    sx={{ 
+                      border: selectedBulkDates.has(dateInfo.date) ? '2px solid' : '1px solid',
+                      borderColor: selectedBulkDates.has(dateInfo.date) ? 'primary.main' : 'grey.200',
+                      cursor: 'pointer',
+                      '&:hover': { boxShadow: 2 }
+                    }}
+                    onClick={() => toggleBulkDateSelection(dateInfo.date)}
+                  >
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                        <Typography variant="h6">
+                          {formatDateLongPacific(dateInfo.date)}
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {selectedBulkDates.has(dateInfo.date) && (
+                            <CheckCircle color="primary" />
+                          )}
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleBulkTravelTimePreview(dateInfo.date);
+                            }}
+                            disabled={allocatingTravelTime}
+                          >
+                            Preview
+                          </Button>
+                        </Box>
+                      </Box>
+                      
+                      <Grid container spacing={1} sx={{ mb: 2 }}>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Activities
+                          </Typography>
+                          <Typography variant="body1">
+                            {dateInfo.activitiesCount}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={6}>
+                          <Typography variant="body2" color="text.secondary">
+                            Travel Time
+                          </Typography>
+                          <Typography variant="body1">
+                            {formatMinutes(dateInfo.totalTravelMinutes)}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        Clients: {dateInfo.clientsInvolved.join(', ')}
+                      </Typography>
+
+                      {bulkAllocationResults[dateInfo.date] && (
+                        <Alert severity="success" sx={{ mt: 2 }}>
+                          <Typography variant="body2">
+                            Preview: {bulkAllocationResults[dateInfo.date].allocations.length} activities will be updated
+                          </Typography>
+                        </Alert>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+
+          <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
+            <Button
+              variant="contained"
+              startIcon={<DirectionsCar />}
+              onClick={() => handleBulkTravelTimeApply(Array.from(selectedBulkDates))}
+              disabled={selectedBulkDates.size === 0 || allocatingTravelTime}
+              size="large"
+            >
+              {allocatingTravelTime ? <CircularProgress size={20} /> : `Allocate Travel Time (${selectedBulkDates.size} dates)`}
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={handleSkipBulkAllocation}
+              disabled={allocatingTravelTime}
+              size="large"
+            >
+              Skip & Review Individually
+            </Button>
+          </Stack>
+        </Paper>
       </Container>
     );
   }
