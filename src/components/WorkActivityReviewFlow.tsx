@@ -789,6 +789,24 @@ const WorkActivityReviewFlow: React.FC = () => {
                     )}
                   </Box>
                 </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
+                    Non-Billable Time
+                  </Typography>
+                  <Typography variant="body1">
+                    {currentActivity.nonBillableTimeMinutes ? `${currentActivity.nonBillableTimeMinutes} min` : 'None'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
+                    Break Time
+                  </Typography>
+                  <Typography variant="body1">
+                    {currentActivity.breakTimeMinutes ? `${currentActivity.breakTimeMinutes} min` : 'None'}
+                  </Typography>
+                </Grid>
               </Grid>
 
               {/* Employees */}
@@ -1080,6 +1098,34 @@ const WorkActivityReviewFlow: React.FC = () => {
                   startAdornment: <DirectionsCar sx={{ mr: 1, color: 'primary.main' }} />
                 }}
                 helperText="Proportionally allocated travel time"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Non-Billable Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.nonBillableTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, nonBillableTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                helperText="Time spent on non-billable activities"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Break Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.breakTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, breakTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                helperText="Time spent on breaks"
               />
             </Grid>
             
