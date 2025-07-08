@@ -38,6 +38,7 @@ import {
   Cancel,
   DirectionsCar,
   Warning,
+  OpenInNew,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS, apiClient } from '../config/api';
@@ -966,7 +967,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                       />
                     )}
                   </Box>
-                  <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                  <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
                     <Chip 
                       label={formatDateLongPacific(currentActivity.date)} 
                       icon={<AccessTime />} 
@@ -982,6 +983,19 @@ const WorkActivityReviewFlow: React.FC = () => {
                       color="primary" 
                       size="small" 
                     />
+                    {currentActivity.notionPageId && (
+                      <Chip
+                        label="View in Notion"
+                        icon={<OpenInNew />}
+                        size="small"
+                        clickable
+                        onClick={() => window.open(`https://www.notion.so/${currentActivity.notionPageId}`, '_blank')}
+                        sx={{ 
+                          bgcolor: 'grey.100',
+                          '&:hover': { bgcolor: 'grey.200' }
+                        }}
+                      />
+                    )}
                   </Stack>
                 </Box>
                 <IconButton onClick={handleEdit} color="primary" size="large">
