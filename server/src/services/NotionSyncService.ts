@@ -330,18 +330,38 @@ export class NotionSyncService {
   }
 
   /**
-   * Get all pages from the Notion database
+   * Get all pages from the Notion database, excluding pages with future dates
    */
   private async getAllNotionPages(): Promise<any[]> {
     const pages: any[] = [];
     let hasMore = true;
     let startCursor: string | undefined;
 
+    // Get today's date in YYYY-MM-DD format for filtering
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
     while (hasMore) {
       const response = await notion.databases.query({
         database_id: DATABASE_ID,
         start_cursor: startCursor,
         page_size: 100,
+        filter: {
+          or: [
+            {
+              property: "Date",
+              date: {
+                on_or_before: todayStr
+              }
+            },
+            {
+              property: "Work Date",
+              date: {
+                on_or_before: todayStr
+              }
+            }
+          ]
+        }
       });
 
       pages.push(...response.results);
@@ -349,6 +369,7 @@ export class NotionSyncService {
       startCursor = response.next_cursor || undefined;
     }
 
+    debugLog.info(`Found ${pages.length} pages with dates on or before ${todayStr} (excluding future dates)`);
     return pages;
   }
 
