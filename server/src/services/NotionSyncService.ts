@@ -1206,19 +1206,19 @@ export class NotionSyncService {
    * Note: totalHours represents total person-hours (duration × employee count)
    * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
+   * Formula: totalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
-  private calculateBillableHours(totalHours: number, lunchTime?: number, nonBillableTime?: number): number {
-    let nonBillableHours = 0;
+  private calculateBillableHours(
+    totalHours: number, 
+    lunchTime?: number, 
+    nonBillableTime?: number,
+    adjustedTravelTimeMinutes: number = 0
+  ): number {
+    const breakHours = (lunchTime || 0) / 60; // Convert minutes to hours
+    const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
+    const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
-    if (lunchTime) {
-      nonBillableHours += lunchTime / 60; // Convert minutes to hours (fixed amount, not per-person)
-    }
-    
-    if (nonBillableTime) {
-      nonBillableHours += nonBillableTime / 60; // Convert minutes to hours (fixed amount, not per-person)
-    }
-    
-    const billableHours = totalHours - nonBillableHours;
+    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
