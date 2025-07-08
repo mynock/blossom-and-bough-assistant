@@ -1078,11 +1078,11 @@ const WorkActivityReviewFlow: React.FC = () => {
                 type="number"
                 fullWidth
                 value={editedActivity.billableHours || ''}
-                onChange={(e) => setEditedActivity(prev => ({ ...prev, billableHours: parseFloat(e.target.value) || 0 }))}
+                disabled
                 inputProps={{ step: 0.25, min: 0 }}
                 helperText="Auto-calculated: Total - Non-billable"
                 InputProps={{
-                  sx: { bgcolor: 'grey.50' }
+                  sx: { bgcolor: 'grey.100' }
                 }}
               />
             </Grid>
