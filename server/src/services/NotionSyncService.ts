@@ -330,18 +330,38 @@ export class NotionSyncService {
   }
 
   /**
-   * Get all pages from the Notion database
+   * Get all pages from the Notion database, excluding pages with future dates
    */
   private async getAllNotionPages(): Promise<any[]> {
     const pages: any[] = [];
     let hasMore = true;
     let startCursor: string | undefined;
 
+    // Get today's date in YYYY-MM-DD format for filtering
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+
     while (hasMore) {
       const response = await notion.databases.query({
         database_id: DATABASE_ID,
         start_cursor: startCursor,
         page_size: 100,
+        filter: {
+          or: [
+            {
+              property: "Date",
+              date: {
+                on_or_before: todayStr
+              }
+            },
+            {
+              property: "Work Date",
+              date: {
+                on_or_before: todayStr
+              }
+            }
+          ]
+        }
       });
 
       pages.push(...response.results);
@@ -349,6 +369,7 @@ export class NotionSyncService {
       startCursor = response.next_cursor || undefined;
     }
 
+    debugLog.info(`Found ${pages.length} pages with dates on or before ${todayStr} (excluding future dates)`);
     return pages;
   }
 
@@ -1206,19 +1227,19 @@ export class NotionSyncService {
    * Note: totalHours represents total person-hours (duration × employee count)
    * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
+   * Formula: totalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
-  private calculateBillableHours(totalHours: number, lunchTime?: number, nonBillableTime?: number): number {
-    let nonBillableHours = 0;
+  private calculateBillableHours(
+    totalHours: number, 
+    lunchTime?: number, 
+    nonBillableTime?: number,
+    adjustedTravelTimeMinutes: number = 0
+  ): number {
+    const breakHours = (lunchTime || 0) / 60; // Convert minutes to hours
+    const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
+    const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
-    if (lunchTime) {
-      nonBillableHours += lunchTime / 60; // Convert minutes to hours (fixed amount, not per-person)
-    }
-    
-    if (nonBillableTime) {
-      nonBillableHours += nonBillableTime / 60; // Convert minutes to hours (fixed amount, not per-person)
-    }
-    
-    const billableHours = totalHours - nonBillableHours;
+    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places

@@ -274,9 +274,9 @@ export class WorkActivityService extends DatabaseService {
    * Create a new work activity with employees and charges
    */
   async createWorkActivity(data: CreateWorkActivityData): Promise<WorkActivity> {
-    // Apply rounding to billable hours if present
     let workActivityData = { ...data.workActivity };
     
+    // If billable hours is provided directly, apply rounding
     if (workActivityData.billableHours !== undefined && workActivityData.billableHours !== null) {
       try {
         const roundedHours = await this.settingsService.roundHours(workActivityData.billableHours);
@@ -288,6 +288,30 @@ export class WorkActivityService extends DatabaseService {
       } catch (error) {
         debugLog.warn(`⚠️ Failed to apply rounding to billable hours for new work activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
         // Continue with unrounded hours if rounding fails
+      }
+    } else if (workActivityData.totalHours) {
+      // If billable hours is not provided but we have total hours, calculate it
+      let calculatedBillableHours = this.calculateBillableHours(
+        workActivityData.totalHours,
+        workActivityData.breakTimeMinutes || 0,
+        workActivityData.nonBillableTimeMinutes || 0,
+        workActivityData.adjustedTravelTimeMinutes || 0
+      );
+      
+      // Apply rounding to calculated billable hours
+      try {
+        const roundedHours = await this.settingsService.roundHours(calculatedBillableHours);
+        workActivityData = {
+          ...workActivityData,
+          billableHours: roundedHours
+        };
+        debugLog.info(`🧮 Calculated and rounded billable hours for new work activity: totalHours=${workActivityData.totalHours}, calculated=${calculatedBillableHours} -> ${roundedHours}`);
+      } catch (error) {
+        debugLog.warn(`⚠️ Failed to apply rounding to calculated billable hours for new work activity: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        workActivityData = {
+          ...workActivityData,
+          billableHours: calculatedBillableHours
+        };
       }
     }
     
@@ -351,14 +375,47 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
+   * Calculate billable hours from the component values
+   * Formula: totalHours - (breakTimeMinutes/60) - (nonBillableTimeMinutes/60) + (adjustedTravelTimeMinutes/60)
+   */
+  private calculateBillableHours(
+    totalHours: number,
+    breakTimeMinutes: number = 0,
+    nonBillableTimeMinutes: number = 0,
+    adjustedTravelTimeMinutes: number = 0
+  ): number {
+    const breakHours = breakTimeMinutes / 60;
+    const nonBillableHours = nonBillableTimeMinutes / 60;
+    const adjustedTravelHours = adjustedTravelTimeMinutes / 60;
+    
+    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
+    
+    // Ensure billable hours is not negative
+    return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
+  }
+
+  /**
    * Update a work activity
    */
   async updateWorkActivity(id: number, data: Partial<NewWorkActivity>): Promise<WorkActivity | undefined> {
-    // If adjustedTravelTimeMinutes is being updated, recalculate billable hours
     let finalUpdateData = { ...data };
     
-    // Apply rounding to billable hours if being updated directly
-    if (data.billableHours !== undefined && data.billableHours !== null && data.adjustedTravelTimeMinutes === undefined) {
+    // Get current work activity to access current values for recalculation
+    const currentActivity = await this.getWorkActivityById(id);
+    if (!currentActivity) {
+      throw new Error(`Work activity with ID ${id} not found`);
+    }
+    
+    // Check if any field that affects billable hours calculation is being updated
+    const billableHoursInputsChanged = (
+      data.totalHours !== undefined ||
+      data.breakTimeMinutes !== undefined ||
+      data.nonBillableTimeMinutes !== undefined ||
+      data.adjustedTravelTimeMinutes !== undefined
+    );
+    
+    // If billable hours is being updated directly (not from calculation), apply rounding
+    if (data.billableHours !== undefined && data.billableHours !== null && !billableHoursInputsChanged) {
       try {
         const roundedHours = await this.settingsService.roundHours(data.billableHours);
         finalUpdateData = {
@@ -372,36 +429,37 @@ export class WorkActivityService extends DatabaseService {
       }
     }
     
-    if (data.adjustedTravelTimeMinutes !== undefined) {
-      // Get current work activity to access current billable/total hours
-      const currentActivity = await this.getWorkActivityById(id);
-      if (currentActivity) {
-        // Calculate base work hours (excluding any previous travel time)
-        const baseWorkHours = currentActivity.totalHours || 0;
-        
-        // Convert adjusted travel time to hours (handle null safely)
-        const adjustedTravelMinutes = data.adjustedTravelTimeMinutes || 0;
-        const adjustedTravelHours = adjustedTravelMinutes / 60;
-        
-        // Calculate new billable hours: base work hours + adjusted travel hours
-        let newBillableHours = baseWorkHours + adjustedTravelHours;
-        
-        // Apply rounding if enabled in settings
-        try {
-          const roundedHours = await this.settingsService.roundHours(newBillableHours);
-          debugLog.info(`🧮 Recalculated billable hours for work activity ${id}: ${baseWorkHours} base hours + ${adjustedTravelHours} travel hours = ${newBillableHours} total billable hours -> ${roundedHours} rounded billable hours`);
-          newBillableHours = roundedHours;
-        } catch (error) {
-          debugLog.warn(`⚠️ Failed to apply rounding to billable hours for work activity ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          // Continue with unrounded hours if rounding fails
-        }
-        
-        // Add the recalculated billable hours to the update data
-        finalUpdateData = {
-          ...finalUpdateData,
-          billableHours: newBillableHours
-        };
+    // If any input to billable hours calculation changed, recalculate billable hours
+    if (billableHoursInputsChanged) {
+             // Use updated values where provided, otherwise use current values
+       const newTotalHours = data.totalHours !== undefined ? data.totalHours : currentActivity.totalHours;
+       const newBreakTimeMinutes = data.breakTimeMinutes !== undefined ? data.breakTimeMinutes : (currentActivity.breakTimeMinutes || 0);
+       const newNonBillableTimeMinutes = data.nonBillableTimeMinutes !== undefined ? data.nonBillableTimeMinutes : (currentActivity.nonBillableTimeMinutes || 0);
+       const newAdjustedTravelTimeMinutes = data.adjustedTravelTimeMinutes !== undefined ? (data.adjustedTravelTimeMinutes || 0) : (currentActivity.adjustedTravelTimeMinutes || 0);
+      
+             // Calculate new billable hours using the standard formula
+       let newBillableHours = this.calculateBillableHours(
+         newTotalHours,
+         newBreakTimeMinutes || undefined,
+         newNonBillableTimeMinutes || undefined,
+         newAdjustedTravelTimeMinutes
+       );
+      
+      // Apply rounding if enabled in settings
+      try {
+        const roundedHours = await this.settingsService.roundHours(newBillableHours);
+        debugLog.info(`🧮 Recalculated billable hours for work activity ${id}: totalHours=${newTotalHours}, breakTime=${newBreakTimeMinutes}min, nonBillableTime=${newNonBillableTimeMinutes}min, adjustedTravel=${newAdjustedTravelTimeMinutes}min -> ${newBillableHours} billable hours -> ${roundedHours} rounded billable hours`);
+        newBillableHours = roundedHours;
+      } catch (error) {
+        debugLog.warn(`⚠️ Failed to apply rounding to recalculated billable hours for work activity ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        // Continue with unrounded hours if rounding fails
       }
+      
+      // Add the recalculated billable hours to the update data
+      finalUpdateData = {
+        ...finalUpdateData,
+        billableHours: newBillableHours
+      };
     }
     
     // Set lastUpdatedBy to 'web_app' by default unless explicitly provided (for Notion sync)
