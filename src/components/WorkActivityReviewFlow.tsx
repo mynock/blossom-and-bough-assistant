@@ -1070,7 +1070,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                   <Person color="primary" />
                   Employee Hours
                 </Typography>
-                <Paper sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Paper sx={{ p: 2, border: '1px solid', borderColor: 'grey.200' }}>
                   <Grid container spacing={2}>
                     {editedActivity.employeesList.map((employee, index) => (
                       <Grid item xs={12} sm={6} key={employee.employeeId}>
@@ -1078,37 +1078,44 @@ const WorkActivityReviewFlow: React.FC = () => {
                           label={employee.employeeName || `Employee ${employee.employeeId}`}
                           type="number"
                           fullWidth
+                          size="small"
                           value={employee.hours || ''}
                           onChange={(e) => handleEmployeeHoursChange(index, parseFloat(e.target.value) || 0)}
                           inputProps={{ step: 0.25, min: 0 }}
                           InputProps={{
-                            startAdornment: <Person sx={{ mr: 1, color: 'text.secondary' }} />,
-                            endAdornment: <Typography variant="body2" color="text.secondary">hours</Typography>
+                            endAdornment: <Typography variant="body2" color="text.secondary" sx={{ mr: 1 }}>hours</Typography>
                           }}
                         />
                       </Grid>
                     ))}
                     <Grid item xs={12}>
-                      <Box sx={{ mt: 1, p: 1, bgcolor: 'info.light', borderRadius: 1 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-                          <Typography variant="body2" color="info.dark">
-                            Employee Hours Total: {calculateEmployeeHoursTotal()}h | Activity Total Hours: {editedActivity.totalHours || 0}h
+                      <Divider sx={{ my: 1 }} />
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Box>
+                          <Typography variant="body2" color="text.secondary">
+                            Employee Total: <strong>{calculateEmployeeHoursTotal()}h</strong> | Activity Total: <strong>{editedActivity.totalHours || 0}h</strong>
                           </Typography>
                           {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              onClick={distributeHoursProportionally}
-                              sx={{ ml: 1 }}
-                            >
-                              Auto-Distribute
-                            </Button>
+                            <Typography variant="body2" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
+                              <Warning fontSize="small" />
+                              Hours don't match - click Auto-Distribute to fix
+                            </Typography>
                           )}
                         </Box>
                         {Math.abs((calculateEmployeeHoursTotal() || 0) - (editedActivity.totalHours || 0)) > 0.01 && (
-                          <Typography variant="body2" color="warning.dark">
-                            ⚠️ Employee hours don't match total hours. Click "Auto-Distribute" to distribute hours proportionally.
-                          </Typography>
+                          <Button
+                            size="small"
+                            variant="contained"
+                            onClick={distributeHoursProportionally}
+                            sx={{ 
+                              bgcolor: 'warning.main', 
+                              '&:hover': { bgcolor: 'warning.dark' },
+                              minWidth: 'auto',
+                              px: 2
+                            }}
+                          >
+                            Auto-Distribute
+                          </Button>
                         )}
                       </Box>
                     </Grid>
