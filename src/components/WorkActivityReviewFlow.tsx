@@ -372,26 +372,29 @@ const WorkActivityReviewFlow: React.FC = () => {
       
       // Calculate new total hours from employee hours
       const newTotalHours = updatedEmployeesList.reduce((sum, emp) => sum + (emp.hours || 0), 0);
+      const roundedTotalHours = Math.round(newTotalHours * 4) / 4;
       
-      // Proportionally adjust billable hours if we had a previous total
-      const oldTotalHours = prev.totalHours || 0;
-      const oldBillableHours = prev.billableHours || 0;
-      let newBillableHours = oldBillableHours;
-      
-      if (oldTotalHours > 0 && oldBillableHours > 0) {
-        // Maintain the same ratio of billable to total hours
-        const billableRatio = oldBillableHours / oldTotalHours;
-        newBillableHours = Math.round(newTotalHours * billableRatio * 4) / 4; // Round to quarter hour
-      } else if (oldBillableHours === oldTotalHours) {
-        // If billable hours equaled total hours, keep them equal
-        newBillableHours = newTotalHours;
-      }
+      // Calculate billable hours by subtracting non-billable time
+      const newBillableHours = calculateBillableHours(roundedTotalHours, prev.nonBillableTimeMinutes || 0);
       
       return {
         ...prev,
         employeesList: updatedEmployeesList,
-        totalHours: Math.round(newTotalHours * 4) / 4, // Round to quarter hour
-        billableHours: Math.round(newBillableHours * 4) / 4
+        totalHours: roundedTotalHours,
+        billableHours: newBillableHours
+      };
+    });
+  };
+
+  const handleNonBillableTimeChange = (newNonBillableMinutes: number) => {
+    setEditedActivity(prev => {
+      const totalHours = prev.totalHours || 0;
+      const newBillableHours = calculateBillableHours(totalHours, newNonBillableMinutes);
+      
+      return {
+        ...prev,
+        nonBillableTimeMinutes: newNonBillableMinutes,
+        billableHours: newBillableHours
       };
     });
   };
@@ -399,6 +402,12 @@ const WorkActivityReviewFlow: React.FC = () => {
   const calculateEmployeeHoursTotal = () => {
     if (!editedActivity.employeesList) return 0;
     return editedActivity.employeesList.reduce((sum, employee) => sum + (employee.hours || 0), 0);
+  };
+
+  const calculateBillableHours = (totalHours: number, nonBillableMinutes: number = 0) => {
+    const nonBillableHours = nonBillableMinutes / 60;
+    const billableHours = Math.max(0, totalHours - nonBillableHours);
+    return Math.round(billableHours * 4) / 4; // Round to quarter hour
   };
 
   const distributeHoursProportionally = () => {
@@ -1050,8 +1059,17 @@ const WorkActivityReviewFlow: React.FC = () => {
                 type="number"
                 fullWidth
                 value={editedActivity.totalHours || ''}
-                onChange={(e) => setEditedActivity(prev => ({ ...prev, totalHours: parseFloat(e.target.value) || 0 }))}
+                onChange={(e) => {
+                  const newTotalHours = parseFloat(e.target.value) || 0;
+                  const newBillableHours = calculateBillableHours(newTotalHours, editedActivity.nonBillableTimeMinutes || 0);
+                  setEditedActivity(prev => ({ 
+                    ...prev, 
+                    totalHours: newTotalHours,
+                    billableHours: newBillableHours
+                  }));
+                }}
                 inputProps={{ step: 0.25, min: 0 }}
+                helperText="Automatically updates billable hours"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1062,6 +1080,10 @@ const WorkActivityReviewFlow: React.FC = () => {
                 value={editedActivity.billableHours || ''}
                 onChange={(e) => setEditedActivity(prev => ({ ...prev, billableHours: parseFloat(e.target.value) || 0 }))}
                 inputProps={{ step: 0.25, min: 0 }}
+                helperText="Auto-calculated: Total - Non-billable"
+                InputProps={{
+                  sx: { bgcolor: 'grey.50' }
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1098,12 +1120,12 @@ const WorkActivityReviewFlow: React.FC = () => {
                 type="number"
                 fullWidth
                 value={editedActivity.nonBillableTimeMinutes || ''}
-                onChange={(e) => setEditedActivity(prev => ({ ...prev, nonBillableTimeMinutes: parseInt(e.target.value) || 0 }))}
+                onChange={(e) => handleNonBillableTimeChange(parseInt(e.target.value) || 0)}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
                   startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
                 }}
-                helperText="Time spent on non-billable activities"
+                helperText="Automatically updates billable hours"
               />
             </Grid>
 
