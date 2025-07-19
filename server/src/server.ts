@@ -597,6 +597,6 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
   
-  // Note: Cron jobs now handled by Railway's cron service
-  console.log(`⏰ Cron service available for Railway scheduling (no internal scheduler)`);
+  // Start internal cron scheduling
+  cronService.startScheduledTasks();
 }); 

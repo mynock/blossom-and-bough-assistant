@@ -14,21 +14,16 @@ export class CronService {
   }
 
   public startScheduledTasks(): void {
-    // NOTE: This method is deprecated in favor of Railway's cron service
-    // Keeping for backwards compatibility, but Railway cron handles scheduling now
-    debugLog.info('⚠️ Internal scheduling disabled - using Railway cron service instead');
-    debugLog.info('✅ CronService ready for Railway cron calls at 3AM UTC (8PM PDT/7PM PST)');
-    
-    // Uncomment below to re-enable internal scheduling if needed:
-    /*
     if (this.isScheduled) {
       debugLog.info('🔄 Cron tasks already scheduled');
       return;
     }
 
-    const cronExpression = '0 3 * * *'; // 3AM UTC = 8PM PDT, 7PM PST
-    
-    cron.schedule(cronExpression, async () => {
+    // Import cron here to avoid import issues
+    const cron = require('node-cron');
+
+    // Schedule maintenance entries - Daily at 8PM Pacific (3AM UTC)
+    cron.schedule('0 3 * * *', async () => {
       debugLog.info('🕐 Daily Notion maintenance entry cron job started');
       await this.createMaintenanceEntriesForTomorrow();
     }, {
@@ -36,9 +31,29 @@ export class CronService {
       timezone: 'UTC'
     });
 
+    // Schedule Notion sync - Twice daily at 6AM & 6PM UTC
+    cron.schedule('0 6,18 * * *', async () => {
+      debugLog.info('🔄 Notion sync cron job started');
+      try {
+        const { NotionSyncService } = await import('./NotionSyncService');
+        const { AnthropicService } = await import('./AnthropicService');
+        const anthropicService = new AnthropicService();
+        const notionSyncService = new NotionSyncService(anthropicService);
+        
+        const stats = await notionSyncService.syncNotionPages();
+        debugLog.info(`📊 Notion sync completed: Created ${stats.created}, Updated ${stats.updated}, Errors ${stats.errors}`);
+      } catch (error) {
+        debugLog.error('❌ Error in Notion sync cron job:', error);
+      }
+    }, {
+      scheduled: true,
+      timezone: 'UTC'
+    });
+
     this.isScheduled = true;
-    debugLog.info('✅ Daily Notion maintenance entry job scheduled for 8PM PDT/7PM PST (3AM UTC)');
-    */
+    debugLog.info('✅ Internal cron scheduling enabled:');
+    debugLog.info('   📅 Maintenance entries: Daily at 8PM PDT/7PM PST (3AM UTC)');
+    debugLog.info('   🔄 Notion sync: Twice daily at 6AM & 6PM UTC');
   }
 
   public async createMaintenanceEntriesForTomorrow(): Promise<void> {
