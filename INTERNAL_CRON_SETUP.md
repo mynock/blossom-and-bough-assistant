@@ -138,8 +138,14 @@ CRON_AUTH_TOKEN=your_token_for_manual_triggers
 
 ### Manual Testing via Admin Panel
 1. Navigate to `/admin`
-2. Go to "Automated Tasks" section
-3. Click the trigger buttons to test manually
+2. Go to "Automated Tasks" section for manual triggers
+3. Check "Scheduled Jobs Status" section for job management
+
+### Cron Job Management
+- **View Status**: See current job schedules, last run times, and next run times
+- **Enable/Disable**: Toggle jobs on/off with switches
+- **Real-time Status**: Monitor job execution status (scheduled/running/error)
+- **Manual Triggers**: Use buttons in "Automated Tasks" section
 
 ### Manual Testing via API
 ```bash

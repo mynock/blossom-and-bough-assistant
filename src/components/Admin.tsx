@@ -29,6 +29,15 @@ import {
   ListItemText,
   ListItemIcon,
   Collapse,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  Switch,
+  Tooltip,
 } from '@mui/material';
 import {
   Refresh,
@@ -45,6 +54,7 @@ import {
   ExpandLess,
   Timeline,
   Cancel,
+  Schedule,
 } from '@mui/icons-material';
 
 // Use proxy in development, direct URL in production
@@ -98,6 +108,17 @@ interface ImportProgress {
   details?: any;
 }
 
+interface CronJobInfo {
+  id: string;
+  name: string;
+  schedule: string;
+  description: string;
+  enabled: boolean;
+  lastRun?: string;
+  nextRun?: string;
+  status: 'scheduled' | 'running' | 'error' | 'disabled';
+}
+
 interface ImportResult {
   success: boolean;
   message: string;
@@ -120,6 +141,10 @@ const Admin: React.FC = () => {
   // Maintenance Entries State
   const [maintenanceEntryDate, setMaintenanceEntryDate] = useState<string>('');
   
+  // Cron Jobs State
+  const [cronJobs, setCronJobs] = useState<CronJobInfo[]>([]);
+  const [cronLoading, setCronLoading] = useState(false);
+  
   // Work Activities Import State
   const [availableClients, setAvailableClients] = useState<string[]>([]);
   const [importOptions, setImportOptions] = useState<WorkActivityImportOptions>({
@@ -137,6 +162,7 @@ const Admin: React.FC = () => {
 
   useEffect(() => {
     loadStatus();
+    loadCronStatus();
   }, []);
 
   const loadStatus = async () => {
@@ -153,6 +179,54 @@ const Admin: React.FC = () => {
         duration: 0,
         error: error?.message || String(error)
       });
+    }
+  };
+
+  const loadCronStatus = async () => {
+    try {
+      setCronLoading(true);
+      const response = await api.get('/cron/status');
+      setCronJobs(response.data.jobs || []);
+    } catch (error: any) {
+      console.error('Error loading cron status:', error);
+      setResult({
+        success: false,
+        message: 'Failed to load cron job status',
+        duration: 0,
+        error: error?.message || String(error)
+      });
+    } finally {
+      setCronLoading(false);
+    }
+  };
+
+  const toggleCronJob = async (jobId: string, enabled: boolean) => {
+    try {
+      setCronLoading(true);
+      await api.post(`/cron/toggle/${jobId}`, { enabled });
+      
+      // Update local state
+      setCronJobs(prev => prev.map(job => 
+        job.id === jobId 
+          ? { ...job, enabled, status: enabled ? 'scheduled' : 'disabled' }
+          : job
+      ));
+      
+      setResult({
+        success: true,
+        message: `Cron job ${enabled ? 'enabled' : 'disabled'} successfully`,
+        duration: 0
+      });
+    } catch (error: any) {
+      console.error('Error toggling cron job:', error);
+      setResult({
+        success: false,
+        message: `Failed to ${enabled ? 'enable' : 'disable'} cron job`,
+        duration: 0,
+        error: error?.message || String(error)
+      });
+    } finally {
+      setCronLoading(false);
     }
   };
 
@@ -838,6 +912,137 @@ const Admin: React.FC = () => {
               </Box>
             </Grid>
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Cron Jobs Management */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader 
+          title="Scheduled Jobs Status" 
+          subheader="View and manage automated task schedules"
+          action={
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={loadCronStatus}
+              disabled={cronLoading}
+              size="small"
+            >
+              Refresh
+            </Button>
+          }
+        />
+        <CardContent>
+          {cronLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Job Name</TableCell>
+                    <TableCell>Schedule</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Last Run</TableCell>
+                    <TableCell>Next Run</TableCell>
+                    <TableCell align="center">Enabled</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {cronJobs.map((job) => (
+                    <TableRow key={job.id}>
+                      <TableCell>
+                        <Box>
+                          <Typography variant="subtitle2">{job.name}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {job.description}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Schedule fontSize="small" color="action" />
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
+                            {job.schedule}
+                          </Typography>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        <Chip 
+                          label={job.status} 
+                          size="small"
+                          color={
+                            job.status === 'scheduled' ? 'success' :
+                            job.status === 'running' ? 'warning' :
+                            job.status === 'error' ? 'error' : 'default'
+                          }
+                          icon={
+                            job.status === 'running' ? <CircularProgress size={12} /> : undefined
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {job.lastRun ? (
+                          <Typography variant="body2">
+                            {new Date(job.lastRun).toLocaleString()}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            Never
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {job.nextRun && job.enabled ? (
+                          <Typography variant="body2">
+                            {new Date(job.nextRun).toLocaleString()}
+                          </Typography>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            {job.enabled ? 'Calculating...' : 'Disabled'}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Tooltip title={job.enabled ? 'Disable job' : 'Enable job'}>
+                          <Switch
+                            checked={job.enabled}
+                            onChange={(e) => toggleCronJob(job.id, e.target.checked)}
+                            disabled={cronLoading}
+                            color="primary"
+                          />
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+          
+          {cronJobs.length === 0 && !cronLoading && (
+            <Box sx={{ textAlign: 'center', py: 2 }}>
+              <Typography color="text.secondary">
+                No cron jobs configured
+              </Typography>
+            </Box>
+          )}
+          
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info" sx={{ mb: 1 }}>
+              <Typography variant="body2">
+                <strong>Schedule Format:</strong> Uses standard cron expressions (minute hour day month weekday)
+              </Typography>
+            </Alert>
+            <Alert severity="warning">
+              <Typography variant="body2">
+                <strong>Note:</strong> Disabling jobs will stop them until manually re-enabled. 
+                Changes take effect immediately and persist until the next server restart.
+              </Typography>
+            </Alert>
+          </Box>
         </CardContent>
       </Card>
 
