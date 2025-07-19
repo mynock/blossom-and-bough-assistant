@@ -3,29 +3,33 @@
 This document describes how billable hours are calculated and modified throughout the Blossom & Bough scheduling assistant system.
 
 **Last Updated:** 2025-01-19  
-**Version:** 1.0
+**Version:** 1.1
 
 ## Core Formula
 
 The billable hours calculation formula used throughout the system:
 
 ```
-billableHours = totalHours 
+# Step 1: Apply hours adjustments to total hours
+adjustedTotalHours = totalHours + hoursAdjustments
+
+# Step 2: Calculate billable hours from adjusted total hours
+billableHours = adjustedTotalHours 
                 - (breakTimeMinutes / 60) 
                 - (nonBillableTimeMinutes / 60) 
                 + (adjustedTravelTimeMinutes / 60)
-                + hoursAdjustments
 ```
 
 ### Key Components
 
 | Component | Description | Impact |
 |-----------|-------------|---------|
-| `totalHours` | Base work time (duration × employee count) | ➕ Added to billable |
-| `breakTimeMinutes` | Lunch/break time | ➖ Subtracted from billable |
-| `nonBillableTimeMinutes` | Non-billable activities | ➖ Subtracted from billable |
-| `adjustedTravelTimeMinutes` | Allocated travel time | ➕ Added to billable |
-| `hoursAdjustments` | Person-specific adjustments from Notion | ➕/➖ Added or subtracted |
+| `totalHours` | Base work time (duration × employee count) | ➕ Starting point for calculation |
+| `hoursAdjustments` | Person-specific adjustments from Notion | ➕/➖ Applied to total hours first |
+| `adjustedTotalHours` | Total hours + hours adjustments | ➕ Base for billable calculation |
+| `breakTimeMinutes` | Lunch/break time | ➖ Subtracted from adjusted total |
+| `nonBillableTimeMinutes` | Non-billable activities | ➖ Subtracted from adjusted total |
+| `adjustedTravelTimeMinutes` | Allocated travel time | ➕ Added to billable hours |
 
 **Important:** Raw `travelTimeMinutes` is stored for reference but **NOT** used in billable hours calculation.
 
@@ -158,23 +162,25 @@ lastUpdatedBy TEXT              -- Tracks update source ('web_app' | 'notion_syn
 ```mermaid
 graph TD
     A[Input: Start/End Times, Employee Count] --> B[Calculate Total Hours]
-    B --> C[Apply Billable Hours Formula]
-    C --> D[Apply Rounding Settings]
-    D --> E[Store Final Billable Hours]
-    E --> F[Auto-Update on Component Changes]
+    B --> C[Apply Hours Adjustments to Total Hours]
+    C --> D[Calculate Billable Hours from Adjusted Total]
+    D --> E[Apply Rounding Settings]
+    E --> F[Store Final Billable Hours]
+    F --> G[Auto-Update on Component Changes]
     
-    G[Travel Time Allocation] --> H[Update Adjusted Travel Time]
-    H --> C
+    H[Travel Time Allocation] --> I[Update Adjusted Travel Time]
+    I --> D
     
-    I[Notion Hours Adjustments] --> C
+    J[Notion Hours Adjustments] --> C
 ```
 
 1. **Input:** Start/end times, employee count, break time, non-billable time, hours adjustments
 2. **Calculate:** Total hours = (duration × employee count)
-3. **Calculate:** Billable hours using the formula above
-4. **Apply:** Rounding settings if enabled
-5. **Store:** Final billable hours value
-6. **Auto-update:** Recalculation triggered when component values change
+3. **Apply:** Hours adjustments to total hours (adjustedTotalHours = totalHours + hoursAdjustments)
+4. **Calculate:** Billable hours from adjusted total hours using the formula
+5. **Apply:** Rounding settings if enabled
+6. **Store:** Final billable hours value
+7. **Auto-update:** Recalculation triggered when component values change
 
 ## API Endpoints That Affect Billable Hours
 
@@ -206,6 +212,12 @@ graph TD
 - ✅ Ensure Notion sync has been run after adding adjustments
 
 ## Change Log
+
+### Version 1.1 (2025-01-19)
+- **IMPORTANT FIX:** Corrected hours adjustments to modify total hours instead of billable hours directly
+- Updated formula to show two-step process: totalHours → adjustedTotalHours → billableHours
+- Updated data flow diagram and process steps
+- Corrected documentation to reflect proper calculation logic
 
 ### Version 1.0 (2025-01-19)
 - Initial documentation

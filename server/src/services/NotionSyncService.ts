@@ -1263,7 +1263,7 @@ export class NotionSyncService {
    * Note: totalHours represents total person-hours (duration × employee count)
    * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
-   * Formula: totalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
+   * Hours adjustments are applied to total hours first, then billable hours calculated\n   * Formula: adjustedTotalHours = totalHours + hoursAdjustments\n   *          billableHours = adjustedTotalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number, 
@@ -1276,7 +1276,7 @@ export class NotionSyncService {
     const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
-    // Calculate total hours adjustments
+    // Calculate hours adjustments and apply to total hours first
     let totalAdjustmentHours = 0;
     if (hoursAdjustments && hoursAdjustments.length > 0) {
       totalAdjustmentHours = hoursAdjustments.reduce((sum, adj) => {
@@ -1290,7 +1290,11 @@ export class NotionSyncService {
       debugLog.info(`⏰ Total hours adjustments: ${totalAdjustmentHours} hours from ${hoursAdjustments.length} adjustments`);
     }
     
-    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours + totalAdjustmentHours;
+    // Apply hours adjustments to total hours first, then calculate billable hours
+    const adjustedTotalHours = totalHours + totalAdjustmentHours;
+    debugLog.info(`📊 Adjusted total hours: ${totalHours} + ${totalAdjustmentHours} = ${adjustedTotalHours}`);
+    
+    const billableHours = adjustedTotalHours - breakHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
