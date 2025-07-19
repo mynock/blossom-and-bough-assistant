@@ -153,10 +153,30 @@ curl -X POST https://your-app.railway.app/api/cron/notion-sync \
 ```
 
 ### Check Logs
-Monitor Railway logs for:
-- Cron job startup messages
+
+**Where to find logs:**
+- **Railway Dashboard**: Project → Deployments → Click on latest deployment → "View Logs"
+- **Railway CLI**: `railway logs` (if you have CLI installed)
+
+**What to look for:**
+- Cron job startup messages on server start
 - Execution logs with emojis (🕐 📅 🔄 ✅ ❌)
-- Success/failure summaries
+- Success/failure summaries with stats
+
+**Example log output:**
+```
+🚀 Server running on port 3000
+✅ Internal cron scheduling enabled:
+   📅 Maintenance entries: Daily at 8PM PDT/7PM PST (3AM UTC)
+   🔄 Notion sync: Twice daily at 6AM & 6PM UTC
+
+🕐 Daily Notion maintenance entry cron job started
+📊 Completed: 🆕 Created: 1, 📝 Updated: 1, ❌ Errors: 0
+✅ Daily Notion maintenance entry cron job completed
+
+🔄 Notion sync cron job started  
+📊 Notion sync completed: Created 2, Updated 3, Errors 0
+```
 
 ## 🚨 Troubleshooting
 

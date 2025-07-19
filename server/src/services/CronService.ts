@@ -24,8 +24,10 @@ export class CronService {
 
     // Schedule maintenance entries - Daily at 8PM Pacific (3AM UTC)
     cron.schedule('0 3 * * *', async () => {
+      console.log('🕐 Daily Notion maintenance entry cron job started');
       debugLog.info('🕐 Daily Notion maintenance entry cron job started');
       await this.createMaintenanceEntriesForTomorrow();
+      console.log('✅ Daily Notion maintenance entry cron job completed');
     }, {
       scheduled: true,
       timezone: 'UTC'
@@ -33,6 +35,7 @@ export class CronService {
 
     // Schedule Notion sync - Twice daily at 6AM & 6PM UTC
     cron.schedule('0 6,18 * * *', async () => {
+      console.log('🔄 Notion sync cron job started');
       debugLog.info('🔄 Notion sync cron job started');
       try {
         const { NotionSyncService } = await import('./NotionSyncService');
@@ -41,8 +44,10 @@ export class CronService {
         const notionSyncService = new NotionSyncService(anthropicService);
         
         const stats = await notionSyncService.syncNotionPages();
+        console.log(`📊 Notion sync completed: Created ${stats.created}, Updated ${stats.updated}, Errors ${stats.errors}`);
         debugLog.info(`📊 Notion sync completed: Created ${stats.created}, Updated ${stats.updated}, Errors ${stats.errors}`);
       } catch (error) {
+        console.error('❌ Error in Notion sync cron job:', error);
         debugLog.error('❌ Error in Notion sync cron job:', error);
       }
     }, {
@@ -54,6 +59,11 @@ export class CronService {
     debugLog.info('✅ Internal cron scheduling enabled:');
     debugLog.info('   📅 Maintenance entries: Daily at 8PM PDT/7PM PST (3AM UTC)');
     debugLog.info('   🔄 Notion sync: Twice daily at 6AM & 6PM UTC');
+    
+    // Also log to console for Railway visibility
+    console.log('✅ Internal cron scheduling enabled:');
+    console.log('   📅 Maintenance entries: Daily at 8PM PDT/7PM PST (3AM UTC)');
+    console.log('   🔄 Notion sync: Twice daily at 6AM & 6PM UTC');
   }
 
   public async createMaintenanceEntriesForTomorrow(): Promise<void> {
