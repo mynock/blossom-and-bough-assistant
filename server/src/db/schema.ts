@@ -68,6 +68,7 @@ export const workActivities = pgTable('work_activities', {
   travelTimeMinutes: integer('travel_time_minutes'),
   adjustedTravelTimeMinutes: integer('adjusted_travel_time_minutes'),
   breakTimeMinutes: integer('break_time_minutes'),
+  adjustedBreakTimeMinutes: integer('adjusted_break_time_minutes'),
   nonBillableTimeMinutes: integer('non_billable_time_minutes'),
   notes: text('notes'),
   tasks: text('tasks'), // future work items/to-do notes

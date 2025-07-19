@@ -59,6 +59,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number;
   breakTimeMinutes?: number;
+  adjustedBreakTimeMinutes?: number;
   nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -89,11 +90,38 @@ interface TravelTimeAllocationResult {
   warnings: string[];
 }
 
+interface BreakTimeAllocationItem {
+  workActivityId: number;
+  clientName: string;
+  hoursWorked: number;
+  originalBreakMinutes: number;
+  allocatedBreakMinutes: number;
+  newBillableHours: number;
+  hasZeroBreak: boolean;
+}
+
+interface BreakTimeAllocationResult {
+  date: string;
+  totalBreakMinutes: number;
+  totalWorkHours: number;
+  allocations: BreakTimeAllocationItem[];
+  updatedActivities: number;
+  warnings: string[];
+}
+
 interface BulkTravelTimeDate {
   date: string;
   activitiesCount: number;
   totalTravelMinutes: number;
   hasUnallocatedTravel: boolean;
+  clientsInvolved: string[];
+}
+
+interface BulkBreakTimeDate {
+  date: string;
+  activitiesCount: number;
+  totalBreakMinutes: number;
+  hasUnallocatedBreak: boolean;
   clientsInvolved: string[];
 }
 
@@ -138,6 +166,22 @@ const WorkActivityReviewFlow: React.FC = () => {
   const [bulkAllocationResults, setBulkAllocationResults] = useState<Record<string, TravelTimeAllocationResult>>({});
   const [selectedBulkDates, setSelectedBulkDates] = useState<Set<string>>(new Set());
 
+  // Bulk break time allocation state
+  const [showBulkBreakAllocation, setShowBulkBreakAllocation] = useState(false);
+  const [bulkBreakDates, setBulkBreakDates] = useState<BulkBreakTimeDate[]>([]);
+  const [bulkBreakAllocationResults, setBulkBreakAllocationResults] = useState<Record<string, BreakTimeAllocationResult>>({});
+  const [selectedBulkBreakDates, setSelectedBulkBreakDates] = useState<Set<string>>(new Set());
+
+  // Break time allocation state
+  const [breakTimePreview, setBreakTimePreview] = useState<BreakTimeAllocationResult | null>(null);
+  const [breakTimeDialogOpen, setBreakTimeDialogOpen] = useState(false);
+  const [allocatingBreakTime, setAllocatingBreakTime] = useState(false);
+  const [completionBreakSummary, setCompletionBreakSummary] = useState<{ 
+    datesWithUnallocatedBreak: string[]; 
+    totalUnallocatedMinutes: number;
+    activitiesWithBreak: number;
+  } | null>(null);
+
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
   const totalActivities = activitiesNeedingReview.length;
@@ -157,8 +201,8 @@ const WorkActivityReviewFlow: React.FC = () => {
       const activities = Array.isArray(data) ? data : [];
       setActivitiesNeedingReview(activities);
       
-      // Analyze activities for bulk travel time allocation
-      analyzeBulkTravelTimeNeeds(activities);
+      // Analyze activities for bulk time allocation
+      analyzeBulkTimeNeeds(activities);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load activities');
     } finally {
@@ -166,12 +210,14 @@ const WorkActivityReviewFlow: React.FC = () => {
     }
   }, []);
 
-  const analyzeBulkTravelTimeNeeds = (activities: WorkActivity[]) => {
-    const dateMap = new Map<string, BulkTravelTimeDate>();
+  const analyzeBulkTimeNeeds = (activities: WorkActivity[]) => {
+    const travelDateMap = new Map<string, BulkTravelTimeDate>();
+    const breakDateMap = new Map<string, BulkBreakTimeDate>();
     
     activities.forEach(activity => {
-      if (!dateMap.has(activity.date)) {
-        dateMap.set(activity.date, {
+      // Analyze travel time needs
+      if (!travelDateMap.has(activity.date)) {
+        travelDateMap.set(activity.date, {
           date: activity.date,
           activitiesCount: 0,
           totalTravelMinutes: 0,
@@ -180,30 +226,68 @@ const WorkActivityReviewFlow: React.FC = () => {
         });
       }
       
-      const dateInfo = dateMap.get(activity.date)!;
-      dateInfo.activitiesCount++;
+      const travelDateInfo = travelDateMap.get(activity.date)!;
+      travelDateInfo.activitiesCount++;
       
       if (activity.travelTimeMinutes && activity.travelTimeMinutes > 0) {
-        dateInfo.totalTravelMinutes += activity.travelTimeMinutes;
+        travelDateInfo.totalTravelMinutes += activity.travelTimeMinutes;
         if (!activity.adjustedTravelTimeMinutes) {
-          dateInfo.hasUnallocatedTravel = true;
+          travelDateInfo.hasUnallocatedTravel = true;
         }
       }
       
-      if (activity.clientName && !dateInfo.clientsInvolved.includes(activity.clientName)) {
-        dateInfo.clientsInvolved.push(activity.clientName);
+      if (activity.clientName && !travelDateInfo.clientsInvolved.includes(activity.clientName)) {
+        travelDateInfo.clientsInvolved.push(activity.clientName);
+      }
+
+      // Analyze break time needs
+      if (!breakDateMap.has(activity.date)) {
+        breakDateMap.set(activity.date, {
+          date: activity.date,
+          activitiesCount: 0,
+          totalBreakMinutes: 0,
+          hasUnallocatedBreak: false,
+          clientsInvolved: []
+        });
+      }
+      
+      const breakDateInfo = breakDateMap.get(activity.date)!;
+      breakDateInfo.activitiesCount++;
+      
+      if (activity.breakTimeMinutes && activity.breakTimeMinutes > 0) {
+        breakDateInfo.totalBreakMinutes += activity.breakTimeMinutes;
+        if (!activity.adjustedBreakTimeMinutes) {
+          breakDateInfo.hasUnallocatedBreak = true;
+        }
+      }
+      
+      if (activity.clientName && !breakDateInfo.clientsInvolved.includes(activity.clientName)) {
+        breakDateInfo.clientsInvolved.push(activity.clientName);
       }
     });
     
-    const datesNeedingAllocation = Array.from(dateMap.values())
+    // Process travel time dates
+    const travelDatesNeedingAllocation = Array.from(travelDateMap.values())
       .filter(date => date.hasUnallocatedTravel && date.totalTravelMinutes > 0)
       .sort((a, b) => a.date.localeCompare(b.date));
     
-    setBulkTravelDates(datesNeedingAllocation);
+    setBulkTravelDates(travelDatesNeedingAllocation);
+    
+    // Process break time dates
+    const breakDatesNeedingAllocation = Array.from(breakDateMap.values())
+      .filter(date => date.hasUnallocatedBreak && date.totalBreakMinutes > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    setBulkBreakDates(breakDatesNeedingAllocation);
     
     // Show bulk allocation step if there are dates needing allocation
-    if (datesNeedingAllocation.length > 0) {
-      setShowBulkTravelAllocation(true);
+    if (travelDatesNeedingAllocation.length > 0 || breakDatesNeedingAllocation.length > 0) {
+      if (travelDatesNeedingAllocation.length > 0) {
+        setShowBulkTravelAllocation(true);
+      }
+      if (breakDatesNeedingAllocation.length > 0) {
+        setShowBulkBreakAllocation(true);
+      }
     }
   };
 
@@ -413,6 +497,45 @@ const WorkActivityReviewFlow: React.FC = () => {
     }
   };
 
+  const handleBreakTimePreview = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingBreakTime(true);
+      const response = await apiClient.post('/api/break-time/calculate', {
+        date: currentActivity.date
+      });
+      const data = await response.json();
+      setBreakTimePreview(data);
+      setBreakTimeDialogOpen(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to preview break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
+    }
+  };
+
+  const handleBreakTimeApply = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingBreakTime(true);
+      await apiClient.post('/api/break-time/apply', {
+        date: currentActivity.date
+      });
+      
+      // Refresh activities to show updated break time allocations
+      await fetchActivitiesNeedingReview();
+      
+      setBreakTimeDialogOpen(false);
+      setBreakTimePreview(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
+    }
+  };
+
   const formatMinutes = (minutes: number | undefined | null) => {
     if (minutes === undefined || minutes === null || isNaN(minutes)) {
       return '0 min';
@@ -605,8 +728,45 @@ const WorkActivityReviewFlow: React.FC = () => {
     }
   };
 
+  const handleBulkBreakTimePreview = async (date: string) => {
+    try {
+      setAllocatingBreakTime(true);
+      const response = await apiClient.post('/api/break-time/calculate', { date });
+      const data = await response.json();
+      setBulkBreakAllocationResults(prev => ({ ...prev, [date]: data }));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to preview break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
+    }
+  };
+
+  const handleBulkBreakTimeApply = async (dates: string[]) => {
+    try {
+      setAllocatingBreakTime(true);
+      
+      for (const date of dates) {
+        await apiClient.post('/api/break-time/apply', { date });
+      }
+      
+      // Refresh activities to show updated allocations
+      await fetchActivitiesNeedingReview();
+      
+      // Clear bulk allocation state and proceed to normal review
+      setShowBulkBreakAllocation(false);
+      setBulkBreakAllocationResults({});
+      setSelectedBulkBreakDates(new Set());
+      
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply bulk break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
+    }
+  };
+
   const handleSkipBulkAllocation = () => {
     setShowBulkTravelAllocation(false);
+    setShowBulkBreakAllocation(false);
   };
 
   const handleSelectAllBulkDates = () => {
@@ -620,6 +780,27 @@ const WorkActivityReviewFlow: React.FC = () => {
 
   const toggleBulkDateSelection = (date: string) => {
     setSelectedBulkDates(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(date)) {
+        newSet.delete(date);
+      } else {
+        newSet.add(date);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllBulkBreakDates = () => {
+    const allDates = new Set(bulkBreakDates.map(d => d.date));
+    setSelectedBulkBreakDates(allDates);
+  };
+
+  const handleDeselectAllBulkBreakDates = () => {
+    setSelectedBulkBreakDates(new Set());
+  };
+
+  const toggleBulkBreakDateSelection = (date: string) => {
+    setSelectedBulkBreakDates(prev => {
       const newSet = new Set(prev);
       if (newSet.has(date)) {
         newSet.delete(date);
@@ -654,48 +835,65 @@ const WorkActivityReviewFlow: React.FC = () => {
     );
   }
 
-  // Show bulk travel time allocation step first
-  if (showBulkTravelAllocation && bulkTravelDates.length > 0) {
+  // Show bulk time allocation step first
+  if ((showBulkTravelAllocation && bulkTravelDates.length > 0) || (showBulkBreakAllocation && bulkBreakDates.length > 0)) {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Paper sx={{ p: 4 }}>
           <Box sx={{ mb: 4 }}>
             <Typography variant="h4" gutterBottom>
-              Bulk Travel Time Allocation
+              Bulk Time Allocation
             </Typography>
             <Typography variant="body1" color="text.secondary">
-              Allocate travel time for multiple dates before reviewing individual activities
+              Allocate travel and break time for multiple dates before reviewing individual activities
             </Typography>
           </Box>
 
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
-              Found {bulkTravelDates.length} date(s) with unallocated travel time. You can allocate travel time in bulk here, or skip to review activities individually.
-            </Typography>
-          </Alert>
+          {bulkTravelDates.length > 0 && (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              <Typography variant="body2">
+                Found {bulkTravelDates.length} date(s) with unallocated travel time.
+              </Typography>
+            </Alert>
+          )}
 
-          <Box sx={{ mb: 3 }}>
-            <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                onClick={handleSelectAllBulkDates}
-                disabled={selectedBulkDates.size === bulkTravelDates.length}
-              >
-                Select All
-              </Button>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                onClick={handleDeselectAllBulkDates}
-                disabled={selectedBulkDates.size === 0}
-              >
-                Deselect All
-              </Button>
-            </Stack>
+          {bulkBreakDates.length > 0 && (
+            <Alert severity="warning" sx={{ mb: 3 }}>
+              <Typography variant="body2">
+                Found {bulkBreakDates.length} date(s) with unallocated break time.
+              </Typography>
+            </Alert>
+          )}
 
-            <Grid container spacing={2}>
-              {bulkTravelDates.map((dateInfo) => (
+          {/* Travel Time Section */}
+          {bulkTravelDates.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DirectionsCar />
+                Travel Time Allocation
+              </Typography>
+              
+              <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  onClick={handleSelectAllBulkDates}
+                  disabled={selectedBulkDates.size === bulkTravelDates.length}
+                >
+                  Select All Travel
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  onClick={handleDeselectAllBulkDates}
+                  disabled={selectedBulkDates.size === 0}
+                >
+                  Deselect All Travel
+                </Button>
+              </Stack>
+
+              <Grid container spacing={2}>
+                {bulkTravelDates.map((dateInfo) => (
                 <Grid item xs={12} md={6} key={dateInfo.date}>
                   <Card 
                     sx={{ 
@@ -762,24 +960,139 @@ const WorkActivityReviewFlow: React.FC = () => {
                     </CardContent>
                   </Card>
                 </Grid>
-              ))}
-            </Grid>
-          </Box>
+                ))}
+              </Grid>
+            </Box>
+          )}
+
+          {/* Break Time Section */}
+          {bulkBreakDates.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <AccessTime />
+                Break Time Allocation
+              </Typography>
+              
+              <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  onClick={handleSelectAllBulkBreakDates}
+                  disabled={selectedBulkBreakDates.size === bulkBreakDates.length}
+                >
+                  Select All Break
+                </Button>
+                <Button 
+                  variant="outlined" 
+                  size="small" 
+                  onClick={handleDeselectAllBulkBreakDates}
+                  disabled={selectedBulkBreakDates.size === 0}
+                >
+                  Deselect All Break
+                </Button>
+              </Stack>
+
+              <Grid container spacing={2}>
+                {bulkBreakDates.map((dateInfo) => (
+                  <Grid item xs={12} md={6} key={dateInfo.date}>
+                    <Card 
+                      sx={{ 
+                        border: selectedBulkBreakDates.has(dateInfo.date) ? '2px solid' : '1px solid',
+                        borderColor: selectedBulkBreakDates.has(dateInfo.date) ? 'secondary.main' : 'grey.200',
+                        cursor: 'pointer',
+                        '&:hover': { boxShadow: 2 }
+                      }}
+                      onClick={() => toggleBulkBreakDateSelection(dateInfo.date)}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                          <Typography variant="h6">
+                            {formatDateLongPacific(dateInfo.date)}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {selectedBulkBreakDates.has(dateInfo.date) && (
+                              <CheckCircle color="secondary" />
+                            )}
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleBulkBreakTimePreview(dateInfo.date);
+                              }}
+                              disabled={allocatingBreakTime}
+                            >
+                              Preview
+                            </Button>
+                          </Box>
+                        </Box>
+                        
+                        <Grid container spacing={1} sx={{ mb: 2 }}>
+                          <Grid item xs={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Activities
+                            </Typography>
+                            <Typography variant="body1">
+                              {dateInfo.activitiesCount}
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="body2" color="text.secondary">
+                              Break Time
+                            </Typography>
+                            <Typography variant="body1">
+                              {formatMinutes(dateInfo.totalBreakMinutes)}
+                            </Typography>
+                          </Grid>
+                        </Grid>
+
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Clients: {dateInfo.clientsInvolved.join(', ')}
+                        </Typography>
+
+                        {bulkBreakAllocationResults[dateInfo.date] && (
+                          <Alert severity="success" sx={{ mt: 2 }}>
+                            <Typography variant="body2">
+                              Preview: {bulkBreakAllocationResults[dateInfo.date].allocations.length} activities will be updated
+                            </Typography>
+                          </Alert>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
 
           <Stack direction="row" spacing={2} sx={{ justifyContent: 'center' }}>
-            <Button
-              variant="contained"
-              startIcon={<DirectionsCar />}
-              onClick={() => handleBulkTravelTimeApply(Array.from(selectedBulkDates))}
-              disabled={selectedBulkDates.size === 0 || allocatingTravelTime}
-              size="large"
-            >
-              {allocatingTravelTime ? <CircularProgress size={20} /> : `Allocate Travel Time (${selectedBulkDates.size} dates)`}
-            </Button>
+            {bulkTravelDates.length > 0 && (
+              <Button
+                variant="contained"
+                startIcon={<DirectionsCar />}
+                onClick={() => handleBulkTravelTimeApply(Array.from(selectedBulkDates))}
+                disabled={selectedBulkDates.size === 0 || allocatingTravelTime || allocatingBreakTime}
+                size="large"
+              >
+                {allocatingTravelTime ? <CircularProgress size={20} /> : `Allocate Travel Time (${selectedBulkDates.size} dates)`}
+              </Button>
+            )}
+            {bulkBreakDates.length > 0 && (
+              <Button
+                variant="contained"
+                startIcon={<AccessTime />}
+                onClick={() => handleBulkBreakTimeApply(Array.from(selectedBulkBreakDates))}
+                disabled={selectedBulkBreakDates.size === 0 || allocatingTravelTime || allocatingBreakTime}
+                size="large"
+                color="secondary"
+              >
+                {allocatingBreakTime ? <CircularProgress size={20} /> : `Allocate Break Time (${selectedBulkBreakDates.size} dates)`}
+              </Button>
+            )}
             <Button
               variant="outlined"
               onClick={handleSkipBulkAllocation}
-              disabled={allocatingTravelTime}
+              disabled={allocatingTravelTime || allocatingBreakTime}
               size="large"
             >
               Skip & Review Individually
@@ -1071,6 +1384,35 @@ const WorkActivityReviewFlow: React.FC = () => {
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <AccessTime fontSize="small" />
+                    Original Break Time
+                  </Typography>
+                  <Typography variant="body1">
+                    {currentActivity.breakTimeMinutes ? `${currentActivity.breakTimeMinutes} min` : 'None'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
+                    Allocated Break Time
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">
+                      {currentActivity.adjustedBreakTimeMinutes ? `${currentActivity.adjustedBreakTimeMinutes} min` : 'Not allocated'}
+                    </Typography>
+                    {(currentActivity.breakTimeMinutes || 0) > 0 && !currentActivity.adjustedBreakTimeMinutes && (
+                      <Chip 
+                        label="Needs Allocation" 
+                        color="warning" 
+                        size="small" 
+                        icon={<Warning />}
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
                     Non-Billable Time
                   </Typography>
                   <Typography variant="body1">
@@ -1209,6 +1551,17 @@ const WorkActivityReviewFlow: React.FC = () => {
                   color="info"
                 >
                   {allocatingTravelTime ? <CircularProgress size={20} /> : 'Allocate Travel Time'}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<AccessTime />}
+                  onClick={handleBreakTimePreview}
+                  disabled={allocatingBreakTime}
+                  color="secondary"
+                >
+                  {allocatingBreakTime ? <CircularProgress size={20} /> : 'Allocate Break Time'}
                 </Button>
 
                 {findNextUnprocessedActivity() !== null && (
@@ -1382,6 +1735,34 @@ const WorkActivityReviewFlow: React.FC = () => {
                   startAdornment: <DirectionsCar sx={{ mr: 1, color: 'primary.main' }} />
                 }}
                 helperText="Proportionally allocated travel time"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Break Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.breakTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, breakTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                helperText="Original break time from work notes"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Allocated Break Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.adjustedBreakTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, adjustedBreakTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'secondary.main' }} />
+                }}
+                helperText="Proportionally allocated break time"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1631,6 +2012,147 @@ const WorkActivityReviewFlow: React.FC = () => {
             color="primary"
           >
             {allocatingTravelTime ? <CircularProgress size={20} /> : 'Apply Allocation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Break Time Allocation Dialog */}
+      <Dialog 
+        open={breakTimeDialogOpen} 
+        onClose={() => setBreakTimeDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Break Time Allocation Preview
+          <IconButton
+            onClick={() => setBreakTimeDialogOpen(false)}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {breakTimePreview && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Date: {formatDateLongPacific(breakTimePreview.date)}
+              </Typography>
+              
+              {/* Summary */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Allocation Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Break Time
+                    </Typography>
+                    <Typography variant="h6">
+                      {formatMinutes(breakTimePreview.totalBreakMinutes)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Work Hours
+                    </Typography>
+                    <Typography variant="h6">
+                      {breakTimePreview.totalWorkHours}h
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Activities Updated
+                    </Typography>
+                    <Typography variant="h6">
+                      {breakTimePreview.updatedActivities}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Warnings */}
+              {breakTimePreview.warnings.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Warnings:
+                  </Typography>
+                  {breakTimePreview.warnings.map((warning, index) => (
+                    <Typography key={index} variant="body2">
+                      • {warning}
+                    </Typography>
+                  ))}
+                </Alert>
+              )}
+
+              {/* Allocation Details */}
+              <Typography variant="subtitle1" gutterBottom>
+                Allocation Details
+              </Typography>
+              <Stack spacing={2}>
+                {breakTimePreview.allocations.map((allocation, index) => (
+                  <Paper key={index} sx={{ p: 2, border: '1px solid', borderColor: 'grey.200' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                        {allocation.clientName}
+                      </Typography>
+                      {allocation.hasZeroBreak && (
+                        <Chip label="Zero Break" size="small" color="info" />
+                      )}
+                    </Box>
+                    <Grid container spacing={1}>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Work Hours
+                        </Typography>
+                        <Typography variant="body2">
+                          {allocation.hoursWorked}h
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Original Break
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatMinutes(allocation.originalBreakMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Allocated Break
+                        </Typography>
+                        <Typography variant="body2" color="secondary.main" sx={{ fontWeight: 'medium' }}>
+                          {formatMinutes(allocation.allocatedBreakMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          New Billable Hours
+                        </Typography>
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 'medium' }}>
+                          {allocation.newBillableHours}h
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBreakTimeDialogOpen(false)} startIcon={<Cancel />}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleBreakTimeApply} 
+            variant="contained" 
+            startIcon={<AccessTime />}
+            disabled={allocatingBreakTime}
+            color="secondary"
+          >
+            {allocatingBreakTime ? <CircularProgress size={20} /> : 'Apply Allocation'}
           </Button>
         </DialogActions>
       </Dialog>

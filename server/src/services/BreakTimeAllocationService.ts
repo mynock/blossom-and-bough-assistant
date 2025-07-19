@@ -2,44 +2,44 @@ import { BaseTimeAllocationService, TimeAllocationConfig, BaseTimeAllocationResu
 import { WorkActivityWithDetails } from './WorkActivityService';
 
 // Legacy interfaces for backward compatibility
-export interface TravelTimeAllocationRequest {
+export interface BreakTimeAllocationRequest {
   date: string;
   employeeId?: number;
-  totalTravelMinutes: number;
+  totalBreakMinutes: number;
 }
 
-export interface TravelTimeAllocationRangeRequest {
+export interface BreakTimeAllocationRangeRequest {
   startDate: string;
   endDate: string;
   employeeId?: number;
 }
 
-export interface TravelTimeAllocation {
+export interface BreakTimeAllocation {
   workActivityId: number;
   clientName: string;
   hoursWorked: number; // billable hours used for proportional allocation
-  originalTravelMinutes: number;
-  allocatedTravelMinutes: number;
+  originalBreakMinutes: number;
+  allocatedBreakMinutes: number;
   newBillableHours: number;
-  hasZeroTravel: boolean;
+  hasZeroBreak: boolean;
 }
 
-export interface TravelTimeAllocationResult {
+export interface BreakTimeAllocationResult {
   date: string;
   employeeId?: number;
-  totalTravelMinutes: number;
+  totalBreakMinutes: number;
   totalWorkHours: number; // actually represents total billable hours for allocation
-  allocations: TravelTimeAllocation[];
+  allocations: BreakTimeAllocation[];
   updatedActivities: number;
   warnings: string[];
 }
 
-export interface TravelTimeAllocationRangeResult {
+export interface BreakTimeAllocationRangeResult {
   startDate: string;
   endDate: string;
   employeeId?: number;
-  dateResults: TravelTimeAllocationResult[];
-  totalTravelMinutes: number;
+  dateResults: BreakTimeAllocationResult[];
+  totalBreakMinutes: number;
   totalWorkHours: number;
   totalAllocations: number;
   totalUpdatedActivities: number;
@@ -51,33 +51,33 @@ export interface TravelTimeAllocationRangeResult {
   };
 }
 
-export class TravelTimeAllocationService extends BaseTimeAllocationService {
+export class BreakTimeAllocationService extends BaseTimeAllocationService {
   private readonly config: TimeAllocationConfig = {
-    name: 'travel',
-    icon: '🚗',
-    timeField: 'travelTimeMinutes',
-    adjustedField: 'adjustedTravelTimeMinutes',
-    billableDirection: 'add', // Travel time adds to billable hours
-    description: 'Distribute travel time proportionally across work activities based on billable hours'
+    name: 'break',
+    icon: '☕',
+    timeField: 'breakTimeMinutes',
+    adjustedField: 'adjustedBreakTimeMinutes',
+    billableDirection: 'subtract', // Break time subtracts from billable hours
+    description: 'Distribute break time proportionally across work activities based on billable hours'
   };
 
   /**
-   * Transform base result to travel-specific interface for backward compatibility
+   * Transform base result to break-specific interface for backward compatibility
    */
-  private transformToTravelResult(baseResult: BaseTimeAllocationResult): TravelTimeAllocationResult {
+  private transformToBreakResult(baseResult: BaseTimeAllocationResult): BreakTimeAllocationResult {
     return {
       date: baseResult.date,
       employeeId: baseResult.employeeId,
-      totalTravelMinutes: baseResult.totalMinutes,
+      totalBreakMinutes: baseResult.totalMinutes,
       totalWorkHours: baseResult.totalWorkHours,
       allocations: baseResult.allocations.map(allocation => ({
         workActivityId: allocation.workActivityId,
         clientName: allocation.clientName,
         hoursWorked: allocation.hoursWorked,
-        originalTravelMinutes: allocation.originalMinutes,
-        allocatedTravelMinutes: allocation.allocatedMinutes,
+        originalBreakMinutes: allocation.originalMinutes,
+        allocatedBreakMinutes: allocation.allocatedMinutes,
         newBillableHours: allocation.newBillableHours,
-        hasZeroTravel: allocation.hasZeroTime
+        hasZeroBreak: allocation.hasZeroTime
       })),
       updatedActivities: baseResult.updatedActivities,
       warnings: baseResult.warnings
@@ -85,15 +85,15 @@ export class TravelTimeAllocationService extends BaseTimeAllocationService {
   }
 
   /**
-   * Transform base range result to travel-specific interface for backward compatibility
+   * Transform base range result to break-specific interface for backward compatibility
    */
-  private transformToTravelRangeResult(baseResult: BaseTimeAllocationRangeResult): TravelTimeAllocationRangeResult {
+  private transformToBreakRangeResult(baseResult: BaseTimeAllocationRangeResult): BreakTimeAllocationRangeResult {
     return {
       startDate: baseResult.startDate,
       endDate: baseResult.endDate,
       employeeId: baseResult.employeeId,
-      dateResults: baseResult.dateResults.map(dateResult => this.transformToTravelResult(dateResult)),
-      totalTravelMinutes: baseResult.totalMinutes,
+      dateResults: baseResult.dateResults.map(dateResult => this.transformToBreakResult(dateResult)),
+      totalBreakMinutes: baseResult.totalMinutes,
       totalWorkHours: baseResult.totalWorkHours,
       totalAllocations: baseResult.totalAllocations,
       totalUpdatedActivities: baseResult.totalUpdatedActivities,
@@ -102,31 +102,31 @@ export class TravelTimeAllocationService extends BaseTimeAllocationService {
   }
 
   /**
-   * Calculate and allocate travel time proportionally across work activities for a given day
+   * Calculate and allocate break time proportionally across work activities for a given day
    */
-  async allocateTravelTime(date: string): Promise<TravelTimeAllocationResult> {
+  async allocateBreakTime(date: string): Promise<BreakTimeAllocationResult> {
     const baseResult = await this.allocateTime(date, this.config);
-    return this.transformToTravelResult(baseResult);
+    return this.transformToBreakResult(baseResult);
   }
 
   /**
-   * Apply the calculated travel time allocation to work activities
+   * Apply the calculated break time allocation to work activities
    */
-  async applyTravelTimeAllocation(allocationResult: TravelTimeAllocationResult): Promise<TravelTimeAllocationResult> {
+  async applyBreakTimeAllocation(allocationResult: BreakTimeAllocationResult): Promise<BreakTimeAllocationResult> {
     // Transform back to base format for application
     const baseResult: BaseTimeAllocationResult = {
       date: allocationResult.date,
       employeeId: allocationResult.employeeId,
-      totalMinutes: allocationResult.totalTravelMinutes,
+      totalMinutes: allocationResult.totalBreakMinutes,
       totalWorkHours: allocationResult.totalWorkHours,
       allocations: allocationResult.allocations.map(allocation => ({
         workActivityId: allocation.workActivityId,
         clientName: allocation.clientName,
         hoursWorked: allocation.hoursWorked,
-        originalMinutes: allocation.originalTravelMinutes,
-        allocatedMinutes: allocation.allocatedTravelMinutes,
+        originalMinutes: allocation.originalBreakMinutes,
+        allocatedMinutes: allocation.allocatedBreakMinutes,
         newBillableHours: allocation.newBillableHours,
-        hasZeroTime: allocation.hasZeroTravel
+        hasZeroTime: allocation.hasZeroBreak
       })),
       updatedActivities: allocationResult.updatedActivities,
       warnings: allocationResult.warnings,
@@ -134,31 +134,31 @@ export class TravelTimeAllocationService extends BaseTimeAllocationService {
     };
 
     const appliedResult = await this.applyTimeAllocation(baseResult);
-    return this.transformToTravelResult(appliedResult);
+    return this.transformToBreakResult(appliedResult);
   }
 
   /**
-   * Calculate and immediately apply travel time allocation
+   * Calculate and immediately apply break time allocation
    */
-  async calculateAndApplyTravelTime(date: string): Promise<TravelTimeAllocationResult> {
+  async calculateAndApplyBreakTime(date: string): Promise<BreakTimeAllocationResult> {
     const baseResult = await this.calculateAndApplyTime(date, this.config);
-    return this.transformToTravelResult(baseResult);
+    return this.transformToBreakResult(baseResult);
   }
 
   /**
-   * Calculate travel time allocation for a date range (preview without applying)
+   * Calculate break time allocation for a date range (preview without applying)
    */
-  async allocateTravelTimeForRange(startDate: string, endDate: string): Promise<TravelTimeAllocationRangeResult> {
+  async allocateBreakTimeForRange(startDate: string, endDate: string): Promise<BreakTimeAllocationRangeResult> {
     const baseResult = await this.allocateTimeForRange(startDate, endDate, this.config);
-    return this.transformToTravelRangeResult(baseResult);
+    return this.transformToBreakRangeResult(baseResult);
   }
 
   /**
-   * Calculate and apply travel time allocation for a date range
+   * Calculate and apply break time allocation for a date range
    */
-  async calculateAndApplyTravelTimeForRange(startDate: string, endDate: string): Promise<TravelTimeAllocationRangeResult> {
+  async calculateAndApplyBreakTimeForRange(startDate: string, endDate: string): Promise<BreakTimeAllocationRangeResult> {
     const baseResult = await this.calculateAndApplyTimeForRange(startDate, endDate, this.config);
-    return this.transformToTravelRangeResult(baseResult);
+    return this.transformToBreakRangeResult(baseResult);
   }
 
   /**

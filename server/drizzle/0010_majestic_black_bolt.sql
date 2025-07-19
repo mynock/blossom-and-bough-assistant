@@ -1,0 +1,1 @@
+ALTER TABLE "work_activities" ADD COLUMN "adjusted_break_time_minutes" integer;
