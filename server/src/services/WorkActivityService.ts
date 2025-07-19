@@ -112,6 +112,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -176,6 +177,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -229,6 +231,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -294,6 +297,7 @@ export class WorkActivityService extends DatabaseService {
       let calculatedBillableHours = this.calculateBillableHours(
         workActivityData.totalHours,
         workActivityData.breakTimeMinutes || 0,
+        workActivityData.adjustedBreakTimeMinutes || 0,
         workActivityData.nonBillableTimeMinutes || 0,
         workActivityData.adjustedTravelTimeMinutes || 0
       );
@@ -376,19 +380,21 @@ export class WorkActivityService extends DatabaseService {
 
   /**
    * Calculate billable hours from the component values
-   * Formula: totalHours - (breakTimeMinutes/60) - (nonBillableTimeMinutes/60) + (adjustedTravelTimeMinutes/60)
+   * Formula: totalHours - (breakTimeMinutes/60) - (adjustedBreakTimeMinutes/60) - (nonBillableTimeMinutes/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number,
     breakTimeMinutes: number = 0,
+    adjustedBreakTimeMinutes: number = 0,
     nonBillableTimeMinutes: number = 0,
     adjustedTravelTimeMinutes: number = 0
   ): number {
     const breakHours = breakTimeMinutes / 60;
+    const adjustedBreakHours = adjustedBreakTimeMinutes / 60;
     const nonBillableHours = nonBillableTimeMinutes / 60;
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60;
     
-    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
+    const billableHours = totalHours - breakHours - adjustedBreakHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
@@ -410,6 +416,7 @@ export class WorkActivityService extends DatabaseService {
     const billableHoursInputsChanged = (
       data.totalHours !== undefined ||
       data.breakTimeMinutes !== undefined ||
+      data.adjustedBreakTimeMinutes !== undefined ||
       data.nonBillableTimeMinutes !== undefined ||
       data.adjustedTravelTimeMinutes !== undefined
     );
@@ -433,15 +440,17 @@ export class WorkActivityService extends DatabaseService {
     if (billableHoursInputsChanged) {
              // Use updated values where provided, otherwise use current values
        const newTotalHours = data.totalHours !== undefined ? data.totalHours : currentActivity.totalHours;
-       const newBreakTimeMinutes = data.breakTimeMinutes !== undefined ? data.breakTimeMinutes : (currentActivity.breakTimeMinutes || 0);
-       const newNonBillableTimeMinutes = data.nonBillableTimeMinutes !== undefined ? data.nonBillableTimeMinutes : (currentActivity.nonBillableTimeMinutes || 0);
+       const newBreakTimeMinutes = data.breakTimeMinutes !== undefined ? (data.breakTimeMinutes || 0) : (currentActivity.breakTimeMinutes || 0);
+       const newAdjustedBreakTimeMinutes = data.adjustedBreakTimeMinutes !== undefined ? (data.adjustedBreakTimeMinutes || 0) : (currentActivity.adjustedBreakTimeMinutes || 0);
+       const newNonBillableTimeMinutes = data.nonBillableTimeMinutes !== undefined ? (data.nonBillableTimeMinutes || 0) : (currentActivity.nonBillableTimeMinutes || 0);
        const newAdjustedTravelTimeMinutes = data.adjustedTravelTimeMinutes !== undefined ? (data.adjustedTravelTimeMinutes || 0) : (currentActivity.adjustedTravelTimeMinutes || 0);
       
              // Calculate new billable hours using the standard formula
        let newBillableHours = this.calculateBillableHours(
          newTotalHours,
-         newBreakTimeMinutes || undefined,
-         newNonBillableTimeMinutes || undefined,
+         newBreakTimeMinutes,
+         newAdjustedBreakTimeMinutes,
+         newNonBillableTimeMinutes,
          newAdjustedTravelTimeMinutes
        );
       
@@ -565,6 +574,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -626,6 +636,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -685,6 +696,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,
@@ -744,6 +756,7 @@ export class WorkActivityService extends DatabaseService {
         travelTimeMinutes: workActivities.travelTimeMinutes,
         adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
         breakTimeMinutes: workActivities.breakTimeMinutes,
+        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
         nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
         notes: workActivities.notes,
         tasks: workActivities.tasks,

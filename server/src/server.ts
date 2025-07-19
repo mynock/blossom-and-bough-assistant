@@ -31,6 +31,7 @@ import quickbooksRouter from './routes/quickbooks';
 import { createNotionSyncRouter } from './routes/notionSync';
 import { createWorkNotesImportRouter } from './routes/workNotesImport';
 import travelTimeRouter from './routes/travelTime';
+import breakTimeRouter from './routes/breakTime';
 import settingsRouter from './routes/settings';
 import { requireAuth } from './middleware/auth';
 
@@ -139,6 +140,7 @@ app.use('/api/clients', requireAuth, clientsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/work-notes', requireAuth, createWorkNotesImportRouter(anthropicService));
 app.use('/api/travel-time', requireAuth, travelTimeRouter);
+app.use('/api/break-time', requireAuth, breakTimeRouter);
 app.use('/api/migration', requireAuth, migrationRouter);
 app.use('/api/settings', settingsRouter); // Settings routes handle their own auth
 app.use('/api/notion', notionRouter); // Public routes for embedded usage
