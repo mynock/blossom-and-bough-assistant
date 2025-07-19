@@ -187,7 +187,7 @@ export class WorkNotesParserService {
           status: 'completed', // Default to completed for imported activities
           startTime: activity.startTime,
           endTime: activity.endTime,
-          billableHours: this.calculateBillableHours(activity.totalHours, activity.lunchTime),
+          billableHours: this.calculateBillableHours(activity.totalHours, activity.lunchTime, 0, 0, activity.hoursAdjustments),
           totalHours: activity.totalHours,
           hourlyRate: null, // Will be set based on client rate
           clientId: activity.clientId || null,
@@ -490,13 +490,28 @@ export class WorkNotesParserService {
     totalHours: number, 
     lunchTime?: number, 
     nonBillableTime?: number,
-    adjustedTravelTimeMinutes: number = 0
+    adjustedTravelTimeMinutes: number = 0,
+    hoursAdjustments?: Array<{ person: string; adjustment: string; notes: string; hours?: number }>
   ): number {
     const breakHours = (lunchTime || 0) / 60; // Convert minutes to hours
     const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
-    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
+    // Calculate total hours adjustments
+    let totalAdjustmentHours = 0;
+    if (hoursAdjustments && hoursAdjustments.length > 0) {
+      totalAdjustmentHours = hoursAdjustments.reduce((sum, adj) => {
+        if (adj.hours !== undefined) {
+          return sum + adj.hours;
+        }
+        // Parse adjustment string if hours not already calculated
+        const parsedHours = this.parseTimeToHours(adj.adjustment);
+        return sum + parsedHours;
+      }, 0);
+      console.log(`⏰ Total hours adjustments: ${totalAdjustmentHours} hours from ${hoursAdjustments.length} adjustments`);
+    }
+    
+    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours + totalAdjustmentHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
@@ -533,5 +548,42 @@ export class WorkNotesParserService {
   private isValidDate(dateString: string): boolean {
     const date = new Date(dateString);
     return date instanceof Date && !isNaN(date.getTime());
+  }
+
+  /**
+   * Parse time string like "2:25" or "-0:30" to decimal hours
+   */
+  private parseTimeToHours(timeString: string): number {
+    if (!timeString || typeof timeString !== 'string') {
+      return 0;
+    }
+
+    // Remove any whitespace
+    const cleanTime = timeString.trim();
+    
+    // Check for negative sign
+    const isNegative = cleanTime.startsWith('-');
+    const timeWithoutSign = isNegative ? cleanTime.substring(1) : cleanTime;
+    
+    // Parse H:MM or HH:MM format
+    const timeParts = timeWithoutSign.split(':');
+    if (timeParts.length !== 2) {
+      console.warn(`Invalid time format for hours adjustment: ${timeString}`);
+      return 0;
+    }
+    
+    const hours = parseInt(timeParts[0], 10);
+    const minutes = parseInt(timeParts[1], 10);
+    
+    if (isNaN(hours) || isNaN(minutes)) {
+      console.warn(`Could not parse hours adjustment: ${timeString}`);
+      return 0;
+    }
+    
+    const decimalHours = hours + (minutes / 60);
+    const result = isNegative ? -decimalHours : decimalHours;
+    
+    console.log(`⏰ Parsed "${timeString}" to ${result} hours`);
+    return result;
   }
 } 
