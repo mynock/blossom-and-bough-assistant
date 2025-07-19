@@ -19,6 +19,10 @@ export interface BaseTimeAllocation {
   allocatedMinutes: number;
   newBillableHours: number;
   hasZeroTime: boolean;
+  // Enhanced preview fields
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 export interface BaseTimeAllocationResult {
@@ -30,6 +34,17 @@ export interface BaseTimeAllocationResult {
   updatedActivities: number;
   warnings: string[];
   config: TimeAllocationConfig;
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export interface BaseTimeAllocationRangeResult {
@@ -48,6 +63,18 @@ export interface BaseTimeAllocationRangeResult {
     daysWithNoData: number;
   };
   config: TimeAllocationConfig;
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+      datesAffected: string[];
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export class BaseTimeAllocationService extends DatabaseService {
@@ -96,15 +123,39 @@ export class BaseTimeAllocationService extends DatabaseService {
       const warnings = [`Found ${workActivities.length} work activities but no ${config.name} time to allocate`];
       
       // Create empty allocations for display purposes (showing activities with zero time)
-      const allocations: BaseTimeAllocation[] = workActivities.map(activity => ({
-        workActivityId: activity.id,
-        clientName: activity.clientName || 'Unknown Client',
-        hoursWorked: activity.billableHours || activity.totalHours || 0,
-        originalMinutes: 0,
-        allocatedMinutes: 0,
-        newBillableHours: activity.billableHours || activity.totalHours || 0,
-        hasZeroTime: true
-      }));
+      const allocations: BaseTimeAllocation[] = workActivities.map(activity => {
+        const billableHours = activity.billableHours || activity.totalHours || 0;
+        return {
+          workActivityId: activity.id,
+          clientName: activity.clientName || 'Unknown Client',
+          hoursWorked: billableHours,
+          originalMinutes: 0,
+          allocatedMinutes: 0,
+          newBillableHours: billableHours,
+          hasZeroTime: true,
+          originalBillableHours: billableHours,
+          billableHourChange: 0,
+          minuteChange: 0
+        };
+      });
+
+      // Calculate client summary for zero allocation case
+      const clientSummary: { [clientName: string]: any } = {};
+      for (const allocation of allocations) {
+        const clientName = allocation.clientName;
+        if (!clientSummary[clientName]) {
+          clientSummary[clientName] = {
+            activitiesCount: 0,
+            totalBillableHourChange: 0,
+            totalMinuteChange: 0,
+            originalBillableHours: 0,
+            newBillableHours: 0
+          };
+        }
+        clientSummary[clientName].activitiesCount += 1;
+        clientSummary[clientName].originalBillableHours += allocation.originalBillableHours || 0;
+        clientSummary[clientName].newBillableHours += allocation.newBillableHours || 0;
+      }
 
       return {
         date,
@@ -113,7 +164,9 @@ export class BaseTimeAllocationService extends DatabaseService {
         allocations,
         updatedActivities: 0,
         warnings,
-        config
+        config,
+        clientSummary,
+        totalBillableHourChange: 0
       };
     }
 
@@ -176,6 +229,10 @@ export class BaseTimeAllocationService extends DatabaseService {
         ? activityBaseBillableHours + allocatedHours // Travel time adds to billable
         : Math.max(0, activityBaseBillableHours - allocatedHours); // Break time subtracts from billable
 
+      // Calculate hour and minute changes
+      const billableHourChange = newBillableHours - activityBaseBillableHours;
+      const minuteChange = allocatedMinutes - originalMinutes;
+
       allocations.push({
         workActivityId: activity.id,
         clientName: activity.clientName || 'Unknown Client',
@@ -183,14 +240,44 @@ export class BaseTimeAllocationService extends DatabaseService {
         originalMinutes,
         allocatedMinutes,
         newBillableHours,
-        hasZeroTime
+        hasZeroTime,
+        originalBillableHours: activityBaseBillableHours,
+        billableHourChange,
+        minuteChange
       });
 
       totalAllocatedMinutes += allocatedMinutes;
     }
 
+    // Calculate client summary and totals
+    const clientSummary: { [clientName: string]: any } = {};
+    let totalBillableHourChange = 0;
+
+    for (const allocation of allocations) {
+      const clientName = allocation.clientName;
+      
+      if (!clientSummary[clientName]) {
+        clientSummary[clientName] = {
+          activitiesCount: 0,
+          totalBillableHourChange: 0,
+          totalMinuteChange: 0,
+          originalBillableHours: 0,
+          newBillableHours: 0
+        };
+      }
+      
+      clientSummary[clientName].activitiesCount += 1;
+      clientSummary[clientName].totalBillableHourChange += allocation.billableHourChange || 0;
+      clientSummary[clientName].totalMinuteChange += allocation.minuteChange || 0;
+      clientSummary[clientName].originalBillableHours += allocation.originalBillableHours || 0;
+      clientSummary[clientName].newBillableHours += allocation.newBillableHours || 0;
+      
+      totalBillableHourChange += allocation.billableHourChange || 0;
+    }
+
     debugLog.info(`🧮 Calculated allocations:`, allocations);
     debugLog.info(`🎯 Total allocated: ${totalAllocatedMinutes} minutes (original: ${totalMinutes})`);
+    debugLog.info(`📊 Total billable hour change: ${totalBillableHourChange.toFixed(2)}h`);
     
     if (warnings.length > 0) {
       debugLog.warn(`⚠️ Warnings:`, warnings);
@@ -203,7 +290,9 @@ export class BaseTimeAllocationService extends DatabaseService {
       allocations,
       updatedActivities: 0, // Will be set when actually applying the allocation
       warnings,
-      config
+      config,
+      clientSummary,
+      totalBillableHourChange
     };
   }
 
@@ -320,7 +409,9 @@ export class BaseTimeAllocationService extends DatabaseService {
             allocations: [],
             updatedActivities: 0,
             warnings: [errorMessage],
-            config
+            config,
+            clientSummary: {},
+            totalBillableHourChange: 0
           });
           daysWithWarnings++;
         }
@@ -328,6 +419,37 @@ export class BaseTimeAllocationService extends DatabaseService {
     }
 
     const daysWithData = dateResults.length;
+
+    // Aggregate client summary across all dates
+    const clientSummary: { [clientName: string]: any } = {};
+    let totalBillableHourChange = 0;
+
+    for (const dateResult of dateResults) {
+      totalBillableHourChange += dateResult.totalBillableHourChange || 0;
+      
+      Object.entries(dateResult.clientSummary || {}).forEach(([clientName, clientData]) => {
+        if (!clientSummary[clientName]) {
+          clientSummary[clientName] = {
+            activitiesCount: 0,
+            totalBillableHourChange: 0,
+            totalMinuteChange: 0,
+            originalBillableHours: 0,
+            newBillableHours: 0,
+            datesAffected: []
+          };
+        }
+        
+        clientSummary[clientName].activitiesCount += clientData.activitiesCount || 0;
+        clientSummary[clientName].totalBillableHourChange += clientData.totalBillableHourChange || 0;
+        clientSummary[clientName].totalMinuteChange += clientData.totalMinuteChange || 0;
+        clientSummary[clientName].originalBillableHours += clientData.originalBillableHours || 0;
+        clientSummary[clientName].newBillableHours += clientData.newBillableHours || 0;
+        
+        if (clientData.activitiesCount > 0 && !clientSummary[clientName].datesAffected.includes(dateResult.date)) {
+          clientSummary[clientName].datesAffected.push(dateResult.date);
+        }
+      });
+    }
 
     return {
       startDate,
@@ -343,7 +465,9 @@ export class BaseTimeAllocationService extends DatabaseService {
         daysWithWarnings,
         daysWithNoData
       },
-      config
+      config,
+      clientSummary,
+      totalBillableHourChange
     };
   }
 
