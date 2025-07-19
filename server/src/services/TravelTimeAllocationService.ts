@@ -22,6 +22,10 @@ export interface TravelTimeAllocation {
   allocatedTravelMinutes: number;
   newBillableHours: number;
   hasZeroTravel: boolean;
+  // Enhanced preview fields
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 export interface TravelTimeAllocationResult {
@@ -32,6 +36,17 @@ export interface TravelTimeAllocationResult {
   allocations: TravelTimeAllocation[];
   updatedActivities: number;
   warnings: string[];
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export interface TravelTimeAllocationRangeResult {
@@ -49,6 +64,18 @@ export interface TravelTimeAllocationRangeResult {
     daysWithWarnings: number;
     daysWithNoData: number;
   };
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+      datesAffected: string[];
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export class TravelTimeAllocationService extends BaseTimeAllocationService {
@@ -77,10 +104,15 @@ export class TravelTimeAllocationService extends BaseTimeAllocationService {
         originalTravelMinutes: allocation.originalMinutes,
         allocatedTravelMinutes: allocation.allocatedMinutes,
         newBillableHours: allocation.newBillableHours,
-        hasZeroTravel: allocation.hasZeroTime
+        hasZeroTravel: allocation.hasZeroTime,
+        originalBillableHours: allocation.originalBillableHours,
+        billableHourChange: allocation.billableHourChange,
+        minuteChange: allocation.minuteChange
       })),
       updatedActivities: baseResult.updatedActivities,
-      warnings: baseResult.warnings
+      warnings: baseResult.warnings,
+      clientSummary: baseResult.clientSummary,
+      totalBillableHourChange: baseResult.totalBillableHourChange
     };
   }
 
@@ -97,7 +129,9 @@ export class TravelTimeAllocationService extends BaseTimeAllocationService {
       totalWorkHours: baseResult.totalWorkHours,
       totalAllocations: baseResult.totalAllocations,
       totalUpdatedActivities: baseResult.totalUpdatedActivities,
-      overallSummary: baseResult.overallSummary
+      overallSummary: baseResult.overallSummary,
+      clientSummary: baseResult.clientSummary,
+      totalBillableHourChange: baseResult.totalBillableHourChange
     };
   }
 

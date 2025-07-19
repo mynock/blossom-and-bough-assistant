@@ -22,6 +22,10 @@ export interface BreakTimeAllocation {
   allocatedBreakMinutes: number;
   newBillableHours: number;
   hasZeroBreak: boolean;
+  // Enhanced preview fields
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 export interface BreakTimeAllocationResult {
@@ -32,6 +36,17 @@ export interface BreakTimeAllocationResult {
   allocations: BreakTimeAllocation[];
   updatedActivities: number;
   warnings: string[];
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export interface BreakTimeAllocationRangeResult {
@@ -49,6 +64,18 @@ export interface BreakTimeAllocationRangeResult {
     daysWithWarnings: number;
     daysWithNoData: number;
   };
+  // Enhanced preview fields
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+      datesAffected: string[];
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export class BreakTimeAllocationService extends BaseTimeAllocationService {
@@ -77,10 +104,15 @@ export class BreakTimeAllocationService extends BaseTimeAllocationService {
         originalBreakMinutes: allocation.originalMinutes,
         allocatedBreakMinutes: allocation.allocatedMinutes,
         newBillableHours: allocation.newBillableHours,
-        hasZeroBreak: allocation.hasZeroTime
+        hasZeroBreak: allocation.hasZeroTime,
+        originalBillableHours: allocation.originalBillableHours,
+        billableHourChange: allocation.billableHourChange,
+        minuteChange: allocation.minuteChange
       })),
       updatedActivities: baseResult.updatedActivities,
-      warnings: baseResult.warnings
+      warnings: baseResult.warnings,
+      clientSummary: baseResult.clientSummary,
+      totalBillableHourChange: baseResult.totalBillableHourChange
     };
   }
 
@@ -97,7 +129,9 @@ export class BreakTimeAllocationService extends BaseTimeAllocationService {
       totalWorkHours: baseResult.totalWorkHours,
       totalAllocations: baseResult.totalAllocations,
       totalUpdatedActivities: baseResult.totalUpdatedActivities,
-      overallSummary: baseResult.overallSummary
+      overallSummary: baseResult.overallSummary,
+      clientSummary: baseResult.clientSummary,
+      totalBillableHourChange: baseResult.totalBillableHourChange
     };
   }
 
