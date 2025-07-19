@@ -3,7 +3,7 @@
 This document describes how billable hours are calculated and modified throughout the Blossom & Bough scheduling assistant system.
 
 **Last Updated:** 2025-01-19  
-**Version:** 1.2
+**Version:** 1.3
 
 ## Core Formula
 
@@ -27,6 +27,7 @@ billableHours = adjustedTotalHours
 | `hoursAdjustments` | Person-specific adjustments from Notion | ➕/➖ Applied to total hours first |
 | `adjustedTotalHours` | Total hours + hours adjustments | ➕ Base for billable calculation |
 | `breakTimeMinutes` | Lunch/break time | ✅ **Billable time** (not subtracted) |
+| `adjustedBreakTimeMinutes` | Allocated break time | ✅ **Billable time** (not subtracted) |
 | `nonBillableTimeMinutes` | Non-billable activities | ➖ Subtracted from adjusted total |
 | `adjustedTravelTimeMinutes` | Allocated travel time | ➕ Added to billable hours |
 
@@ -84,6 +85,7 @@ billableHours = adjustedTotalHours
 ### Direct Factors (used in calculation)
 - ✅ `totalHours` - base work time
 - ✅ `breakTimeMinutes` - lunch/break time (**billable** - not subtracted)
+- ✅ `adjustedBreakTimeMinutes` - allocated break time (**billable** - not subtracted)
 - ✅ `nonBillableTimeMinutes` - non-billable activities (subtracted)
 - ✅ `adjustedTravelTimeMinutes` - allocated travel time (added)
 - ✅ `hoursAdjustments` - person-specific adjustments from Notion (added/subtracted)
@@ -91,6 +93,7 @@ billableHours = adjustedTotalHours
 ### Indirect Factors
 - ✅ **Rounding settings** - can round to nearest half-hour increments
 - ✅ **Travel time allocation** - modifies `adjustedTravelTimeMinutes`
+- ✅ **Break time allocation** - modifies `adjustedBreakTimeMinutes`
 - ✅ **Employee count** - affects total hours calculation from start/end times
 
 ### Factors That DON'T Affect Billable Hours
@@ -213,6 +216,12 @@ graph TD
 - ✅ Ensure Notion sync has been run after adding adjustments
 
 ## Change Log
+
+### Version 1.3 (2025-01-19)
+- **INTEGRATION:** Merged break time allocation feature from main branch
+- Added `adjustedBreakTimeMinutes` field support 
+- Maintained billable break time logic during conflict resolution
+- Updated documentation to include new break time allocation system
 
 ### Version 1.2 (2025-01-19)
 - **IMPORTANT FIX:** Break time is now correctly treated as billable time
