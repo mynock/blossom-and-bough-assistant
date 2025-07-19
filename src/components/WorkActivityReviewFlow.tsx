@@ -59,6 +59,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number;
   breakTimeMinutes?: number;
+  adjustedBreakTimeMinutes?: number;
   nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -85,6 +86,25 @@ interface TravelTimeAllocationResult {
   totalTravelMinutes: number;
   totalWorkHours: number;
   allocations: TravelTimeAllocationItem[];
+  updatedActivities: number;
+  warnings: string[];
+}
+
+interface BreakTimeAllocationItem {
+  workActivityId: number;
+  clientName: string;
+  hoursWorked: number;
+  originalBreakMinutes: number;
+  allocatedBreakMinutes: number;
+  newBillableHours: number;
+  hasZeroBreak: boolean;
+}
+
+interface BreakTimeAllocationResult {
+  date: string;
+  totalBreakMinutes: number;
+  totalWorkHours: number;
+  allocations: BreakTimeAllocationItem[];
   updatedActivities: number;
   warnings: string[];
 }
@@ -137,6 +157,16 @@ const WorkActivityReviewFlow: React.FC = () => {
   const [bulkTravelDates, setBulkTravelDates] = useState<BulkTravelTimeDate[]>([]);
   const [bulkAllocationResults, setBulkAllocationResults] = useState<Record<string, TravelTimeAllocationResult>>({});
   const [selectedBulkDates, setSelectedBulkDates] = useState<Set<string>>(new Set());
+
+  // Break time allocation state
+  const [breakTimePreview, setBreakTimePreview] = useState<BreakTimeAllocationResult | null>(null);
+  const [breakTimeDialogOpen, setBreakTimeDialogOpen] = useState(false);
+  const [allocatingBreakTime, setAllocatingBreakTime] = useState(false);
+  const [completionBreakSummary, setCompletionBreakSummary] = useState<{ 
+    datesWithUnallocatedBreak: string[]; 
+    totalUnallocatedMinutes: number;
+    activitiesWithBreak: number;
+  } | null>(null);
 
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
@@ -410,6 +440,45 @@ const WorkActivityReviewFlow: React.FC = () => {
       setError(error instanceof Error ? error.message : 'Failed to apply travel time allocation');
     } finally {
       setAllocatingTravelTime(false);
+    }
+  };
+
+  const handleBreakTimePreview = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingBreakTime(true);
+      const response = await apiClient.post('/api/break-time/calculate', {
+        date: currentActivity.date
+      });
+      const data = await response.json();
+      setBreakTimePreview(data);
+      setBreakTimeDialogOpen(true);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to preview break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
+    }
+  };
+
+  const handleBreakTimeApply = async () => {
+    if (!currentActivity) return;
+
+    try {
+      setAllocatingBreakTime(true);
+      await apiClient.post('/api/break-time/apply', {
+        date: currentActivity.date
+      });
+      
+      // Refresh activities to show updated break time allocations
+      await fetchActivitiesNeedingReview();
+      
+      setBreakTimeDialogOpen(false);
+      setBreakTimePreview(null);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to apply break time allocation');
+    } finally {
+      setAllocatingBreakTime(false);
     }
   };
 
@@ -1071,6 +1140,35 @@ const WorkActivityReviewFlow: React.FC = () => {
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <AccessTime fontSize="small" />
+                    Original Break Time
+                  </Typography>
+                  <Typography variant="body1">
+                    {currentActivity.breakTimeMinutes ? `${currentActivity.breakTimeMinutes} min` : 'None'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
+                    Allocated Break Time
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1">
+                      {currentActivity.adjustedBreakTimeMinutes ? `${currentActivity.adjustedBreakTimeMinutes} min` : 'Not allocated'}
+                    </Typography>
+                    {(currentActivity.breakTimeMinutes || 0) > 0 && !currentActivity.adjustedBreakTimeMinutes && (
+                      <Chip 
+                        label="Needs Allocation" 
+                        color="warning" 
+                        size="small" 
+                        icon={<Warning />}
+                        sx={{ fontSize: '0.7rem' }}
+                      />
+                    )}
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <AccessTime fontSize="small" />
                     Non-Billable Time
                   </Typography>
                   <Typography variant="body1">
@@ -1209,6 +1307,17 @@ const WorkActivityReviewFlow: React.FC = () => {
                   color="info"
                 >
                   {allocatingTravelTime ? <CircularProgress size={20} /> : 'Allocate Travel Time'}
+                </Button>
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<AccessTime />}
+                  onClick={handleBreakTimePreview}
+                  disabled={allocatingBreakTime}
+                  color="secondary"
+                >
+                  {allocatingBreakTime ? <CircularProgress size={20} /> : 'Allocate Break Time'}
                 </Button>
 
                 {findNextUnprocessedActivity() !== null && (
@@ -1382,6 +1491,34 @@ const WorkActivityReviewFlow: React.FC = () => {
                   startAdornment: <DirectionsCar sx={{ mr: 1, color: 'primary.main' }} />
                 }}
                 helperText="Proportionally allocated travel time"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Break Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.breakTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, breakTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                }}
+                helperText="Original break time from work notes"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                label="Allocated Break Time (minutes)"
+                type="number"
+                fullWidth
+                value={editedActivity.adjustedBreakTimeMinutes || ''}
+                onChange={(e) => setEditedActivity(prev => ({ ...prev, adjustedBreakTimeMinutes: parseInt(e.target.value) || 0 }))}
+                inputProps={{ step: 1, min: 0 }}
+                InputProps={{
+                  startAdornment: <AccessTime sx={{ mr: 1, color: 'secondary.main' }} />
+                }}
+                helperText="Proportionally allocated break time"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -1631,6 +1768,147 @@ const WorkActivityReviewFlow: React.FC = () => {
             color="primary"
           >
             {allocatingTravelTime ? <CircularProgress size={20} /> : 'Apply Allocation'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Break Time Allocation Dialog */}
+      <Dialog 
+        open={breakTimeDialogOpen} 
+        onClose={() => setBreakTimeDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Break Time Allocation Preview
+          <IconButton
+            onClick={() => setBreakTimeDialogOpen(false)}
+            sx={{ position: 'absolute', right: 8, top: 8 }}
+          >
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {breakTimePreview && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Date: {formatDateLongPacific(breakTimePreview.date)}
+              </Typography>
+              
+              {/* Summary */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: 'grey.50' }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Allocation Summary
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Break Time
+                    </Typography>
+                    <Typography variant="h6">
+                      {formatMinutes(breakTimePreview.totalBreakMinutes)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Total Work Hours
+                    </Typography>
+                    <Typography variant="h6">
+                      {breakTimePreview.totalWorkHours}h
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={4}>
+                    <Typography variant="body2" color="text.secondary">
+                      Activities Updated
+                    </Typography>
+                    <Typography variant="h6">
+                      {breakTimePreview.updatedActivities}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              {/* Warnings */}
+              {breakTimePreview.warnings.length > 0 && (
+                <Alert severity="warning" sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Warnings:
+                  </Typography>
+                  {breakTimePreview.warnings.map((warning, index) => (
+                    <Typography key={index} variant="body2">
+                      • {warning}
+                    </Typography>
+                  ))}
+                </Alert>
+              )}
+
+              {/* Allocation Details */}
+              <Typography variant="subtitle1" gutterBottom>
+                Allocation Details
+              </Typography>
+              <Stack spacing={2}>
+                {breakTimePreview.allocations.map((allocation, index) => (
+                  <Paper key={index} sx={{ p: 2, border: '1px solid', borderColor: 'grey.200' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 'bold' }}>
+                        {allocation.clientName}
+                      </Typography>
+                      {allocation.hasZeroBreak && (
+                        <Chip label="Zero Break" size="small" color="info" />
+                      )}
+                    </Box>
+                    <Grid container spacing={1}>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Work Hours
+                        </Typography>
+                        <Typography variant="body2">
+                          {allocation.hoursWorked}h
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Original Break
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatMinutes(allocation.originalBreakMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          Allocated Break
+                        </Typography>
+                        <Typography variant="body2" color="secondary.main" sx={{ fontWeight: 'medium' }}>
+                          {formatMinutes(allocation.allocatedBreakMinutes)}
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={3}>
+                        <Typography variant="body2" color="text.secondary">
+                          New Billable Hours
+                        </Typography>
+                        <Typography variant="body2" color="success.main" sx={{ fontWeight: 'medium' }}>
+                          {allocation.newBillableHours}h
+                        </Typography>
+                      </Grid>
+                    </Grid>
+                  </Paper>
+                ))}
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBreakTimeDialogOpen(false)} startIcon={<Cancel />}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleBreakTimeApply} 
+            variant="contained" 
+            startIcon={<AccessTime />}
+            disabled={allocatingBreakTime}
+            color="secondary"
+          >
+            {allocatingBreakTime ? <CircularProgress size={20} /> : 'Apply Allocation'}
           </Button>
         </DialogActions>
       </Dialog>
