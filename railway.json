@@ -7,6 +7,5 @@
     "startCommand": "sh -c 'npm run db:migrate:prod && npm run start:prod'",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
-  },
-
+  }
 }
