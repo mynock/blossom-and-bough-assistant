@@ -49,9 +49,11 @@ import {
   CheckCircle as CheckCircleIcon,
   TableChart as TableChartIcon,
   ViewList as ViewListIcon,
+  StickyNote2 as StickyNote2Icon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import { ClientTasksList } from './ClientTasksList';
+import { ClientNotesList } from './ClientNotesList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
 import { formatDatePacific } from '../utils/dateUtils';
 
@@ -200,7 +202,7 @@ const ClientDetail: React.FC = () => {
   const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [useAIGeneration, setUseAIGeneration] = useState(false);
-  const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date'>('table');
+  const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date' | 'notes'>('table');
 
   useEffect(() => {
     const fetchClientData = async () => {
@@ -765,6 +767,10 @@ const ClientDetail: React.FC = () => {
                   <ViewListIcon sx={{ mr: 1 }} />
                   Tasks List
                 </ToggleButton>
+                <ToggleButton value="notes" aria-label="notes view">
+                  <StickyNote2Icon sx={{ mr: 1 }} />
+                  Notes List
+                </ToggleButton>
               </ToggleButtonGroup>
             </Box>
             <Divider sx={{ mb: 2 }} />
@@ -777,10 +783,15 @@ const ClientDetail: React.FC = () => {
                 showClientColumn={false}
                 emptyMessage="No work activities found for this client."
               />
-            ) : (
+            ) : workActivitiesView === 'date' ? (
               <ClientTasksList
                 activities={workActivities}
                 emptyMessage="No tasks found for this client."
+              />
+            ) : (
+              <ClientNotesList
+                activities={workActivities}
+                emptyMessage="No notes found for this client."
               />
             )}
           </Paper>
