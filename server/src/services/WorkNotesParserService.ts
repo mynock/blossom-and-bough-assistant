@@ -485,8 +485,9 @@ export class WorkNotesParserService {
    * Calculate billable hours from total hours minus non-billable time
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
    * Hours adjustments are applied to total hours first, then billable hours calculated
+   * Break time is billable, only non-billable time is subtracted
    * Formula: adjustedTotalHours = totalHours + hoursAdjustments
-   *          billableHours = adjustedTotalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
+   *          billableHours = adjustedTotalHours - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number, 
@@ -495,7 +496,6 @@ export class WorkNotesParserService {
     adjustedTravelTimeMinutes: number = 0,
     hoursAdjustments?: Array<{ person: string; adjustment: string; notes: string; hours?: number }>
   ): number {
-    const breakHours = (lunchTime || 0) / 60; // Convert minutes to hours
     const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
@@ -517,7 +517,8 @@ export class WorkNotesParserService {
     const adjustedTotalHours = totalHours + totalAdjustmentHours;
     console.log(`📊 Adjusted total hours: ${totalHours} + ${totalAdjustmentHours} = ${adjustedTotalHours}`);
     
-    const billableHours = adjustedTotalHours - breakHours - nonBillableHours + adjustedTravelHours;
+    // Break time is billable, only subtract non-billable time
+    const billableHours = adjustedTotalHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places

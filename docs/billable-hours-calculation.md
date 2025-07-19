@@ -3,7 +3,7 @@
 This document describes how billable hours are calculated and modified throughout the Blossom & Bough scheduling assistant system.
 
 **Last Updated:** 2025-01-19  
-**Version:** 1.1
+**Version:** 1.2
 
 ## Core Formula
 
@@ -15,7 +15,6 @@ adjustedTotalHours = totalHours + hoursAdjustments
 
 # Step 2: Calculate billable hours from adjusted total hours
 billableHours = adjustedTotalHours 
-                - (breakTimeMinutes / 60) 
                 - (nonBillableTimeMinutes / 60) 
                 + (adjustedTravelTimeMinutes / 60)
 ```
@@ -27,11 +26,13 @@ billableHours = adjustedTotalHours
 | `totalHours` | Base work time (duration × employee count) | ➕ Starting point for calculation |
 | `hoursAdjustments` | Person-specific adjustments from Notion | ➕/➖ Applied to total hours first |
 | `adjustedTotalHours` | Total hours + hours adjustments | ➕ Base for billable calculation |
-| `breakTimeMinutes` | Lunch/break time | ➖ Subtracted from adjusted total |
+| `breakTimeMinutes` | Lunch/break time | ✅ **Billable time** (not subtracted) |
 | `nonBillableTimeMinutes` | Non-billable activities | ➖ Subtracted from adjusted total |
 | `adjustedTravelTimeMinutes` | Allocated travel time | ➕ Added to billable hours |
 
-**Important:** Raw `travelTimeMinutes` is stored for reference but **NOT** used in billable hours calculation.
+**Important Notes:**
+- Raw `travelTimeMinutes` is stored for reference but **NOT** used in billable hours calculation
+- **Break time is billable** - only non-billable activities are subtracted from total hours
 
 ## When Billable Hours Are Calculated
 
@@ -82,7 +83,7 @@ billableHours = adjustedTotalHours
 
 ### Direct Factors (used in calculation)
 - ✅ `totalHours` - base work time
-- ✅ `breakTimeMinutes` - lunch/break time (subtracted)
+- ✅ `breakTimeMinutes` - lunch/break time (**billable** - not subtracted)
 - ✅ `nonBillableTimeMinutes` - non-billable activities (subtracted)
 - ✅ `adjustedTravelTimeMinutes` - allocated travel time (added)
 - ✅ `hoursAdjustments` - person-specific adjustments from Notion (added/subtracted)
@@ -177,7 +178,7 @@ graph TD
 1. **Input:** Start/end times, employee count, break time, non-billable time, hours adjustments
 2. **Calculate:** Total hours = (duration × employee count)
 3. **Apply:** Hours adjustments to total hours (adjustedTotalHours = totalHours + hoursAdjustments)
-4. **Calculate:** Billable hours from adjusted total hours using the formula
+4. **Calculate:** Billable hours from adjusted total hours (breaks are billable, only non-billable time subtracted)
 5. **Apply:** Rounding settings if enabled
 6. **Store:** Final billable hours value
 7. **Auto-update:** Recalculation triggered when component values change
@@ -212,6 +213,12 @@ graph TD
 - ✅ Ensure Notion sync has been run after adding adjustments
 
 ## Change Log
+
+### Version 1.2 (2025-01-19)
+- **IMPORTANT FIX:** Break time is now correctly treated as billable time
+- Removed break time subtraction from billable hours calculation
+- Updated formula to only subtract non-billable time
+- Updated all three services: WorkActivityService, NotionSyncService, WorkNotesParserService
 
 ### Version 1.1 (2025-01-19)
 - **IMPORTANT FIX:** Corrected hours adjustments to modify total hours instead of billable hours directly
