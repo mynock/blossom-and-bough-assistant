@@ -337,9 +337,9 @@ export class NotionSyncService {
     let hasMore = true;
     let startCursor: string | undefined;
 
-    // Get today's date in YYYY-MM-DD format for filtering
+    // Get today's date in YYYY-MM-DD format for filtering (using local timezone)
     const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = today.toLocaleDateString('en-CA'); // en-CA gives YYYY-MM-DD format in local timezone
 
     while (hasMore) {
       const response = await notion.databases.query({
