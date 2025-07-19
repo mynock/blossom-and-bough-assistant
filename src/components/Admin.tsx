@@ -772,7 +772,8 @@ const Admin: React.FC = () => {
         />
         <CardContent>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={8}>
+            {/* Maintenance Entries */}
+            <Grid item xs={12} md={6}>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 <TextField
                   label="Target Date (Optional)"
@@ -804,19 +805,35 @@ const Admin: React.FC = () => {
                     </Typography>
                   </Box>
                 </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+                  <strong>Scheduled:</strong> Daily at 8PM Pacific
+                </Typography>
               </Box>
             </Grid>
             
-            <Grid item xs={12} md={4}>
-              <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%', p: 1 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  <strong>Scheduled:</strong> Daily at 8PM Pacific
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  <strong>Purpose:</strong> Creates Notion entries for yellow calendar events
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Features:</strong> Color filtering, helper assignment, carryover tasks
+            {/* Notion Sync */}
+            <Grid item xs={12} md={6}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Box sx={{ height: 56 }} /> {/* Spacer to align with date field */}
+                <Button
+                  fullWidth
+                  variant="contained"
+                  color="primary"
+                  onClick={() => executeScript('cron/notion-sync', 'sync Notion pages', {})}
+                  disabled={loading}
+                  sx={{ p: 2, height: 80 }}
+                >
+                  <Box sx={{ textAlign: 'left', width: '100%' }}>
+                    <Typography variant="subtitle1">
+                      🔄 Sync Notion Pages
+                    </Typography>
+                    <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
+                      Import updated Notion pages into work activities
+                    </Typography>
+                  </Box>
+                </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+                  <strong>Scheduled:</strong> Twice daily (6AM & 6PM UTC)
                 </Typography>
               </Box>
             </Grid>
