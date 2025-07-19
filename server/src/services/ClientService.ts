@@ -1,6 +1,6 @@
 import { DatabaseService } from './DatabaseService';
-import { clients, type Client, type NewClient } from '../db';
-import { eq, like } from 'drizzle-orm';
+import { clients, workActivities, type Client, type NewClient } from '../db';
+import { eq, like, sql } from 'drizzle-orm';
 
 export class ClientService extends DatabaseService {
   
@@ -9,6 +9,49 @@ export class ClientService extends DatabaseService {
    */
   async getAllClients(): Promise<Client[]> {
     return await this.db.select().from(clients);
+  }
+
+  /**
+   * Get all clients with work activity statistics
+   */
+  async getAllClientsWithStats(): Promise<(Client & {
+    totalWorkActivities: number;
+    totalHours: number;
+    totalBillableHours: number;
+  })[]> {
+    const result = await this.db
+      .select({
+        // Client fields
+        id: clients.id,
+        clientId: clients.clientId,
+        name: clients.name,
+        address: clients.address,
+        geoZone: clients.geoZone,
+        isRecurringMaintenance: clients.isRecurringMaintenance,
+        maintenanceIntervalWeeks: clients.maintenanceIntervalWeeks,
+        maintenanceHoursPerVisit: clients.maintenanceHoursPerVisit,
+        maintenanceRate: clients.maintenanceRate,
+        lastMaintenanceDate: clients.lastMaintenanceDate,
+        nextMaintenanceTarget: clients.nextMaintenanceTarget,
+        priorityLevel: clients.priorityLevel,
+        scheduleFlexibility: clients.scheduleFlexibility,
+        preferredDays: clients.preferredDays,
+        preferredTime: clients.preferredTime,
+        specialNotes: clients.specialNotes,
+        activeStatus: clients.activeStatus,
+        createdAt: clients.createdAt,
+        updatedAt: clients.updatedAt,
+        // Work activity statistics
+        totalWorkActivities: sql<number>`COALESCE(COUNT(${workActivities.id}), 0)`,
+        totalHours: sql<number>`COALESCE(SUM(${workActivities.totalHours}), 0)`,
+        totalBillableHours: sql<number>`COALESCE(SUM(${workActivities.billableHours}), 0)`,
+      })
+      .from(clients)
+      .leftJoin(workActivities, eq(clients.id, workActivities.clientId))
+      .groupBy(clients.id)
+      .orderBy(clients.name);
+
+    return result;
   }
 
   /**

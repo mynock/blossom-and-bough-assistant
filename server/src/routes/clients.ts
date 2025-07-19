@@ -25,10 +25,10 @@ const schedulingService = new SchedulingService(
   travelTimeService
 );
 
-// GET /api/clients - Get all clients
+// GET /api/clients - Get all clients with work activity statistics
 router.get('/', async (req, res) => {
   try {
-    const clients = await clientService.getAllClients();
+    const clients = await clientService.getAllClientsWithStats();
     res.json({ clients }); // Wrap in object for consistency with other endpoints
   } catch (error) {
     console.error('Error fetching clients:', error);
