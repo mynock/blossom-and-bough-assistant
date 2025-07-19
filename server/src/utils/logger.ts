@@ -32,16 +32,16 @@ export const debugLog = winston.createLogger({
   ]
 });
 
-// Add console transport in development
-if (process.env.NODE_ENV !== 'production') {
-  debugLog.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    ),
-    level: 'info' // Only show info and above in console
-  }));
-}
+// Add console transport for all environments
+// In production, Railway/Docker logs come from stdout/stderr
+debugLog.add(new winston.transports.Console({
+  format: winston.format.combine(
+    // Only colorize in development
+    process.env.NODE_ENV !== 'production' ? winston.format.colorize() : winston.format.uncolorize(),
+    winston.format.simple()
+  ),
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug' // More verbose in dev
+}));
 
 // Helper methods for common logging patterns
 export const logApiCall = (endpoint: string, data: any) => {

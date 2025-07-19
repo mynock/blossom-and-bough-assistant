@@ -493,6 +493,95 @@ app.post('/api/cron/maintenance-entries', async (req, res) => {
   }
 });
 
+// Notion sync cron job endpoint (for Railway cron service + manual testing)
+app.post('/api/cron/notion-sync', async (req, res) => {
+  try {
+    // Check authentication - either Railway cron token or user auth
+    const cronToken = req.headers.authorization?.replace('Bearer ', '');
+    const isRailwayCron = cronToken === process.env.CRON_AUTH_TOKEN;
+    const hasUserAuth = req.user; // From passport/session
+    
+    if (!isRailwayCron && !hasUserAuth) {
+      return res.status(401).json({ 
+        error: 'Unauthorized - requires CRON_AUTH_TOKEN or user authentication' 
+      });
+    }
+    
+    const triggerSource = isRailwayCron ? 'Railway cron service' : 'manual user trigger';
+    console.log(`🔄 Notion sync triggered by: ${triggerSource}`);
+    
+    // Create NotionSyncService instance for the cron endpoint
+    const { NotionSyncService } = await import('./services/NotionSyncService');
+    const notionSyncService = new NotionSyncService(anthropicService);
+    
+    // Run the sync (don't force sync for automated runs)
+    const stats = await notionSyncService.syncNotionPages();
+    
+    res.json({ 
+      success: true, 
+      message: 'Notion sync completed successfully',
+      timestamp: new Date().toISOString(),
+      triggeredBy: triggerSource,
+      stats
+    });
+  } catch (error) {
+    console.error('Error in Notion sync trigger:', error);
+    res.status(500).json({
+      error: 'Failed to sync Notion pages',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// Cron job management endpoints
+app.get('/api/cron/status', requireAuth, (req, res) => {
+  try {
+    const jobs = cronService.getCronJobsStatus();
+    res.json({
+      success: true,
+      jobs
+    });
+  } catch (error) {
+    console.error('Error getting cron status:', error);
+    res.status(500).json({
+      error: 'Failed to get cron job status',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+app.post('/api/cron/toggle/:jobId', requireAuth, (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const { enabled } = req.body;
+    
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({
+        error: 'enabled field must be a boolean'
+      });
+    }
+    
+    const success = cronService.toggleCronJob(jobId, enabled);
+    
+    if (!success) {
+      return res.status(404).json({
+        error: 'Cron job not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Cron job ${jobId} ${enabled ? 'enabled' : 'disabled'}`
+    });
+  } catch (error) {
+    console.error('Error toggling cron job:', error);
+    res.status(500).json({
+      error: 'Failed to toggle cron job',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // Special handling for embed routes - set headers to allow embedding and prevent caching
 app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
@@ -557,6 +646,6 @@ app.listen(PORT, () => {
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
   
-  // Note: Cron jobs now handled by Railway's cron service
-  console.log(`⏰ Cron service available for Railway scheduling (no internal scheduler)`);
+  // Start internal cron scheduling
+  cronService.startScheduledTasks();
 }); 

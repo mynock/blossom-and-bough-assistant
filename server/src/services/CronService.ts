@@ -2,43 +2,221 @@ import { GoogleCalendarService } from './GoogleCalendarService';
 import { NotionService } from './NotionService';
 import { debugLog } from '../utils/logger';
 
+export interface CronJobInfo {
+  id: string;
+  name: string;
+  schedule: string;
+  description: string;
+  enabled: boolean;
+  lastRun?: Date;
+  nextRun?: Date;
+  status: 'scheduled' | 'running' | 'error' | 'disabled';
+}
+
 export class CronService {
   private googleCalendarService: GoogleCalendarService;
   private notionService: NotionService;
   private isScheduled = false;
   private processingLocks = new Map<string, Promise<void>>(); // Race condition prevention
+  private cronJobs = new Map<string, any>(); // Store cron job instances
+  private jobStatus = new Map<string, CronJobInfo>(); // Store job status
 
   constructor() {
     this.googleCalendarService = new GoogleCalendarService();
     this.notionService = new NotionService();
+    
+    // Initialize job status
+    this.initializeJobStatus();
+  }
+
+  private initializeJobStatus(): void {
+    this.jobStatus.set('maintenance-entries', {
+      id: 'maintenance-entries',
+      name: 'Maintenance Entry Creation',
+      schedule: '0 3 * * *',
+      description: 'Creates Notion maintenance entries for tomorrow\'s Google Calendar events',
+      enabled: true,
+      status: 'scheduled'
+    });
+
+    this.jobStatus.set('notion-sync', {
+      id: 'notion-sync', 
+      name: 'Notion Page Sync',
+      schedule: '0 6,18 * * *',
+      description: 'Syncs updated Notion pages into the CRM as work activities',
+      enabled: true,
+      status: 'scheduled'
+    });
+  }
+
+  public getCronJobsStatus(): CronJobInfo[] {
+    // Calculate next run times
+    this.updateNextRunTimes();
+    return Array.from(this.jobStatus.values());
+  }
+
+  private updateNextRunTimes(): void {
+    const parser = require('node-cron');
+    
+    for (const [id, jobInfo] of this.jobStatus.entries()) {
+      if (jobInfo.enabled) {
+        try {
+          // Calculate next run time (this is approximate)
+          const now = new Date();
+          const nextRun = this.getNextCronTime(jobInfo.schedule, now);
+          jobInfo.nextRun = nextRun;
+        } catch (error) {
+          debugLog.warn(`Could not calculate next run time for ${id}:`, error);
+        }
+      } else {
+        jobInfo.nextRun = undefined;
+      }
+    }
+  }
+
+  private getNextCronTime(schedule: string, from: Date): Date {
+    // Simple next run calculation for common patterns
+    const [minute, hour, ...rest] = schedule.split(' ');
+    const nextRun = new Date(from);
+    
+    if (hour === '3' && minute === '0') {
+      // Daily at 3 AM UTC
+      nextRun.setUTCHours(3, 0, 0, 0);
+      if (nextRun <= from) {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+      }
+    } else if (hour === '6,18' && minute === '0') {
+      // Twice daily at 6 AM and 6 PM UTC
+      const currentHour = from.getUTCHours();
+      if (currentHour < 6) {
+        nextRun.setUTCHours(6, 0, 0, 0);
+      } else if (currentHour < 18) {
+        nextRun.setUTCHours(18, 0, 0, 0);
+      } else {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+        nextRun.setUTCHours(6, 0, 0, 0);
+      }
+    }
+    
+    return nextRun;
+  }
+
+  public toggleCronJob(jobId: string, enabled: boolean): boolean {
+    const jobInfo = this.jobStatus.get(jobId);
+    if (!jobInfo) {
+      return false;
+    }
+
+    jobInfo.enabled = enabled;
+    jobInfo.status = enabled ? 'scheduled' : 'disabled';
+
+    // Restart scheduling with new settings
+    if (this.isScheduled) {
+      this.stopScheduledTasks();
+      this.startScheduledTasks();
+    }
+
+    debugLog.info(`Cron job ${jobId} ${enabled ? 'enabled' : 'disabled'}`);
+    console.log(`🔄 Cron job ${jobInfo.name} ${enabled ? 'enabled' : 'disabled'}`);
+    
+    return true;
+  }
+
+  private stopScheduledTasks(): void {
+    // Destroy existing cron jobs
+    for (const [jobId, cronJob] of this.cronJobs.entries()) {
+      if (cronJob && cronJob.destroy) {
+        cronJob.destroy();
+      }
+    }
+    this.cronJobs.clear();
+    this.isScheduled = false;
   }
 
   public startScheduledTasks(): void {
-    // NOTE: This method is deprecated in favor of Railway's cron service
-    // Keeping for backwards compatibility, but Railway cron handles scheduling now
-    debugLog.info('⚠️ Internal scheduling disabled - using Railway cron service instead');
-    debugLog.info('✅ CronService ready for Railway cron calls at 3AM UTC (8PM PDT/7PM PST)');
-    
-    // Uncomment below to re-enable internal scheduling if needed:
-    /*
     if (this.isScheduled) {
       debugLog.info('🔄 Cron tasks already scheduled');
       return;
     }
 
-    const cronExpression = '0 3 * * *'; // 3AM UTC = 8PM PDT, 7PM PST
-    
-    cron.schedule(cronExpression, async () => {
-      debugLog.info('🕐 Daily Notion maintenance entry cron job started');
-      await this.createMaintenanceEntriesForTomorrow();
-    }, {
-      scheduled: true,
-      timezone: 'UTC'
-    });
+    // Import cron here to avoid import issues
+    const cron = require('node-cron');
+
+    // Only schedule enabled jobs
+    const maintenanceJob = this.jobStatus.get('maintenance-entries');
+    if (maintenanceJob?.enabled) {
+      const cronJob = cron.schedule('0 3 * * *', async () => {
+        console.log('🕐 Daily Notion maintenance entry cron job started');
+        debugLog.info('🕐 Daily Notion maintenance entry cron job started');
+        
+        // Update status
+        maintenanceJob.status = 'running';
+        maintenanceJob.lastRun = new Date();
+        
+        try {
+          await this.createMaintenanceEntriesForTomorrow();
+          maintenanceJob.status = 'scheduled';
+          console.log('✅ Daily Notion maintenance entry cron job completed');
+        } catch (error) {
+          maintenanceJob.status = 'error';
+          console.error('❌ Error in maintenance entry cron job:', error);
+          debugLog.error('❌ Error in maintenance entry cron job:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: 'UTC'
+      });
+      
+      this.cronJobs.set('maintenance-entries', cronJob);
+    }
+
+    // Schedule Notion sync - Twice daily at 6AM & 6PM UTC
+    const notionJob = this.jobStatus.get('notion-sync');
+    if (notionJob?.enabled) {
+      const cronJob = cron.schedule('0 6,18 * * *', async () => {
+        console.log('🔄 Notion sync cron job started');
+        debugLog.info('🔄 Notion sync cron job started');
+        
+        // Update status
+        notionJob.status = 'running';
+        notionJob.lastRun = new Date();
+        
+        try {
+          const { NotionSyncService } = await import('./NotionSyncService');
+          const { AnthropicService } = await import('./AnthropicService');
+          const anthropicService = new AnthropicService();
+          const notionSyncService = new NotionSyncService(anthropicService);
+          
+          const stats = await notionSyncService.syncNotionPages();
+          console.log(`📊 Notion sync completed: Created ${stats.created}, Updated ${stats.updated}, Errors ${stats.errors}`);
+          debugLog.info(`📊 Notion sync completed: Created ${stats.created}, Updated ${stats.updated}, Errors ${stats.errors}`);
+          
+          notionJob.status = 'scheduled';
+        } catch (error) {
+          notionJob.status = 'error';
+          console.error('❌ Error in Notion sync cron job:', error);
+          debugLog.error('❌ Error in Notion sync cron job:', error);
+        }
+      }, {
+        scheduled: true,
+        timezone: 'UTC'
+      });
+      
+      this.cronJobs.set('notion-sync', cronJob);
+    }
 
     this.isScheduled = true;
-    debugLog.info('✅ Daily Notion maintenance entry job scheduled for 8PM PDT/7PM PST (3AM UTC)');
-    */
+    const enabledJobs = Array.from(this.jobStatus.values()).filter(job => job.enabled);
+    
+    debugLog.info('✅ Internal cron scheduling enabled:');
+    debugLog.info('   📅 Maintenance entries: Daily at 8PM PDT/7PM PST (3AM UTC)');
+    debugLog.info('   🔄 Notion sync: Twice daily at 6AM & 6PM UTC');
+    
+    // Also log to console for Railway visibility
+    console.log(`✅ Internal cron scheduling enabled (${enabledJobs.length} jobs):`);
+    for (const job of enabledJobs) {
+      console.log(`   ${job.id === 'maintenance-entries' ? '📅' : '🔄'} ${job.name}: ${job.schedule}`);
+    }
   }
 
   public async createMaintenanceEntriesForTomorrow(): Promise<void> {
