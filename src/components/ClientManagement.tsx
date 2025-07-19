@@ -49,6 +49,9 @@ interface Client {
   activeStatus: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
+  totalWorkActivities: number;
+  totalHours: number;
+  totalBillableHours: number;
 }
 
 const ClientManagement: React.FC = () => {
@@ -237,6 +240,36 @@ const ClientManagement: React.FC = () => {
         />
       ),
     },
+    {
+      key: 'totalWorkActivities',
+      label: 'Entries',
+      sortable: true,
+      render: (client) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {client.totalWorkActivities}
+        </Typography>
+      ),
+    },
+    {
+      key: 'totalHours',
+      label: 'Total Hours',
+      sortable: true,
+      render: (client) => (
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {client.totalHours.toFixed(1)}h
+        </Typography>
+      ),
+    },
+    {
+      key: 'totalBillableHours',
+      label: 'Billable Hours',
+      sortable: true,
+      render: (client) => (
+        <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
+          {client.totalBillableHours.toFixed(1)}h
+        </Typography>
+      ),
+    },
   ];
 
   // Configure filters
@@ -277,6 +310,28 @@ const ClientManagement: React.FC = () => {
       options: [
         { value: true, label: 'Recurring' },
         { value: false, label: 'One-time' },
+      ],
+    },
+    {
+      key: 'totalWorkActivities',
+      label: 'Number of Entries',
+      type: 'select',
+      options: [
+        { value: 0, label: 'No entries' },
+        { value: '1-5', label: '1-5 entries' },
+        { value: '6-20', label: '6-20 entries' },
+        { value: '21+', label: '21+ entries' },
+      ],
+    },
+    {
+      key: 'totalHours',
+      label: 'Total Hours Range',
+      type: 'select',
+      options: [
+        { value: 0, label: 'No hours' },
+        { value: '1-10', label: '1-10 hours' },
+        { value: '11-50', label: '11-50 hours' },
+        { value: '51+', label: '51+ hours' },
       ],
     },
   ];
