@@ -380,7 +380,8 @@ export class WorkActivityService extends DatabaseService {
 
   /**
    * Calculate billable hours from the component values
-   * Formula: totalHours - (breakTimeMinutes/60) - (adjustedBreakTimeMinutes/60) - (nonBillableTimeMinutes/60) + (adjustedTravelTimeMinutes/60)
+   * Break time (including adjustments) is billable, only non-billable time is subtracted
+   * Formula: totalHours - (nonBillableTimeMinutes/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number,
@@ -389,12 +390,11 @@ export class WorkActivityService extends DatabaseService {
     nonBillableTimeMinutes: number = 0,
     adjustedTravelTimeMinutes: number = 0
   ): number {
-    const breakHours = breakTimeMinutes / 60;
-    const adjustedBreakHours = adjustedBreakTimeMinutes / 60;
     const nonBillableHours = nonBillableTimeMinutes / 60;
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60;
     
-    const billableHours = totalHours - breakHours - adjustedBreakHours - nonBillableHours + adjustedTravelHours;
+    // Break time (both base and adjusted) is billable, only subtract non-billable time
+    const billableHours = totalHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places

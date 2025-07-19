@@ -454,6 +454,18 @@ export class NotionSyncService {
         });
       }
 
+      // Add hours adjustments
+      if (pageContent.hoursAdjustments && pageContent.hoursAdjustments.length > 0) {
+        naturalText += 'Hours Adjustments:\n';
+        pageContent.hoursAdjustments.forEach(adjustment => {
+          naturalText += `- ${adjustment.person}: ${adjustment.adjustment}`;
+          if (adjustment.notes) {
+            naturalText += ` (${adjustment.notes})`;
+          }
+          naturalText += '\n';
+        });
+      }
+
       debugLog.info(`Converted Notion page ${page.id} to natural text (${naturalText.length} chars)`);
       return naturalText;
 
@@ -535,7 +547,9 @@ export class NotionSyncService {
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
         parsedActivity.lunchTime,
-        parsedActivity.nonBillableTime
+        parsedActivity.nonBillableTime,
+        0, // adjustedTravelTimeMinutes
+        parsedActivity.hoursAdjustments
       );
 
       // Debug logging for billable hours calculation
@@ -651,7 +665,9 @@ export class NotionSyncService {
       const billableHours = this.calculateBillableHours(
         parsedActivity.totalHours || 0, 
         parsedActivity.lunchTime,
-        parsedActivity.nonBillableTime
+        parsedActivity.nonBillableTime,
+        0, // adjustedTravelTimeMinutes
+        parsedActivity.hoursAdjustments
       );
 
       // For updates, we'll use a more direct approach since we already have an ID
@@ -743,7 +759,7 @@ export class NotionSyncService {
   /**
    * Get page content (blocks) from Notion
    */
-  private async getPageContent(pageId: string): Promise<{ tasks: string; notes: string; materials: Array<{ description: string; cost: number }> }> {
+  private async getPageContent(pageId: string): Promise<{ tasks: string; notes: string; materials: Array<{ description: string; cost: number }>; hoursAdjustments: Array<{ person: string; adjustment: string; notes: string }> }> {
     const response = await notion.blocks.children.list({
       block_id: pageId,
     });
@@ -751,8 +767,10 @@ export class NotionSyncService {
     let tasks = '';
     let notes = '';
     const materials: Array<{ description: string; cost: number }> = [];
+    const hoursAdjustments: Array<{ person: string; adjustment: string; notes: string }> = [];
     let currentSection = '';
     let inChargesSection = false;
+    let inHoursAdjustmentsSection = false;
 
     for (const block of response.results) {
       if ('type' in block) {
@@ -766,6 +784,8 @@ export class NotionSyncService {
               inChargesSection = currentSection.includes('materials') || 
                                currentSection.includes('charges') || 
                                currentSection.includes('materials/fees');
+              inHoursAdjustmentsSection = currentSection.includes('hours adjustments') ||
+                                         currentSection.includes('hour adjustments');
             }
             break;
 
@@ -841,6 +861,31 @@ export class NotionSyncService {
                   }
                 }
               }
+            } else if (inHoursAdjustmentsSection && 'table' in block) {
+              debugLog.info(`⏰ Found table in hours adjustments section, processing...`);
+              // Get table rows for hours adjustments
+              const tableRows = await notion.blocks.children.list({ block_id: block.id });
+              debugLog.info(`⏰ Hours adjustments table has ${tableRows.results.length} rows`);
+              for (const row of tableRows.results) {
+                if ('type' in row && row.type === 'table_row' && 'table_row' in row) {
+                  const cells = row.table_row.cells;
+                  if (cells.length >= 3) {
+                    const person = cells[0]?.map((text: any) => text.plain_text).join('') || '';
+                    const adjustment = cells[1]?.map((text: any) => text.plain_text).join('') || '';
+                    const notes = cells[2]?.map((text: any) => text.plain_text).join('') || '';
+                    
+                    debugLog.info(`⏰ Hours adjustment row: "${person}" | "${adjustment}" | "${notes}"`);
+                    
+                    // Skip header rows
+                    if (person && person.toLowerCase() !== 'person' && adjustment.trim()) {
+                      debugLog.info(`⏰ Added hours adjustment: ${person} - ${adjustment} (${notes})`);
+                      hoursAdjustments.push({ person: person.trim(), adjustment: adjustment.trim(), notes: notes.trim() });
+                    } else {
+                      debugLog.info(`⏰ Skipped header row: "${person}"`);
+                    }
+                  }
+                }
+              }
             }
             break;
         }
@@ -848,7 +893,8 @@ export class NotionSyncService {
     }
 
     debugLog.info(`📋 Final materials array: ${materials.length} items`, materials);
-    return { tasks: tasks.trim(), notes: notes.trim(), materials };
+    debugLog.info(`⏰ Final hours adjustments array: ${hoursAdjustments.length} items`, hoursAdjustments);
+    return { tasks: tasks.trim(), notes: notes.trim(), materials, hoursAdjustments };
   }
 
   /**
@@ -1217,21 +1263,77 @@ export class NotionSyncService {
    * Note: totalHours represents total person-hours (duration × employee count)
    * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
-   * Formula: totalHours - (lunchTime/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
+   * Hours adjustments are applied to total hours first, then billable hours calculated\n   * Break time is billable, only non-billable time is subtracted\n   * Formula: adjustedTotalHours = totalHours + hoursAdjustments\n   *          billableHours = adjustedTotalHours - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number, 
     lunchTime?: number, 
     nonBillableTime?: number,
-    adjustedTravelTimeMinutes: number = 0
+    adjustedTravelTimeMinutes: number = 0,
+    hoursAdjustments?: Array<{ person: string; adjustment: string; notes: string; hours?: number }>
   ): number {
-    const breakHours = (lunchTime || 0) / 60; // Convert minutes to hours
     const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
-    const billableHours = totalHours - breakHours - nonBillableHours + adjustedTravelHours;
+    // Calculate hours adjustments and apply to total hours first
+    let totalAdjustmentHours = 0;
+    if (hoursAdjustments && hoursAdjustments.length > 0) {
+      totalAdjustmentHours = hoursAdjustments.reduce((sum, adj) => {
+        if (adj.hours !== undefined) {
+          return sum + adj.hours;
+        }
+        // Parse adjustment string if hours not already calculated
+        const parsedHours = this.parseTimeToHours(adj.adjustment);
+        return sum + parsedHours;
+      }, 0);
+      debugLog.info(`⏰ Total hours adjustments: ${totalAdjustmentHours} hours from ${hoursAdjustments.length} adjustments`);
+    }
+    
+    // Apply hours adjustments to total hours first, then calculate billable hours
+    const adjustedTotalHours = totalHours + totalAdjustmentHours;
+    debugLog.info(`📊 Adjusted total hours: ${totalHours} + ${totalAdjustmentHours} = ${adjustedTotalHours}`);
+    
+    // Break time is billable, only subtract non-billable time
+    const billableHours = adjustedTotalHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
+  }
+
+  /**
+   * Parse time string like "2:25" or "-0:30" to decimal hours
+   */
+  private parseTimeToHours(timeString: string): number {
+    if (!timeString || typeof timeString !== 'string') {
+      return 0;
+    }
+
+    // Remove any whitespace
+    const cleanTime = timeString.trim();
+    
+    // Check for negative sign
+    const isNegative = cleanTime.startsWith('-');
+    const timeWithoutSign = isNegative ? cleanTime.substring(1) : cleanTime;
+    
+    // Parse H:MM or HH:MM format
+    const timeParts = timeWithoutSign.split(':');
+    if (timeParts.length !== 2) {
+      debugLog.warn(`Invalid time format for hours adjustment: ${timeString}`);
+      return 0;
+    }
+    
+    const hours = parseInt(timeParts[0], 10);
+    const minutes = parseInt(timeParts[1], 10);
+    
+    if (isNaN(hours) || isNaN(minutes)) {
+      debugLog.warn(`Could not parse hours adjustment: ${timeString}`);
+      return 0;
+    }
+    
+    const decimalHours = hours + (minutes / 60);
+    const result = isNegative ? -decimalHours : decimalHours;
+    
+    debugLog.info(`⏰ Parsed "${timeString}" to ${result} hours`);
+    return result;
   }
 } 

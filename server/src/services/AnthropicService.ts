@@ -20,6 +20,12 @@ export interface ParsedWorkActivity {
   driveTime?: number;
   lunchTime?: number;
   nonBillableTime?: number;
+  hoursAdjustments?: Array<{
+    person: string;
+    adjustment: string;
+    notes: string;
+    hours?: number; // parsed from adjustment field
+  }>;
   confidence: number; // 0-1 confidence score
 }
 
@@ -817,7 +823,8 @@ For each work activity found, extract:
 9. Charges (materials, debris bags, plants, etc.)
 10. Drive time if mentioned
 11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
-12. Confidence score (0-1) based on how clear the parsing was
+12. Hours adjustments (person-specific time adjustments, e.g., "Andrea: 2:25 (stayed late)", parse time to decimal hours)
+13. Confidence score (0-1) based on how clear the parsing was
 
 Return JSON in this exact format:
 {
@@ -840,6 +847,9 @@ Return JSON in this exact format:
       "driveTime": 44,
       "lunchTime": 85,
       "nonBillableTime": 0,
+      "hoursAdjustments": [
+        {"person": "Andrea", "adjustment": "2:25", "notes": "stayed late after anne & v left", "hours": 2.42}
+      ],
       "confidence": 0.9
     }
   ],
@@ -1102,7 +1112,8 @@ For each work activity found, extract:
 9. Charges (materials, debris bags, plants, etc.)
 10. Drive time if mentioned
 11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
-12. Confidence score (0-1) based on how clear the parsing was
+12. Hours adjustments (person-specific time adjustments, e.g., "Andrea: 2:25 (stayed late)", parse time to decimal hours)
+13. Confidence score (0-1) based on how clear the parsing was
 
 Return JSON in this exact format:
 {
@@ -1125,6 +1136,9 @@ Return JSON in this exact format:
       "driveTime": 44,
       "lunchTime": 85,
       "nonBillableTime": 0,
+      "hoursAdjustments": [
+        {"person": "Andrea", "adjustment": "2:25", "notes": "stayed late after anne & v left", "hours": 2.42}
+      ],
       "confidence": 0.9
     }
   ],
