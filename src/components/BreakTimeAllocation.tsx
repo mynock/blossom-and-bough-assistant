@@ -43,6 +43,9 @@ interface BreakTimeAllocationItem {
   allocatedBreakMinutes: number;
   newBillableHours: number;
   hasZeroBreak: boolean;
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 interface BreakTimeAllocationResult {
@@ -52,6 +55,16 @@ interface BreakTimeAllocationResult {
   allocations: BreakTimeAllocationItem[];
   updatedActivities: number;
   warnings: string[];
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 interface BreakTimeAllocationRangeResult {
@@ -68,6 +81,17 @@ interface BreakTimeAllocationRangeResult {
     daysWithWarnings: number;
     daysWithNoData: number;
   };
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+      datesAffected: string[];
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export default function BreakTimeAllocation({ onUpdate }: BreakTimeAllocationProps) {
@@ -267,7 +291,56 @@ export default function BreakTimeAllocation({ onUpdate }: BreakTimeAllocationPro
             color="default"
             variant="outlined"
           />
+          {previewData.totalBillableHourChange !== undefined && (
+            <Chip 
+              label={`Total Hour Change: ${previewData.totalBillableHourChange >= 0 ? '+' : ''}${formatHours(previewData.totalBillableHourChange)}`}
+              color={previewData.totalBillableHourChange >= 0 ? "success" : "error"}
+              variant="outlined"
+            />
+          )}
         </Box>
+
+        {previewData.clientSummary && Object.keys(previewData.clientSummary).length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Client Impact Summary
+            </Typography>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Client</TableCell>
+                    <TableCell align="right">Activities</TableCell>
+                    <TableCell align="right">Billable Hour Change</TableCell>
+                    <TableCell align="right">Break Time Change</TableCell>
+                    <TableCell align="right">Original Hours</TableCell>
+                    <TableCell align="right">New Hours</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Object.entries(previewData.clientSummary).map(([clientName, summary]) => (
+                    <TableRow key={clientName}>
+                      <TableCell><strong>{clientName}</strong></TableCell>
+                      <TableCell align="right">{summary.activitiesCount}</TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                          {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                          {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">{formatHours(summary.originalBillableHours)}</TableCell>
+                      <TableCell align="right">{formatHours(summary.newBillableHours)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
+        )}
 
         <TableContainer component={Paper}>
           <Table size="small">
@@ -344,6 +417,13 @@ export default function BreakTimeAllocation({ onUpdate }: BreakTimeAllocationPro
             color="default"
             variant="outlined"
           />
+          {rangePreviewData.totalBillableHourChange !== undefined && (
+            <Chip 
+              label={`Total Hour Change: ${rangePreviewData.totalBillableHourChange >= 0 ? '+' : ''}${formatHours(rangePreviewData.totalBillableHourChange)}`}
+              color={rangePreviewData.totalBillableHourChange >= 0 ? "success" : "error"}
+              variant="outlined"
+            />
+          )}
         </Box>
 
         {rangePreviewData.overallSummary.daysWithWarnings > 0 && (
@@ -351,6 +431,57 @@ export default function BreakTimeAllocation({ onUpdate }: BreakTimeAllocationPro
             {rangePreviewData.overallSummary.daysWithWarnings} day(s) have warnings. 
             Check individual date details below.
           </Alert>
+        )}
+
+        {rangePreviewData.clientSummary && Object.keys(rangePreviewData.clientSummary).length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              Client Impact Summary (Across All Dates)
+            </Typography>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Client</TableCell>
+                    <TableCell align="right">Total Activities</TableCell>
+                    <TableCell align="right">Billable Hour Change</TableCell>
+                    <TableCell align="right">Break Time Change</TableCell>
+                    <TableCell align="right">Dates Affected</TableCell>
+                    <TableCell align="right">Original Hours</TableCell>
+                    <TableCell align="right">New Hours</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Object.entries(rangePreviewData.clientSummary).map(([clientName, summary]) => (
+                    <TableRow key={clientName}>
+                      <TableCell><strong>{clientName}</strong></TableCell>
+                      <TableCell align="right">{summary.activitiesCount}</TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                          {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                          {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Chip 
+                          label={`${summary.datesAffected.length} days`} 
+                          size="small" 
+                          variant="outlined"
+                          title={summary.datesAffected.join(', ')}
+                        />
+                      </TableCell>
+                      <TableCell align="right">{formatHours(summary.originalBillableHours)}</TableCell>
+                      <TableCell align="right">{formatHours(summary.newBillableHours)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
         )}
 
         {rangePreviewData.dateResults.map((dateResult, index) => (

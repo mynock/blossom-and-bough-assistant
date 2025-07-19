@@ -43,6 +43,9 @@ interface TravelTimeAllocationItem {
   allocatedTravelMinutes: number;
   newBillableHours: number;
   hasZeroTravel: boolean;
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 interface TravelTimeAllocationResult {
@@ -52,6 +55,16 @@ interface TravelTimeAllocationResult {
   allocations: TravelTimeAllocationItem[];
   updatedActivities: number;
   warnings: string[];
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 // New interface for date range results
@@ -68,6 +81,17 @@ interface TravelTimeAllocationRangeResult {
     daysWithWarnings: number;
     daysWithNoData: number;
   };
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+      datesAffected: string[];
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationProps) {
@@ -345,8 +369,59 @@ export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationP
               <Typography variant="body2">
                 <strong>Activities:</strong> {previewData.allocations.length}
               </Typography>
+              {previewData.totalBillableHourChange !== undefined && (
+                <Typography variant="body2">
+                  <strong>Total Hour Change:</strong> 
+                  <span style={{ color: previewData.totalBillableHourChange >= 0 ? '#4caf50' : '#f44336' }}>
+                    {previewData.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(previewData.totalBillableHourChange)}
+                  </span>
+                </Typography>
+              )}
             </Box>
           </Box>
+
+          {/* Client Impact Summary for Single Date */}
+          {previewData.clientSummary && Object.keys(previewData.clientSummary).length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Client Impact Summary
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Client</TableCell>
+                      <TableCell align="right">Activities</TableCell>
+                      <TableCell align="right">Billable Hour Change</TableCell>
+                      <TableCell align="right">Travel Time Change</TableCell>
+                      <TableCell align="right">Original Hours</TableCell>
+                      <TableCell align="right">New Hours</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(previewData.clientSummary).map(([clientName, summary]) => (
+                      <TableRow key={clientName}>
+                        <TableCell><strong>{clientName}</strong></TableCell>
+                        <TableCell align="right">{summary.activitiesCount}</TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                            {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                            {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">{formatHours(summary.originalBillableHours)}</TableCell>
+                        <TableCell align="right">{formatHours(summary.newBillableHours)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
 
           {/* Single Date Warnings */}
           {previewData.warnings && previewData.warnings.length > 0 && (
@@ -440,6 +515,14 @@ export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationP
               <Typography variant="body2">
                 <strong>Days Skipped:</strong> {rangePreviewData.overallSummary.daysWithNoData}
               </Typography>
+              {rangePreviewData.totalBillableHourChange !== undefined && (
+                <Typography variant="body2">
+                  <strong>Total Hour Change:</strong> 
+                  <span style={{ color: rangePreviewData.totalBillableHourChange >= 0 ? '#4caf50' : '#f44336' }}>
+                    {rangePreviewData.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(rangePreviewData.totalBillableHourChange)}
+                  </span>
+                </Typography>
+              )}
             </Box>
           </Box>
 
@@ -448,6 +531,58 @@ export default function TravelTimeAllocation({ onUpdate }: TravelTimeAllocationP
             <Alert severity="success" sx={{ mb: 2 }}>
               Successfully updated {rangePreviewData.totalUpdatedActivities} work activities across {rangePreviewData.overallSummary.totalDays} days
             </Alert>
+          )}
+
+          {/* Client Impact Summary for Date Range */}
+          {rangePreviewData.clientSummary && Object.keys(rangePreviewData.clientSummary).length > 0 && (
+            <Box sx={{ mb: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>
+                Client Impact Summary (Across All Dates)
+              </Typography>
+              <TableContainer component={Paper} variant="outlined">
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Client</TableCell>
+                      <TableCell align="right">Total Activities</TableCell>
+                      <TableCell align="right">Billable Hour Change</TableCell>
+                      <TableCell align="right">Travel Time Change</TableCell>
+                      <TableCell align="right">Dates Affected</TableCell>
+                      <TableCell align="right">Original Hours</TableCell>
+                      <TableCell align="right">New Hours</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {Object.entries(rangePreviewData.clientSummary).map(([clientName, summary]) => (
+                      <TableRow key={clientName}>
+                        <TableCell><strong>{clientName}</strong></TableCell>
+                        <TableCell align="right">{summary.activitiesCount}</TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                            {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                            {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                          </Box>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Chip 
+                            label={`${summary.datesAffected.length} days`} 
+                            size="small" 
+                            variant="outlined"
+                            title={summary.datesAffected.join(', ')}
+                          />
+                        </TableCell>
+                        <TableCell align="right">{formatHours(summary.originalBillableHours)}</TableCell>
+                        <TableCell align="right">{formatHours(summary.newBillableHours)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
           )}
 
           {/* Days Skipped Info */}
