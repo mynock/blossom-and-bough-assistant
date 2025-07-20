@@ -7,7 +7,6 @@ on:
     paths:
       - 'server/src/services/WorkActivityService.ts'
       - 'server/src/services/NotionSyncService.ts'
-      - 'server/src/services/WorkNotesParserService.ts'
       - 'server/src/services/SettingsService.ts'
       - 'server/src/__tests__/billableHours*.ts'
       - 'docs/billable-hours-calculation.md'
@@ -98,7 +97,7 @@ jobs:
         npm run test:billable-hours -- --verbose --testResultsProcessor=jest-junit
         
     - name: Upload test results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: billable-hours-test-results
