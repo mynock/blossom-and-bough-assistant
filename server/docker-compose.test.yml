@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  test-db:
+    image: postgres:15
+    environment:
+      POSTGRES_PASSWORD: test_password
+      POSTGRES_USER: test_user
+      POSTGRES_DB: billable_hours_test
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d billable_hours_test"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+
+volumes:
+  test_db_data:
