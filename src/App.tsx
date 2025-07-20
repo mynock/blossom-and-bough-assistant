@@ -16,7 +16,6 @@ import ProjectManagement from './components/ProjectManagement';
 import WorkActivityManagement from './components/WorkActivityManagement';
 import WorkActivityDetail from './components/WorkActivityDetail';
 import WorkActivityReviewFlow from './components/WorkActivityReviewFlow';
-import WorkNotesImport from './components/WorkNotesImport';
 import { NotionSync } from './components/NotionSync';
 import Admin from './components/Admin';
 import Navigation from './components/Navigation';
@@ -77,7 +76,6 @@ function App() {
                       <Route path="/projects" element={<ProjectManagement />} />
                       <Route path="/work-activities" element={<WorkActivityManagement />} />
                       <Route path="/work-activities/:id" element={<WorkActivityDetail />} />
-                      <Route path="/work-notes-import" element={<WorkNotesImport />} />
                       <Route path="/notion-sync" element={<NotionSync />} />
                       <Route path="/quickbooks" element={<QuickBooksIntegration />} />
                       <Route path="/invoices" element={<Invoices />} />

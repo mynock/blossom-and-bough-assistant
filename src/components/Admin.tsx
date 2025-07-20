@@ -748,22 +748,6 @@ const Admin: React.FC = () => {
         />
         <CardContent>
           <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
-              <Button
-                fullWidth
-                variant="contained"
-                color="primary"
-                onClick={() => window.open('/work-notes-import', '_blank')}
-                sx={{ p: 2, height: 80 }}
-              >
-                <Box sx={{ textAlign: 'left', width: '100%' }}>
-                  <Typography variant="subtitle1">Import Work Notes</Typography>
-                  <Typography variant="body2" color="inherit" sx={{ opacity: 0.8 }}>
-                    Upload PDF work notes and extract structured activity data
-                  </Typography>
-                </Box>
-              </Button>
-            </Grid>
             
             <Grid item xs={12} md={6}>
               <Button
