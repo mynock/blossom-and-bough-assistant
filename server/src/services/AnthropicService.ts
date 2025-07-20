@@ -752,7 +752,7 @@ Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and 
   }
 
   /**
-   * Parse free-form work notes into structured work activities
+   * Parse free-form work notes into structured work activities (used by Notion sync)
    */
   async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
     if (!this.client) {
@@ -805,504 +805,98 @@ CRITICAL DATE PARSING RULES:
 - Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
 - Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
 
-CRITICAL HOURS CALCULATION RULES:
-- totalHours = work duration × number of employees (total person-hours)
-- Example 1: 9:00-11:05 with 1 employee = 2.08 hours duration × 1 = 2.08 totalHours  
-- Example 2: 9:00-11:05 with 2 employees = 2.08 hours duration × 2 = 4.16 totalHours
-- Example 3: 8:30-4:15 with Andrea+Virginia = 7.75 hours duration × 2 = 15.5 totalHours
+For each work activity, extract:
+- date (YYYY-MM-DD format, always assume 2025 unless specified otherwise)
+- clientName (convert any nicknames/codes to full client names if you can determine them)
+- workType (maintenance/installation/design/etc.)
+- employees (array of full employee names, include Andrea Wilson when "me"/"I" is mentioned)
+- startTime (HH:MM format, 24-hour)
+- endTime (HH:MM format, 24-hour)
+- totalHours (calculated from time range and number of employees)
+- travelTimeMinutes (extract from phrases like "inc 22x2 min drive", "add .5 drive")
+- breakTimeMinutes (extract break time if mentioned)
+- workDescription (summary of work performed)
+- charges (array of materials/services to charge)
+- confidence (0.0-1.0 score for how confident you are in the parsing)
 
-For each work activity found, extract:
-1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
-2. Client name
-3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
-4. Start/end times if available
-5. Total hours worked (MUST be calculated as: work duration × number of employees = total person-hours)
-6. Work type (categorize the main type of work)
-7. Detailed tasks performed (bullet points of work done)
-8. Notes (any client conversations, follow-ups, or observations)
-9. Charges (materials, debris bags, plants, etc.)
-10. Drive time if mentioned
-11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
-12. Hours adjustments (person-specific time adjustments, e.g., "Andrea: 2:25 (stayed late)", parse time to decimal hours)
-13. Confidence score (0-1) based on how clear the parsing was
+EMPLOYEE NAME MAPPING:
+- "V" or "Virginia" → "Virginia Dahl"
+- "R" or "Rebecca" → "Rebecca Soto" 
+- "A" or "Anne" → "Anne Malakasis"
+- "M" or "Megan" → "Megan Sanders"
+- "me", "Me", "I" → "Andrea Wilson"
 
-Return JSON in this exact format:
+CLIENT NAME EXAMPLES (use exact spelling):
+- Stoller, Nadler, Kurzweil, Silver, Chen, Kumar, Patel, etc.
+
+IMPORTANT CALCULATION RULES:
+1. totalHours = (end time - start time in hours) × number of employees
+2. If multiple employees work different time ranges, calculate each person's hours separately then sum
+3. Travel time and break time are separate from work hours
+4. For "inc drive" mentions, extract the drive time in minutes
+5. Convert time mentions like ".5 drive" to 30 minutes, "22x2 min" to 44 minutes
+
+Return the data as a JSON object with this exact structure:
 {
   "activities": [
     {
       "date": "2025-06-03",
-      "clientName": "Stoller",
-      "employees": ["Virginia"],
-      "startTime": "08:45",
-      "endTime": "15:10",
-      "totalHours": 6.42,
+      "clientName": "Stoller", 
       "workType": "maintenance",
-      "tasks": [
-        "Misc clean up/weeds",
-        "Deadhead brunnera",
-        "Deadhead / weeds / bulb clean up on east slope"
-      ],
-      "notes": "Stayed solo extra 15 min for design work. Take photos for design drawing + brainstorm ideas",
-      "charges": [],
-      "driveTime": 44,
-      "lunchTime": 85,
-      "nonBillableTime": 0,
-      "hoursAdjustments": [
-        {"person": "Andrea", "adjustment": "2:25", "notes": "stayed late after anne & v left", "hours": 2.42}
-      ],
-      "confidence": 0.9
+      "employees": ["Andrea Wilson", "Virginia Dahl"],
+      "startTime": "08:45",
+      "endTime": "15:10", 
+      "totalHours": 12.83,
+      "travelTimeMinutes": 44,
+      "breakTimeMinutes": 30,
+      "workDescription": "General maintenance work",
+      "charges": ["1 debris bag"],
+      "confidence": 0.95
     }
   ],
-  "unparsedSections": ["Any text sections that couldn't be parsed into activities"],
-  "warnings": ["Any parsing concerns or ambiguities"]
-}
-
-HOURS CALCULATION EXAMPLES:
-- Single employee: 9:00-11:05 (2.08h) with 1 employee = 2.08 totalHours
-- Two employees: 9:00-11:05 (2.08h) with 2 employees = 4.16 totalHours  
-- Three employees: 8:30-4:15 (7.75h) with 3 employees = 23.25 totalHours
-
-CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
-
-WORK NOTES TO PARSE:
-${workNotesText}`;
+  "summary": {
+    "totalActivities": 1,
+    "dateRange": "2025-06-03 to 2025-06-03",
+    "totalHours": 12.83,
+    "clients": ["Stoller"]
+  }
+}`;
 
     try {
-      console.log('🔍 === ANTHROPIC API REQUEST START ===');
-      console.log('📝 Prompt length:', prompt.length, 'characters');
-      console.log('');
+      console.log('🤖 === ANTHROPIC API REQUEST START ===');
+      console.log('🎯 Method: parseWorkNotes (for Notion sync)');
+      console.log('📝 Input length:', workNotesText.length, 'characters');
 
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 12000, // Increased from 8000 to handle longer Notion content
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 8000,
         messages: [
           {
             role: 'user',
-            content: prompt
+            content: `${prompt}\n\nWork Notes to Parse:\n${workNotesText}`
           }
         ]
       });
 
-      console.log('📨 === ANTHROPIC API RESPONSE ===');
-      console.log('🔢 Token usage:', response.usage);
-      console.log('📊 Input tokens:', response.usage?.input_tokens);
-      console.log('📊 Output tokens:', response.usage?.output_tokens);
-      console.log('📊 Max tokens limit:', 12000);
-      console.log('⚠️ Hit token limit?', response.usage?.output_tokens === 12000);
-      console.log('');
+      console.log('✅ Anthropic API response received');
+      console.log('📊 Usage:', response.usage);
+      console.log('🔍 === ANTHROPIC API REQUEST END (SUCCESS) ===');
 
-      if (response.content && response.content.length > 0) {
-        const content = response.content[0];
-        if (content && content.type === 'text') {
-          console.log('📄 Response length:', content.text.length, 'characters');
-          console.log('');
-
-          // Extract JSON from the response - try multiple approaches
-          let jsonString: string | null = null;
-          
-          // First, try to find JSON in code blocks
-          const codeBlockMatch = content.text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
-          if (codeBlockMatch) {
-            jsonString = codeBlockMatch[1].trim();
-            console.log('📦 Found JSON in code block');
-          } else {
-            // Fallback: look for JSON by counting braces
-            const firstBrace = content.text.indexOf('{');
-            if (firstBrace !== -1) {
-              let braceCount = 0;
-              let jsonEnd = -1;
-              
-              for (let i = firstBrace; i < content.text.length; i++) {
-                if (content.text[i] === '{') braceCount++;
-                else if (content.text[i] === '}') {
-                  braceCount--;
-                  if (braceCount === 0) {
-                    jsonEnd = i;
-                    break;
-                  }
-                }
-              }
-              
-              if (jsonEnd !== -1) {
-                jsonString = content.text.substring(firstBrace, jsonEnd + 1).trim();
-                console.log('🔢 Found JSON by counting braces');
-              }
-            }
-          }
-          
-          if (jsonString) {
-            console.log('🔍 Extracted JSON length:', jsonString.length, 'characters');
-
-            try {
-              const result = JSON.parse(jsonString) as WorkNotesParseResult;
-              console.log('✅ JSON parsing succeeded');
-              console.log('📊 Activities found:', result.activities?.length || 0);
-              console.log('⚠️ Warnings:', result.warnings?.length || 0);
-              console.log('🔍 === ANTHROPIC API REQUEST END ===');
-              return result;
-            } catch (parseError) {
-              console.error('❌ JSON parsing failed:', parseError);
-              console.error('📄 Raw JSON string (first 500 chars):', jsonString.substring(0, 500));
-              
-              // Check if response was truncated
-              const wasTruncated = response.usage?.output_tokens === 12000; // Updated to new limit
-              if (wasTruncated) {
-                console.warn('⚠️ Response may have been truncated due to token limit');
-              }
-              
-              // Try to fix common JSON issues
-              let fixedJson = jsonString;
-              
-              // Fix trailing commas in arrays and objects
-              fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
-              
-              // Fix unescaped quotes in strings
-              fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
-              
-              // If JSON appears truncated, try to close it properly
-              if (wasTruncated || !fixedJson.trim().endsWith('}')) {
-                console.log('🔧 Attempting to fix truncated JSON...');
-                
-                // Find the last complete task entry and truncate there
-                const lastCompleteTaskMatch = fixedJson.lastIndexOf('",\n        "');
-                if (lastCompleteTaskMatch > -1) {
-                  // Truncate at the last complete task
-                  fixedJson = fixedJson.substring(0, lastCompleteTaskMatch + 1);
-                  // Close the tasks array, object, and main structure
-                  fixedJson += '\n      ],\n      "notes": "",\n      "charges": [],\n      "driveTime": null,\n      "lunchTime": null,\n      "confidence": 0.8\n    }\n  ],\n  "unparsedSections": [],\n  "warnings": ["Response was truncated due to length. Some task details may be incomplete."]\n}';
-                } else {
-                  // Fallback: close basic structure
-                  const openBraces = (fixedJson.match(/\{/g) || []).length;
-                  const closeBraces = (fixedJson.match(/\}/g) || []).length;
-                  const openBrackets = (fixedJson.match(/\[/g) || []).length;
-                  const closeBrackets = (fixedJson.match(/\]/g) || []).length;
-                  
-                  // Close any unclosed arrays and objects
-                  for (let i = 0; i < (openBrackets - closeBrackets); i++) {
-                    fixedJson += ']';
-                  }
-                  for (let i = 0; i < (openBraces - closeBraces); i++) {
-                    fixedJson += '}';
-                  }
-                }
-                
-                console.log(`🔧 Applied truncation recovery to JSON`);
-              }
-              
-              console.log('🔧 Fixed JSON length:', fixedJson.length, 'characters');
-              
-              try {
-                const result = JSON.parse(fixedJson) as WorkNotesParseResult;
-                console.log('✅ Fixed JSON parsing succeeded');
-                console.log('📊 Activities found:', result.activities?.length || 0);
-                if (wasTruncated) {
-                  result.warnings = result.warnings || [];
-                  result.warnings.push('Response was truncated due to length. Some activities may be incomplete.');
-                }
-                console.log('🔍 === ANTHROPIC API REQUEST END ===');
-                return result;
-              } catch (secondParseError) {
-                console.error('❌ Second JSON parsing attempt failed:', secondParseError);
-                console.error('📄 Fixed JSON string (first 500 chars):', fixedJson.substring(0, 500));
-                
-                // Return a fallback result
-                const fallbackResult = {
-                  activities: [],
-                  unparsedSections: [content.text],
-                  warnings: [
-                    'Failed to parse AI response as JSON. Raw response saved in unparsed sections.',
-                    wasTruncated ? 'Response was truncated due to length limits.' : ''
-                  ].filter(Boolean)
-                };
-                
-                console.log('⚠️ Returning fallback result due to JSON parsing failures');
-                console.log('🔍 === ANTHROPIC API REQUEST END ===');
-                return fallbackResult;
-              }
-            }
-          } else {
-            console.error('❌ No JSON match found in response');
-            console.log('📄 Response text preview:', content.text.substring(0, 200));
-          }
-        } else {
-          console.error('❌ Invalid response content type');
+      if (response.content[0].type === 'text') {
+        const responseText = response.content[0].text;
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return parsed;
         }
-      } else {
-        console.error('❌ No response content received');
       }
 
-      console.log('🔍 === ANTHROPIC API REQUEST END ===');
       throw new Error('Failed to parse AI response');
     } catch (error) {
       console.error('💥 Error in Anthropic API request:', error);
       console.log('🔍 === ANTHROPIC API REQUEST END (ERROR) ===');
       throw new Error('Failed to parse work notes with AI');
-    }
-  }
-
-  /**
-   * Parse free-form work notes from PDF file into structured work activities
-   */
-  async parseWorkNotesFromPDF(pdfBuffer: Buffer, filename: string): Promise<WorkNotesParseResult> {
-    if (!this.client) {
-      throw new Error('Anthropic client not initialized');
-    }
-
-    const prompt = `You are an expert at parsing landscaping work logs into structured data. 
-
-Parse the following work notes from a PDF document and extract individual work activities. Each activity should represent work done for a specific client on a specific date.
-
-IMPORTANT PATTERNS TO RECOGNIZE:
-
-TIME FORMATS:
-- "8:45-3:10 w V inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
-- "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
-- "R 8:30-4:15, Me 9:40-5" = Rebecca 8:30-4:15, Me 9:40-5:00
-
-EMPLOYEE CODES:
-- "w V" = with Virginia
-- "w R" = with Rebecca  
-- "w A" = with Anne
-- "w M" = with Megan
-- "solo" = solo work (Andrea Wilson working alone)
-- "me" or "Me" = Andrea Wilson (the business owner)
-
-BUSINESS CONTEXT:
-- Andrea Wilson is the business owner of this landscaping company
-- When notes mention "me", "Me", or "I", this refers to Andrea Wilson
-- Andrea often works alongside her employees or solo on client sites
-
-CLIENT NAMES:
-- Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
-
-CHARGES:
-- "charge 1 debris bag" 
-- "Charge: Sluggo, fert, 2-3 bags debris, 3 aspidistra (60 pdxn)"
-
-WORK TYPES:
-- maintenance (most common)
-- installation/planting
-- design/consultation
-- pruning
-- weeding
-- cleanup
-
-CRITICAL DATE PARSING RULES:
-- The current year is 2025 (Pacific Time zone)
-- For partial dates like "6/3", "5/13", "2/24", etc., ALWAYS assume the year 2025
-- All dates should be interpreted as Pacific Time (US West Coast)
-- Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
-- Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
-
-CRITICAL HOURS CALCULATION RULES:
-- totalHours = work duration × number of employees (total person-hours)
-- Example 1: 9:00-11:05 with 1 employee = 2.08 hours duration × 1 = 2.08 totalHours  
-- Example 2: 9:00-11:05 with 2 employees = 2.08 hours duration × 2 = 4.16 totalHours
-- Example 3: 8:30-4:15 with Andrea+Virginia = 7.75 hours duration × 2 = 15.5 totalHours
-
-For each work activity found, extract:
-1. Date (convert formats like "6/3", "5/13" to YYYY-MM-DD, assume 2025 as current year if not specified)
-2. Client name
-3. Employees involved (convert codes to full names: V=Virginia, R=Rebecca, A=Anne, M=Megan, me/Me=Andrea Wilson)
-4. Start/end times if available
-5. Total hours worked (MUST be calculated as: work duration × number of employees = total person-hours)
-6. Work type (categorize the main type of work)
-7. Detailed tasks performed (bullet points of work done)
-8. Notes (any client conversations, follow-ups, or observations)
-9. Charges (materials, debris bags, plants, etc.)
-10. Drive time if mentioned
-11. Non-billable time if mentioned (in minutes, e.g., "Non-billable time: 1:30" = 90 minutes)
-12. Hours adjustments (person-specific time adjustments, e.g., "Andrea: 2:25 (stayed late)", parse time to decimal hours)
-13. Confidence score (0-1) based on how clear the parsing was
-
-Return JSON in this exact format:
-{
-  "activities": [
-    {
-      "date": "2025-06-03",
-      "clientName": "Stoller",
-      "employees": ["Virginia"],
-      "startTime": "08:45",
-      "endTime": "15:10",
-      "totalHours": 6.42,
-      "workType": "maintenance",
-      "tasks": [
-        "Misc clean up/weeds",
-        "Deadhead brunnera",
-        "Deadhead / weeds / bulb clean up on east slope"
-      ],
-      "notes": "Stayed solo extra 15 min for design work. Take photos for design drawing + brainstorm ideas",
-      "charges": [],
-      "driveTime": 44,
-      "lunchTime": 85,
-      "nonBillableTime": 0,
-      "hoursAdjustments": [
-        {"person": "Andrea", "adjustment": "2:25", "notes": "stayed late after anne & v left", "hours": 2.42}
-      ],
-      "confidence": 0.9
-    }
-  ],
-  "unparsedSections": ["Any text sections that couldn't be parsed into activities"],
-  "warnings": ["Any parsing concerns or ambiguities"]
-}
-
-HOURS CALCULATION EXAMPLES:
-- Single employee: 9:00-11:05 (2.08h) with 1 employee = 2.08 totalHours
-- Two employees: 9:00-11:05 (2.08h) with 2 employees = 4.16 totalHours  
-- Three employees: 8:30-4:15 (7.75h) with 3 employees = 23.25 totalHours
-
-CRITICAL: Return ONLY valid JSON. No trailing commas, no unescaped quotes, no extra text before or after the JSON.
-
-Please analyze the PDF document and extract all work activities following these patterns.`;
-
-    try {
-      // Convert PDF buffer to base64
-      const base64Pdf = pdfBuffer.toString('base64');
-
-      console.log(`📄 Sending PDF to Claude for parsing (${base64Pdf.length} chars base64)...`);
-
-      const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 8000,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: base64Pdf
-                }
-              }
-            ]
-          }
-        ]
-      });
-
-      console.log(`📊 Claude response: ${response.usage?.input_tokens} input tokens, ${response.usage?.output_tokens} output tokens`);
-
-      if (response.content && response.content.length > 0) {
-        const content = response.content[0];
-        if (content && content.type === 'text') {
-          console.log(`📝 Raw response length: ${content.text.length} characters`);
-          console.log(`📝 Response preview: ${content.text.substring(0, 200)}...`);
-          
-          // Extract JSON from the response
-          const jsonMatch = content.text.match(/\{[\s\S]*?\}/);
-          if (jsonMatch) {
-            console.log(`🔍 Found JSON block: ${jsonMatch[0].length} characters`);
-            try {
-              const result = JSON.parse(jsonMatch[0]) as WorkNotesParseResult;
-              console.log(`✅ Successfully parsed ${result.activities.length} activities`);
-              return result;
-            } catch (parseError) {
-              console.error('❌ JSON parsing failed:', parseError);
-              console.error('📄 Raw JSON string (first 1000 chars):', jsonMatch[0].substring(0, 1000));
-              
-              // Check if response was truncated
-              const wasTruncated = response.usage?.output_tokens === 8000;
-              if (wasTruncated) {
-                console.warn('⚠️ Response may have been truncated due to token limit');
-              }
-              
-              // Try to fix common JSON issues
-              let fixedJson = jsonMatch[0];
-              
-              // Fix trailing commas in arrays and objects
-              fixedJson = fixedJson.replace(/,(\s*[}\]])/g, '$1');
-              
-              // Fix unescaped quotes in strings
-              fixedJson = fixedJson.replace(/([^\\])"([^",:}\]]*)"([^,:}\]\s])/g, '$1\\"$2\\"$3');
-              
-              // If JSON appears truncated, try to close it properly
-              if (wasTruncated || !fixedJson.trim().endsWith('}')) {
-                console.log('🔧 Attempting to fix truncated JSON...');
-                
-                // Count open braces and brackets to try to close them
-                let openBraces = 0;
-                let openBrackets = 0;
-                let inString = false;
-                let escaped = false;
-                
-                for (let i = 0; i < fixedJson.length; i++) {
-                  const char = fixedJson[i];
-                  
-                  if (escaped) {
-                    escaped = false;
-                    continue;
-                  }
-                  
-                  if (char === '\\') {
-                    escaped = true;
-                    continue;
-                  }
-                  
-                  if (char === '"') {
-                    inString = !inString;
-                    continue;
-                  }
-                  
-                  if (!inString) {
-                    if (char === '{') openBraces++;
-                    else if (char === '}') openBraces--;
-                    else if (char === '[') openBrackets++;
-                    else if (char === ']') openBrackets--;
-                  }
-                }
-                
-                // Close any unclosed brackets and braces
-                while (openBrackets > 0) {
-                  fixedJson += ']';
-                  openBrackets--;
-                }
-                while (openBraces > 0) {
-                  fixedJson += '}';
-                  openBraces--;
-                }
-                
-                console.log(`🔧 Added ${openBrackets} closing brackets and ${openBraces} closing braces`);
-              }
-              
-              try {
-                const result = JSON.parse(fixedJson) as WorkNotesParseResult;
-                console.log('✅ Fixed JSON parsing succeeded');
-                if (wasTruncated) {
-                  result.warnings = result.warnings || [];
-                  result.warnings.push('Response was truncated due to length. Some activities may be incomplete.');
-                }
-                return result;
-              } catch (secondParseError) {
-                console.error('❌ Second JSON parsing attempt failed:', secondParseError);
-                console.error('📄 Fixed JSON string (first 1000 chars):', fixedJson.substring(0, 1000));
-                
-                // Return a fallback result
-                return {
-                  activities: [],
-                  unparsedSections: [content.text],
-                  warnings: [
-                    'Failed to parse AI response as JSON. Raw response saved in unparsed sections.',
-                    wasTruncated ? 'Response was truncated due to length limits.' : ''
-                  ].filter(Boolean)
-                };
-              }
-            }
-          } else {
-            console.error('❌ No JSON block found in response');
-            console.error('📄 Full response:', content.text);
-          }
-        }
-      }
-
-      throw new Error('Failed to parse AI response');
-    } catch (error) {
-      console.error('Error parsing work notes from PDF:', error);
-      throw new Error('Failed to parse work notes from PDF with AI');
     }
   }
 

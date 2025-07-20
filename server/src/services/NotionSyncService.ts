@@ -3,7 +3,6 @@ import { WorkActivityService, CreateWorkActivityData } from './WorkActivityServi
 import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
-import { WorkNotesParserService } from './WorkNotesParserService';
 import { debugLog } from '../utils/logger';
 import { NewWorkActivity, otherCharges } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -34,7 +33,6 @@ export class NotionSyncService {
   private clientService: ClientService;
   private employeeService: EmployeeService;
   private anthropicService: AnthropicService;
-  private workNotesParserService: WorkNotesParserService;
 
   constructor(anthropicService?: AnthropicService) {
     this.workActivityService = new WorkActivityService();
@@ -43,7 +41,6 @@ export class NotionSyncService {
     
     // Use injected service or create new one
     this.anthropicService = anthropicService || new AnthropicService();
-    this.workNotesParserService = new WorkNotesParserService(this.anthropicService);
 
     if (!process.env.NOTION_TOKEN) {
       debugLog.warn('NOTION_TOKEN not found in environment variables');
