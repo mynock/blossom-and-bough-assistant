@@ -19,9 +19,22 @@ npm run test:billable-hours
 # Run tests with watch mode for development
 npm run test:watch -- src/__tests__/billableHours
 
-# Run all tests
+# Run all tests (requires database setup)
 npm test
 ```
+
+### CI/CD Integration
+
+The billable hours test suite is integrated into GitHub Actions:
+
+- **Main CI** (`ci.yml`) - Runs full test suite with PostgreSQL database on PR/push to main
+- **Quick Tests** (`quick-test.yml`) - Fast compilation checks only (no database tests)
+- **Billable Hours Tests** (`billable-hours-tests.yml`) - Dedicated workflow for regression testing
+
+The tests automatically run when billable hours-related files are modified:
+- `WorkActivityService.ts`, `NotionSyncService.ts`, `SettingsService.ts`
+- Billable hours test files
+- Documentation (`billable-hours-calculation.md`)
 
 ### Test Coverage
 

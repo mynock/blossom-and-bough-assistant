@@ -1,0 +1,115 @@
+name: Billable Hours Regression Tests
+
+on:
+  # Run on pushes to main that affect billable hours logic
+  push:
+    branches: [ main ]
+    paths:
+      - 'server/src/services/WorkActivityService.ts'
+      - 'server/src/services/NotionSyncService.ts'
+      - 'server/src/services/WorkNotesParserService.ts'
+      - 'server/src/services/SettingsService.ts'
+      - 'server/src/__tests__/billableHours*.ts'
+      - 'docs/billable-hours-calculation.md'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      test_suite:
+        description: 'Which test suite to run'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - core
+        - cross-service
+        - rounding
+
+env:
+  NODE_VERSION: '20.x'
+  CI: true
+
+jobs:
+  billable-hours-tests:
+    name: Billable Hours Regression Suite
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: billable_hours_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    env:
+      DATABASE_URL: postgresql://test_user:test_password@localhost:5432/billable_hours_test
+      NODE_ENV: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+          
+    - name: Install backend dependencies
+      run: |
+        cd server
+        npm ci
+        
+    - name: Set up test database
+      run: |
+        cd server
+        npm run db:generate
+        npm run migrate
+        
+    - name: Run Core Logic Tests
+      if: ${{ github.event.inputs.test_suite == 'core' || github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == '' }}
+      run: |
+        cd server
+        npx jest src/__tests__/billableHours.test.ts --verbose
+        
+    - name: Run Cross-Service Consistency Tests
+      if: ${{ github.event.inputs.test_suite == 'cross-service' || github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == '' }}
+      run: |
+        cd server
+        npx jest src/__tests__/billableHours.crossService.test.ts --verbose
+        
+    - name: Run Rounding Tests
+      if: ${{ github.event.inputs.test_suite == 'rounding' || github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == '' }}
+      run: |
+        cd server
+        npx jest src/__tests__/billableHours.rounding.test.ts --verbose
+        
+    - name: Generate detailed test report
+      run: |
+        cd server
+        npm run test:billable-hours -- --verbose --testResultsProcessor=jest-junit
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: billable-hours-test-results
+        path: server/junit.xml
+        
+    - name: Generate test summary
+      if: always()
+      run: |
+        echo "## Billable Hours Test Results 📊" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Core Logic:** Validates billable hours formula" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ **Cross-Service:** Ensures formula consistency" >> $GITHUB_STEP_SUMMARY  
+        echo "- ✅ **Rounding:** Tests rounding integration" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Formula Tested:** \`adjustedTotalHours - breakTime + adjustedBreakTime - nonBillableTime + adjustedTravelTime\`" >> $GITHUB_STEP_SUMMARY

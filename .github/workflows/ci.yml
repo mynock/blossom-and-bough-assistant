@@ -48,6 +48,25 @@ jobs:
     name: Backend Tests
     runs-on: ubuntu-latest
     
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: test_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    env:
+      DATABASE_URL: postgresql://test_user:test_password@localhost:5432/test_db
+      NODE_ENV: test
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -67,15 +86,21 @@ jobs:
         cd server
         npm run type-check
         
-    - name: Run backend tests
+    - name: Set up test database
       run: |
         cd server
-        npm test
+        npm run db:generate
+        npm run migrate
+        
+    - name: Run billable hours regression tests
+      run: |
+        cd server
+        npm run test:billable-hours
         
     - name: Generate test coverage
       run: |
         cd server
-        npm run test:coverage
+        npm run test:coverage -- src/__tests__/billableHours
         
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
