@@ -15,6 +15,8 @@ adjustedTotalHours = totalHours + hoursAdjustments
 
 # Step 2: Calculate billable hours from adjusted total hours
 billableHours = adjustedTotalHours 
+                - (breakTimeMinutes / 60)
+                + (adjustedBreakTimeMinutes / 60)
                 - (nonBillableTimeMinutes / 60) 
                 + (adjustedTravelTimeMinutes / 60)
 ```
@@ -26,14 +28,15 @@ billableHours = adjustedTotalHours
 | `totalHours` | Base work time (duration × employee count) | ➕ Starting point for calculation |
 | `hoursAdjustments` | Person-specific adjustments from Notion | ➕/➖ Applied to total hours first |
 | `adjustedTotalHours` | Total hours + hours adjustments | ➕ Base for billable calculation |
-| `breakTimeMinutes` | Lunch/break time | ✅ **Billable time** (not subtracted) |
-| `adjustedBreakTimeMinutes` | Allocated break time | ✅ **Billable time** (not subtracted) |
+| `breakTimeMinutes` | Original break time | ➖ Subtracted (implicit in total, removed then adjusted added back) |
+| `adjustedBreakTimeMinutes` | Allocated break time | ➕ **Billable time** (added to replace original break time) |
 | `nonBillableTimeMinutes` | Non-billable activities | ➖ Subtracted from adjusted total |
 | `adjustedTravelTimeMinutes` | Allocated travel time | ➕ Added to billable hours |
 
 **Important Notes:**
 - Raw `travelTimeMinutes` is stored for reference but **NOT** used in billable hours calculation
-- **Break time is billable** - only non-billable activities are subtracted from total hours
+- **Break time logic**: Total hours includes break time implicitly, so original break time is subtracted and allocated break time is added back
+- **Net effect**: Break time allocation redistributes break time across activities while maintaining total billable break time
 
 ## When Billable Hours Are Calculated
 
@@ -55,6 +58,7 @@ billableHours = adjustedTotalHours
 **Triggers:** Billable hours are automatically recalculated when any of these fields change:
 - `totalHours`
 - `breakTimeMinutes`
+- `adjustedBreakTimeMinutes`
 - `nonBillableTimeMinutes`
 - `adjustedTravelTimeMinutes`
 
@@ -70,25 +74,28 @@ billableHours = adjustedTotalHours
 2. Apply billable hours formula including hours adjustments
 3. Used for both new imports and updates from Notion
 
-### 4. Travel Time Allocation
+### 4. Time Allocation Services
 
-**Service:** `TravelTimeAllocationService`  
-**File:** `/server/src/services/TravelTimeAllocationService.ts`
+**Services:** `TravelTimeAllocationService`, `BreakTimeAllocationService`  
+**Files:** 
+- `/server/src/services/TravelTimeAllocationService.ts`
+- `/server/src/services/BreakTimeAllocationService.ts`
 
 **Process:**
-1. Calculates proportional travel time allocation across work activities for a day
-2. Updates `adjustedTravelTimeMinutes` based on billable hours proportion
-3. Triggers automatic billable hours recalculation when `adjustedTravelTimeMinutes` changes
+1. **Travel Time:** Calculates proportional travel time allocation across work activities
+2. **Break Time:** Redistributes break time proportionally based on billable hours
+3. Updates `adjustedTravelTimeMinutes` or `adjustedBreakTimeMinutes` respectively
+4. Triggers automatic billable hours recalculation when adjusted fields change
 
 ## Factors That Influence Billable Hours
 
 ### Direct Factors (used in calculation)
-- ✅ `totalHours` - base work time
-- ✅ `breakTimeMinutes` - lunch/break time (**billable** - not subtracted)
-- ✅ `adjustedBreakTimeMinutes` - allocated break time (**billable** - not subtracted)
+- ✅ `totalHours` - base work time (includes break time implicitly)
+- ✅ `breakTimeMinutes` - original break time (subtracted to remove implicit break time)
+- ✅ `adjustedBreakTimeMinutes` - allocated break time (added back as billable time)
 - ✅ `nonBillableTimeMinutes` - non-billable activities (subtracted)
 - ✅ `adjustedTravelTimeMinutes` - allocated travel time (added)
-- ✅ `hoursAdjustments` - person-specific adjustments from Notion (added/subtracted)
+- ✅ `hoursAdjustments` - person-specific adjustments from Notion (applied to total hours)
 
 ### Indirect Factors
 - ✅ **Rounding settings** - can round to nearest half-hour increments
@@ -146,7 +153,8 @@ billableHours REAL,              -- Calculated value
 totalHours REAL,                 -- Input value (duration × employees)
 travelTimeMinutes INTEGER,       -- Stored but NOT subtracted
 adjustedTravelTimeMinutes INTEGER, -- Affects billable hours
-breakTimeMinutes INTEGER,        -- Subtracted from billable hours
+breakTimeMinutes INTEGER,        -- Original break time (subtracted to remove implicit break time)
+adjustedBreakTimeMinutes INTEGER, -- Allocated break time (added back as billable time)
 nonBillableTimeMinutes INTEGER,  -- Subtracted from billable hours
 lastUpdatedBy TEXT              -- Tracks update source ('web_app' | 'notion_sync')
 ```
@@ -159,6 +167,7 @@ lastUpdatedBy TEXT              -- Tracks update source ('web_app' | 'notion_syn
 | `NotionSyncService` | Imports and syncs from Notion | `/server/src/services/NotionSyncService.ts` |
 | `WorkNotesParserService` | Parses and imports work notes | `/server/src/services/WorkNotesParserService.ts` |
 | `TravelTimeAllocationService` | Allocates travel time across activities | `/server/src/services/TravelTimeAllocationService.ts` |
+| `BreakTimeAllocationService` | Redistributes break time across activities | `/server/src/services/BreakTimeAllocationService.ts` |
 | `SettingsService` | Applies rounding rules | `/server/src/services/SettingsService.ts` |
 
 ## Data Flow Summary
@@ -175,13 +184,16 @@ graph TD
     H[Travel Time Allocation] --> I[Update Adjusted Travel Time]
     I --> D
     
+    K[Break Time Allocation] --> L[Update Adjusted Break Time]
+    L --> D
+    
     J[Notion Hours Adjustments] --> C
 ```
 
 1. **Input:** Start/end times, employee count, break time, non-billable time, hours adjustments
-2. **Calculate:** Total hours = (duration × employee count)
+2. **Calculate:** Total hours = (duration × employee count) - includes break time implicitly
 3. **Apply:** Hours adjustments to total hours (adjustedTotalHours = totalHours + hoursAdjustments)
-4. **Calculate:** Billable hours from adjusted total hours (breaks are billable, only non-billable time subtracted)
+4. **Calculate:** Billable hours = adjustedTotalHours - breakTime + adjustedBreakTime - nonBillableTime + adjustedTravelTime
 5. **Apply:** Rounding settings if enabled
 6. **Store:** Final billable hours value
 7. **Auto-update:** Recalculation triggered when component values change
@@ -216,6 +228,15 @@ graph TD
 - ✅ Ensure Notion sync has been run after adding adjustments
 
 ## Change Log
+
+### Version 1.4 (2025-07-20)
+- **CRITICAL FIX:** Corrected break time billable hours calculation logic
+- Updated core formula to properly handle implicit break time in total hours:
+  `billableHours = adjustedTotalHours - breakTime + adjustedBreakTime - nonBillableTime + adjustedTravelTime`
+- Fixed allocation service to calculate billable hour changes as `minuteChange / 60` for both add/subtract directions
+- Added support for 'neutral' billable direction in base allocation service
+- Updated break time allocation service to use 'add' direction (break time is billable)
+- Enhanced documentation to clarify break time handling throughout
 
 ### Version 1.3 (2025-01-19)
 - **INTEGRATION:** Merged break time allocation feature from main branch

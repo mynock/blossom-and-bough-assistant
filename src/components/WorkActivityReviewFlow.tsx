@@ -1020,8 +1020,8 @@ const WorkActivityReviewFlow: React.FC = () => {
                                   <TableRow>
                                     <TableCell><strong>Client</strong></TableCell>
                                     <TableCell align="right"><strong>Activities</strong></TableCell>
-                                    <TableCell align="right"><strong>Hour Change</strong></TableCell>
-                                    <TableCell align="right"><strong>Travel Change</strong></TableCell>
+                                    <TableCell align="right"><strong>Billable Hours</strong></TableCell>
+                                    <TableCell align="right"><strong>Adj Travel Time</strong></TableCell>
                                   </TableRow>
                                 </TableHead>
                                 <TableBody>
@@ -1163,8 +1163,8 @@ const WorkActivityReviewFlow: React.FC = () => {
                                     <TableRow>
                                       <TableCell><strong>Client</strong></TableCell>
                                       <TableCell align="right"><strong>Activities</strong></TableCell>
-                                      <TableCell align="right"><strong>Hour Change</strong></TableCell>
-                                      <TableCell align="right"><strong>Break Change</strong></TableCell>
+                                      <TableCell align="right"><strong>Billable Hours</strong></TableCell>
+                                      <TableCell align="right"><strong>Adj. Break Time</strong></TableCell>
                                     </TableRow>
                                   </TableHead>
                                   <TableBody>
