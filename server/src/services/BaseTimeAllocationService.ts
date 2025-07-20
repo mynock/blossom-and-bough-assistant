@@ -7,7 +7,7 @@ export interface TimeAllocationConfig {
   icon: string; // '🚗', '☕', etc.
   timeField: keyof WorkActivityWithDetails; // 'travelTimeMinutes', 'breakTimeMinutes'
   adjustedField: keyof WorkActivityWithDetails; // 'adjustedTravelTimeMinutes', 'adjustedBreakTimeMinutes'
-  billableDirection: 'add' | 'subtract'; // whether this time type adds to or subtracts from billable hours
+  billableDirection: 'add' | 'subtract' | 'neutral'; // whether this time type adds to, subtracts from, or doesn't change billable hours
   description: string; // for logging
 }
 
@@ -204,6 +204,8 @@ export class BaseTimeAllocationService extends DatabaseService {
       // Calculate base billable hours for this activity (before any adjustments)
       const activityBaseBillableHours = config.billableDirection === 'add'
         ? Math.max(0, currentBillableHours - previousAdjustmentHours)
+        : config.billableDirection === 'neutral'
+        ? currentBillableHours // Neutral direction keeps current billable hours unchanged
         : currentBillableHours + previousAdjustmentHours;
       
       const originalMinutes = (activity[config.timeField] as number) || 0;
@@ -224,14 +226,18 @@ export class BaseTimeAllocationService extends DatabaseService {
       const allocatedMinutes = Math.floor(allocatedMinutesFloat); // Round down as requested
       const allocatedHours = allocatedMinutes / 60;
       
-      // Calculate new billable hours (apply adjustment in correct direction)
-      const newBillableHours = config.billableDirection === 'add'
-        ? activityBaseBillableHours + allocatedHours // Travel time adds to billable
-        : Math.max(0, activityBaseBillableHours - allocatedHours); // Break time subtracts from billable
-
-      // Calculate hour and minute changes
-      const billableHourChange = newBillableHours - activityBaseBillableHours;
+      // Calculate minute change first
       const minuteChange = allocatedMinutes - originalMinutes;
+      
+      // Calculate billable hour change based on minute change
+      const billableHourChange = config.billableDirection === 'subtract'
+        ? minuteChange / 60 // Break time: billable hours change by same amount as break time change
+        : config.billableDirection === 'add'
+        ? minuteChange / 60  // Travel time: more travel time = more billable hours
+        : 0; // Neutral: no change to billable hours
+        
+      // Calculate new billable hours
+      const newBillableHours = Math.max(0, activityBaseBillableHours + billableHourChange);
 
       allocations.push({
         workActivityId: activity.id,

@@ -84,7 +84,7 @@ export class BreakTimeAllocationService extends BaseTimeAllocationService {
     icon: '☕',
     timeField: 'breakTimeMinutes',
     adjustedField: 'adjustedBreakTimeMinutes',
-    billableDirection: 'subtract', // Break time subtracts from billable hours
+    billableDirection: 'add', // Break time adds to billable hours
     description: 'Distribute break time proportionally across work activities based on billable hours'
   };
 
