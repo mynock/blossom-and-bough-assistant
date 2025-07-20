@@ -72,7 +72,7 @@ jobs:
       run: |
         cd server
         npm run db:generate
-        npm run migrate
+        npm run db:push
         
     - name: Run Core Logic Tests
       if: ${{ github.event.inputs.test_suite == 'core' || github.event.inputs.test_suite == 'all' || github.event.inputs.test_suite == '' }}

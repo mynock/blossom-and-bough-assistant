@@ -90,7 +90,7 @@ jobs:
       run: |
         cd server
         npm run db:generate
-        npm run migrate
+        npm run db:push
         
     - name: Run billable hours regression tests
       run: |
