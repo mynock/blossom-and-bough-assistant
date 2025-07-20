@@ -24,6 +24,12 @@ import {
   DialogActions,
   CircularProgress,
   Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
 } from '@mui/material';
 import {
   CheckCircle,
@@ -79,6 +85,9 @@ interface TravelTimeAllocationItem {
   allocatedTravelMinutes: number;
   newBillableHours: number;
   hasZeroTravel: boolean;
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 interface TravelTimeAllocationResult {
@@ -88,6 +97,16 @@ interface TravelTimeAllocationResult {
   allocations: TravelTimeAllocationItem[];
   updatedActivities: number;
   warnings: string[];
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 interface BreakTimeAllocationItem {
@@ -98,6 +117,9 @@ interface BreakTimeAllocationItem {
   allocatedBreakMinutes: number;
   newBillableHours: number;
   hasZeroBreak: boolean;
+  originalBillableHours?: number;
+  billableHourChange?: number;
+  minuteChange?: number;
 }
 
 interface BreakTimeAllocationResult {
@@ -107,6 +129,16 @@ interface BreakTimeAllocationResult {
   allocations: BreakTimeAllocationItem[];
   updatedActivities: number;
   warnings: string[];
+  clientSummary?: {
+    [clientName: string]: {
+      activitiesCount: number;
+      totalBillableHourChange: number;
+      totalMinuteChange: number;
+      originalBillableHours: number;
+      newBillableHours: number;
+    };
+  };
+  totalBillableHourChange?: number;
 }
 
 interface BulkTravelTimeDate {
@@ -125,7 +157,22 @@ interface BulkBreakTimeDate {
   clientsInvolved: string[];
 }
 
+// Helper functions for formatting
+const formatMinutes = (minutes: number | undefined | null) => {
+  if (minutes === undefined || minutes === null || isNaN(minutes)) {
+    return '0m';
+  }
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+};
 
+const formatHours = (hours: number | undefined | null) => {
+  if (hours === undefined || hours === null || isNaN(hours)) {
+    return '0.00h';
+  }
+  return `${hours.toFixed(2)}h`;
+};
 
 const WORK_TYPES = [
   'maintenance',
@@ -951,11 +998,54 @@ const WorkActivityReviewFlow: React.FC = () => {
                       </Typography>
 
                       {bulkAllocationResults[dateInfo.date] && (
-                        <Alert severity="success" sx={{ mt: 2 }}>
-                          <Typography variant="body2">
-                            Preview: {bulkAllocationResults[dateInfo.date].allocations.length} activities will be updated
-                          </Typography>
-                        </Alert>
+                        <Box sx={{ mt: 2 }}>
+                          <Alert severity="success" sx={{ mb: 2 }}>
+                            <Typography variant="body2">
+                              Preview: {bulkAllocationResults[dateInfo.date].allocations.length} activities will be updated
+                              {bulkAllocationResults[dateInfo.date].totalBillableHourChange !== undefined && (
+                                <>
+                                  {' • Total Hour Change: '}
+                                  <strong style={{ color: bulkAllocationResults[dateInfo.date].totalBillableHourChange! >= 0 ? '#4caf50' : '#f44336' }}>
+                                    {bulkAllocationResults[dateInfo.date].totalBillableHourChange! >= 0 ? '+' : ''}{formatHours(bulkAllocationResults[dateInfo.date].totalBillableHourChange!)}
+                                  </strong>
+                                </>
+                              )}
+                            </Typography>
+                          </Alert>
+                          
+                          {bulkAllocationResults[dateInfo.date].clientSummary && Object.keys(bulkAllocationResults[dateInfo.date].clientSummary!).length > 0 && (
+                            <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+                              <Table size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    <TableCell><strong>Client</strong></TableCell>
+                                    <TableCell align="right"><strong>Activities</strong></TableCell>
+                                    <TableCell align="right"><strong>Hour Change</strong></TableCell>
+                                    <TableCell align="right"><strong>Travel Change</strong></TableCell>
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {Object.entries(bulkAllocationResults[dateInfo.date].clientSummary!).map(([clientName, summary]) => (
+                                    <TableRow key={clientName}>
+                                      <TableCell>{clientName}</TableCell>
+                                      <TableCell align="right">{summary.activitiesCount}</TableCell>
+                                      <TableCell align="right">
+                                        <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                                          {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                                        </Box>
+                                      </TableCell>
+                                      <TableCell align="right">
+                                        <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                                          {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                                        </Box>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+                          )}
+                        </Box>
                       )}
                     </CardContent>
                   </Card>
@@ -1051,11 +1141,54 @@ const WorkActivityReviewFlow: React.FC = () => {
                         </Typography>
 
                         {bulkBreakAllocationResults[dateInfo.date] && (
-                          <Alert severity="success" sx={{ mt: 2 }}>
-                            <Typography variant="body2">
-                              Preview: {bulkBreakAllocationResults[dateInfo.date].allocations.length} activities will be updated
-                            </Typography>
-                          </Alert>
+                          <Box sx={{ mt: 2 }}>
+                            <Alert severity="success" sx={{ mb: 2 }}>
+                              <Typography variant="body2">
+                                Preview: {bulkBreakAllocationResults[dateInfo.date].allocations.length} activities will be updated
+                                {bulkBreakAllocationResults[dateInfo.date].totalBillableHourChange !== undefined && (
+                                  <>
+                                    {' • Total Hour Change: '}
+                                    <strong style={{ color: bulkBreakAllocationResults[dateInfo.date].totalBillableHourChange! >= 0 ? '#4caf50' : '#f44336' }}>
+                                      {bulkBreakAllocationResults[dateInfo.date].totalBillableHourChange! >= 0 ? '+' : ''}{formatHours(bulkBreakAllocationResults[dateInfo.date].totalBillableHourChange!)}
+                                    </strong>
+                                  </>
+                                )}
+                              </Typography>
+                            </Alert>
+                            
+                            {bulkBreakAllocationResults[dateInfo.date].clientSummary && Object.keys(bulkBreakAllocationResults[dateInfo.date].clientSummary!).length > 0 && (
+                              <TableContainer component={Paper} variant="outlined" sx={{ mt: 1 }}>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell><strong>Client</strong></TableCell>
+                                      <TableCell align="right"><strong>Activities</strong></TableCell>
+                                      <TableCell align="right"><strong>Hour Change</strong></TableCell>
+                                      <TableCell align="right"><strong>Break Change</strong></TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {Object.entries(bulkBreakAllocationResults[dateInfo.date].clientSummary!).map(([clientName, summary]) => (
+                                      <TableRow key={clientName}>
+                                        <TableCell>{clientName}</TableCell>
+                                        <TableCell align="right">{summary.activitiesCount}</TableCell>
+                                        <TableCell align="right">
+                                          <Box sx={{ color: summary.totalBillableHourChange >= 0 ? 'success.main' : 'error.main' }}>
+                                            {summary.totalBillableHourChange >= 0 ? '+' : ''}{formatHours(summary.totalBillableHourChange)}
+                                          </Box>
+                                        </TableCell>
+                                        <TableCell align="right">
+                                          <Box sx={{ color: summary.totalMinuteChange >= 0 ? 'primary.main' : 'warning.main' }}>
+                                            {summary.totalMinuteChange >= 0 ? '+' : ''}{formatMinutes(summary.totalMinuteChange)}
+                                          </Box>
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+                            )}
+                          </Box>
                         )}
                       </CardContent>
                     </Card>
