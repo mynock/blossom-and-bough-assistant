@@ -357,27 +357,23 @@ export class CronService {
           debugLog.info(`🏡 Processing client visit: "${clientName}" on ${targetDateString}`);
           debugLog.info(`🔍 Event title: "${event.title}"`);
           
-          // Check if an entry already exists for this client for target date
-          const existingEntry = await this.getEntryForClientAndDate(clientName, targetDateString);
+          // Use unified entry creation method from NotionService (includes duplicate checking)
+          debugLog.info(`🆕 Attempting to create entry for ${clientName} on ${targetDateString} using unified method`);
           
-          if (existingEntry) {
-            debugLog.info(`📝 Entry already exists for ${clientName} on ${targetDateString}, updating it`);
-            
-            // Update the existing entry with helper assignments
-            await this.updateExistingEntry(existingEntry.id, clientName, helperAssignments);
-            results.updated++;
-            
+          const result = await this.notionService.createEntryForDate(clientName, targetDateString, helperAssignments);
+          
+          if (result.success) {
+            debugLog.info(`✅ Successfully created Notion entry for ${clientName}`);
+            debugLog.info(`📝 Entry URL: ${result.page_url}`);
+            debugLog.info(`📋 Carryover tasks: ${result.carryover_tasks.length}`);
+            results.created++;
           } else {
-            debugLog.info(`🆕 Creating new entry for ${clientName} on ${targetDateString}`);
-            
-            // Create new entry with target date, carryover tasks, and helper assignments
-            const result = await this.createMaintenanceEntryForDate(clientName, targetDateString, helperAssignments);
-            
-            if (result.success) {
-              debugLog.info(`✅ Successfully created Notion entry for ${clientName}`);
-              debugLog.info(`📝 Entry URL: ${result.page_url}`);
-              debugLog.info(`📋 Carryover tasks: ${result.carryover_tasks.length}`);
-              results.created++;
+            // Check if it's a duplicate (not an error)
+            if (result.error && result.error.includes('Entry already exists')) {
+              debugLog.info(`⏭️ SKIPPING: ${result.error}`);
+              debugLog.info(`🔗 Existing entry URL: ${result.page_url}`);
+              debugLog.info(`🚫 No duplicate entry created for client/day combination: ${clientName}/${targetDateString}`);
+              results.updated++; // Track as "handled" rather than created
             } else {
               debugLog.error(`❌ Failed to create Notion entry for ${clientName}: ${result.error}`);
               results.errors++;
@@ -391,8 +387,8 @@ export class CronService {
       }
       
       debugLog.info(`📊 Daily maintenance entry creation completed:`);
-      debugLog.info(`   🆕 Created: ${results.created}`);
-      debugLog.info(`   📝 Updated: ${results.updated}`);
+      debugLog.info(`   🆕 Created: ${results.created} new entries`);
+      debugLog.info(`   ⏭️ Skipped: ${results.updated} existing entries (duplicates prevented)`);
       debugLog.info(`   ❌ Errors: ${results.errors}`);
       
     } catch (error) {
@@ -400,221 +396,8 @@ export class CronService {
     }
   }
 
-  private async getEntryForClientAndDate(clientName: string, dateString: string): Promise<any> {
-    try {
-      debugLog.info(`🔍 Checking for existing entry: "${clientName}" on ${dateString}`);
-      
-      // Use the proper getters to access the notion client and database ID
-      const notion = this.notionService.client;
-      const DATABASE_ID = this.notionService.databaseId;
-      
-      if (!notion || !DATABASE_ID) {
-        debugLog.error('❌ Cannot access Notion client or database ID');
-        return null;
-      }
-      
-      // Try multiple query strategies to catch duplicates
-      const queries = [
-        // Exact match on Client Name and Date
-        {
-          database_id: DATABASE_ID,
-          filter: {
-            and: [
-              {
-                property: 'Client Name',
-                select: { equals: clientName },
-              },
-              {
-                property: 'Date',
-                date: { equals: dateString },
-              }
-            ]
-          },
-          page_size: 10,
-        },
-        // Also check by title containing the client name (fallback)
-        {
-          database_id: DATABASE_ID,
-          filter: {
-            and: [
-              {
-                property: 'Title',
-                title: { contains: clientName },
-              },
-              {
-                property: 'Date',
-                date: { equals: dateString },
-              }
-            ]
-          },
-          page_size: 10,
-        }
-      ];
 
-      let allEntries: any[] = [];
-      
-      for (const query of queries) {
-        try {
-          const response = await notion.databases.query(query);
-          allEntries.push(...response.results);
-          debugLog.info(`🔍 Query found ${response.results.length} entries`);
-        } catch (queryError) {
-          debugLog.warn(`⚠️  Query failed, trying next strategy:`, queryError);
-        }
-      }
-      
-      // Remove duplicates by ID
-      const uniqueEntries = allEntries.filter((entry, index, self) => 
-        index === self.findIndex(e => e.id === entry.id)
-      );
-      
-      debugLog.info(`🔍 Found ${uniqueEntries.length} unique existing entries for "${clientName}" on ${dateString}`);
-      
-      if (uniqueEntries.length > 0) {
-        // Log details of found entries for debugging
-        uniqueEntries.forEach((entry: any, index: number) => {
-          const title = entry.properties?.Title?.title?.[0]?.text?.content || 'No title';
-          const clientNameProp = entry.properties?.['Client Name']?.select?.name || 'No client name';
-          const dateProp = entry.properties?.Date?.date?.start || 'No date';
-          debugLog.info(`📋 Entry ${index + 1}: "${title}" | Client: "${clientNameProp}" | Date: ${dateProp}`);
-        });
-      }
-      
-      return uniqueEntries[0] || null;
-    } catch (error) {
-      debugLog.error(`❌ Error checking for existing entry: "${clientName}" on ${dateString}`, error);
-      return null;
-    }
-  }
 
-  private async updateExistingEntry(pageId: string, clientName: string, helperAssignments: string[] = []): Promise<void> {
-    try {
-      debugLog.info(`📝 Updating existing entry ${pageId} for ${clientName}`);
-      
-      // For now, we'll just update the page title to indicate it was refreshed
-      // In the future, you could add logic to merge carryover tasks or update other fields
-      const notion = this.notionService.client;
-      
-      if (!notion) {
-        debugLog.error('❌ Cannot access Notion client for update');
-        return;
-      }
-      
-      // Get current page to preserve existing data
-      const currentPage = await notion.pages.retrieve({ page_id: pageId });
-      const currentTitle = (currentPage as any).properties?.Title?.title?.[0]?.text?.content || `${clientName} (Maintenance)`;
-      
-      // Update the page with a fresh timestamp in the title to indicate it was auto-updated
-      const updatedTitle = currentTitle.includes('(Auto-updated') 
-        ? currentTitle.replace(/\(Auto-updated.*?\)/, `(Auto-updated ${new Date().toLocaleTimeString()})`)
-        : `${currentTitle} (Auto-updated ${new Date().toLocaleTimeString()})`;
-      
-      // Always include Andrea, plus any additional helpers from orange events
-      const teamMembers = [
-        { name: 'Andrea' }, // Always include Andrea
-        ...helperAssignments.map(helper => ({ name: helper }))
-      ];
-      
-      // Remove duplicates in case Andrea is also in helperAssignments
-      const uniqueTeamMembers = teamMembers.filter((member, index, self) => 
-        index === self.findIndex(m => m.name === member.name)
-      );
-      
-      const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
-      debugLog.info(`👥 Updating team members: ${memberNames}`);
-      
-      await notion.pages.update({
-        page_id: pageId,
-        properties: {
-          Title: {
-            title: [{ text: { content: updatedTitle } }],
-          },
-          'Team Members': {
-            multi_select: uniqueTeamMembers,
-          }
-        }
-      });
-      
-      debugLog.info(`✅ Successfully updated entry for ${clientName}`);
-      
-    } catch (error) {
-      debugLog.error(`❌ Error updating existing entry for ${clientName}:`, error);
-      throw error;
-    }
-  }
-
-  private async createMaintenanceEntryForDate(clientName: string, dateString: string, helperAssignments: string[] = []): Promise<any> {
-    try {
-      debugLog.info(`🆕 Creating maintenance entry for ${clientName} on ${dateString}`);
-      
-      // Get carryover tasks from the last entry
-      const lastEntry = await (this.notionService as any).getLastEntryForClient(clientName);
-      let carryoverTasks: string[] = [];
-      
-      if (lastEntry) {
-        carryoverTasks = await (this.notionService as any).extractUncompletedTasks(lastEntry.id);
-        debugLog.info(`📋 Found ${carryoverTasks.length} carryover tasks from last entry`);
-      }
-      
-      // Use the proper getters to access the notion client and database ID
-      const notion = this.notionService.client;
-      const DATABASE_ID = this.notionService.databaseId;
-      const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID;
-      
-      if (!notion || !DATABASE_ID) {
-        throw new Error('Cannot access Notion client or database ID');
-      }
-      
-      // Use the NotionService's proper template creation method
-      debugLog.info(`🎨 Creating entry using NotionService template for ${clientName}`);
-      
-      const notionResponse = await this.notionService.createEntryWithCarryover(clientName, carryoverTasks);
-      
-      // Always include Andrea, plus any additional helpers from orange events
-      const teamMembers = [
-        { name: 'Andrea' }, // Always include Andrea
-        ...helperAssignments.map(helper => ({ name: helper }))
-      ];
-      
-      // Remove duplicates in case Andrea is also in helperAssignments
-      const uniqueTeamMembers = teamMembers.filter((member, index, self) => 
-        index === self.findIndex(m => m.name === member.name)
-      );
-      
-      const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
-      debugLog.info(`👥 Assigning team members: ${memberNames}`);
-      
-      // Update the page with the specific date and team members
-      await notion.pages.update({
-        page_id: notionResponse.id,
-        properties: {
-          Date: {
-            date: { start: dateString }, // Use the specified date
-          },
-          'Team Members': {
-            multi_select: uniqueTeamMembers,
-          },
-        },
-      });
-      
-      debugLog.info(`✅ Successfully created and updated entry for ${clientName} on ${dateString}`);
-      
-      return {
-        success: true,
-        page_url: (notionResponse as any).url || `https://notion.so/${notionResponse.id.replace(/-/g, '')}`,
-        carryover_tasks: carryoverTasks,
-      };
-      
-    } catch (error) {
-      debugLog.error(`❌ Error creating maintenance entry for ${clientName} on ${dateString}:`, error);
-      return {
-        success: false,
-        page_url: '',
-        carryover_tasks: [],
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
-  }
 
   private extractClientNameFromEvent(event: any): string | null {
     if (!event.title) return null;

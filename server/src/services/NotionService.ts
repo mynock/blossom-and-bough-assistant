@@ -618,24 +618,212 @@ export class NotionService {
     }
   }
 
-  async createSmartEntry(clientName: string): Promise<CreateSmartEntryResponse> {
+  async checkForExistingEntry(clientName: string, dateString: string): Promise<any> {
     try {
-      // Get last entry for client
+      debugLog.info(`🔍 DUPLICATE CHECK (NotionService): Searching for existing entry - Client: "${clientName}" | Date: ${dateString}`);
+      
+      if (!notion || !DATABASE_ID) {
+        debugLog.error('❌ Cannot access Notion client or database ID for duplicate check');
+        return null;
+      }
+      
+      // Try multiple query strategies to catch duplicates with enhanced logging
+      const queries = [
+        {
+          name: 'Exact Client Name + Date Match',
+          filter: {
+            and: [
+              {
+                property: 'Client Name',
+                select: { equals: clientName },
+              },
+              {
+                property: 'Date',
+                date: { equals: dateString },
+              }
+            ]
+          }
+        },
+        {
+          name: 'Title Contains Client Name + Date Match',
+          filter: {
+            and: [
+              {
+                property: 'Title',
+                title: { contains: clientName },
+              },
+              {
+                property: 'Date',
+                date: { equals: dateString },
+              }
+            ]
+          }
+        },
+        {
+          name: 'Case Insensitive Title Search + Date Match',
+          filter: {
+            and: [
+              {
+                property: 'Title',
+                title: { contains: clientName.toLowerCase() },
+              },
+              {
+                property: 'Date',
+                date: { equals: dateString },
+              }
+            ]
+          }
+        }
+      ];
+
+      let allEntries: any[] = [];
+      let queriesSucceeded = 0;
+      
+      for (const { name, filter } of queries) {
+        try {
+          debugLog.info(`🔍 Running duplicate check strategy: ${name}`);
+          const response = await notion.databases.query({
+            database_id: DATABASE_ID,
+            filter,
+            page_size: 10,
+          });
+          allEntries.push(...response.results);
+          queriesSucceeded++;
+          debugLog.info(`🔍 Strategy "${name}" found ${response.results.length} entries`);
+        } catch (queryError) {
+          debugLog.warn(`⚠️ Duplicate check strategy "${name}" failed:`, queryError);
+        }
+      }
+      
+      // Remove duplicates by ID
+      const uniqueEntries = allEntries.filter((entry, index, self) => 
+        index === self.findIndex(e => e.id === entry.id)
+      );
+      
+      debugLog.info(`🔍 DUPLICATE CHECK RESULT: Found ${uniqueEntries.length} unique existing entries for "${clientName}" on ${dateString} (${queriesSucceeded}/${queries.length} queries succeeded)`);
+      
+      if (uniqueEntries.length > 0) {
+        // Log details of found entries for debugging
+        debugLog.info(`📋 EXISTING ENTRIES FOUND - Will prevent creation:`);
+        uniqueEntries.forEach((entry: any, index: number) => {
+          const title = entry.properties?.Title?.title?.[0]?.text?.content || 'No title';
+          const clientNameProp = entry.properties?.['Client Name']?.select?.name || 'No client name';
+          const dateProp = entry.properties?.Date?.date?.start || 'No date';
+          const entryUrl = entry.url || `https://notion.so/${entry.id.replace(/-/g, '')}`;
+          debugLog.info(`📋 Entry ${index + 1}: "${title}" | Client: "${clientNameProp}" | Date: ${dateProp} | URL: ${entryUrl}`);
+        });
+        
+        if (uniqueEntries.length > 1) {
+          debugLog.warn(`⚠️ MULTIPLE DUPLICATES DETECTED: Found ${uniqueEntries.length} entries for the same client/date combination. This may indicate data inconsistency.`);
+        }
+      } else {
+        debugLog.info(`✅ DUPLICATE CHECK PASSED: No existing entries found for "${clientName}" on ${dateString} - safe to create new entry`);
+      }
+      
+      return uniqueEntries[0] || null;
+    } catch (error) {
+      debugLog.error(`❌ Error during duplicate check for "${clientName}" on ${dateString}:`, error);
+      debugLog.error(`❌ Returning null to prevent duplicate creation due to check failure`);
+      return null;
+    }
+  }
+
+  async createEntryForDate(clientName: string, dateString: string, helperAssignments: string[] = []): Promise<CreateSmartEntryResponse> {
+    try {
+      debugLog.info(`🆕 Creating entry for ${clientName} on ${dateString} (unified method)`);
+      
+      // Check for duplicate entry first
+      const existingEntry = await this.checkForExistingEntry(clientName, dateString);
+      
+      if (existingEntry) {
+        const entryTitle = existingEntry.properties?.Title?.title?.[0]?.text?.content || 'No title';
+        const entryUrl = existingEntry.url || `https://notion.so/${existingEntry.id.replace(/-/g, '')}`;
+        
+        debugLog.info(`🚫 DUPLICATE PREVENTED: Entry already exists for ${clientName} on ${dateString}`);
+        debugLog.info(`📋 Existing entry: "${entryTitle}"`);
+        debugLog.info(`🔗 Entry URL: ${entryUrl}`);
+        
+        return {
+          success: false,
+          page_url: entryUrl,
+          carryover_tasks: [],
+          error: `Entry already exists for ${clientName} on ${dateString}. Existing entry: ${entryTitle}`,
+        };
+      }
+
+      // Get carryover tasks from the last entry
       const lastEntry = await this.getLastEntryForClient(clientName);
       let carryoverTasks: string[] = [];
       
       if (lastEntry) {
         carryoverTasks = await this.extractUncompletedTasks(lastEntry.id);
+        debugLog.info(`📋 Found ${carryoverTasks.length} carryover tasks from last entry`);
       }
 
-      // Create new Notion entry
+      // Create new Notion entry with carryover tasks
+      debugLog.info(`✅ No duplicates found - creating new entry for ${clientName} on ${dateString}`);
       const newPage = await this.createEntryWithCarryover(clientName, carryoverTasks);
+      
+      // Always include Andrea, plus any additional helpers from calendar events
+      const teamMembers = [
+        { name: 'Andrea' }, // Always include Andrea
+        ...helperAssignments.map(helper => ({ name: helper }))
+      ];
+      
+      // Remove duplicates in case Andrea is also in helperAssignments
+      const uniqueTeamMembers = teamMembers.filter((member, index, self) => 
+        index === self.findIndex(m => m.name === member.name)
+      );
+      
+      const memberNames = uniqueTeamMembers.map(m => m.name).join(', ');
+      debugLog.info(`👥 Assigning team members: ${memberNames}`);
+
+      // Update the date to the specified date and team members
+      const updateProperties: any = {};
+      
+      if (dateString !== new Date().toISOString().split('T')[0]) {
+        debugLog.info(`📅 Updating entry date from today to ${dateString}`);
+        updateProperties.Date = {
+          date: { start: dateString },
+        };
+      }
+      
+      if (helperAssignments.length > 0) {
+        updateProperties['Team Members'] = {
+          multi_select: uniqueTeamMembers,
+        };
+      }
+      
+      if (Object.keys(updateProperties).length > 0) {
+        await notion.pages.update({
+          page_id: newPage.id,
+          properties: updateProperties,
+        });
+      }
       
       return {
         success: true,
         page_url: (newPage as any).url || `https://notion.so/${newPage.id.replace(/-/g, '')}`,
         carryover_tasks: carryoverTasks,
       };
+    } catch (error) {
+      debugLog.error(`Error creating entry for ${clientName} on ${dateString}:`, error);
+      return {
+        success: false,
+        page_url: '',
+        carryover_tasks: [],
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  async createSmartEntry(clientName: string): Promise<CreateSmartEntryResponse> {
+    try {
+      // Use the unified method for today's date
+      const today = new Date().toISOString().split('T')[0];
+      debugLog.info(`🔍 Manual entry creation for client "${clientName}" on ${today} (using unified method)`);
+      
+      return await this.createEntryForDate(clientName, today);
     } catch (error) {
       debugLog.error('Error creating smart entry:', error);
       return {
