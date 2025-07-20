@@ -751,6 +751,154 @@ Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and 
     }
   }
 
+  /**
+   * Parse free-form work notes into structured work activities (used by Notion sync)
+   */
+  async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
+    if (!this.client) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    const prompt = `You are an expert at parsing landscaping work logs into structured data. 
+
+Parse the following work notes and extract individual work activities. Each activity should represent work done for a specific client on a specific date.
+
+IMPORTANT PATTERNS TO RECOGNIZE:
+
+TIME FORMATS:
+- "8:45-3:10 w V inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
+- "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
+- "R 8:30-4:15, Me 9:40-5" = Rebecca 8:30-4:15, Me 9:40-5:00
+
+EMPLOYEE CODES:
+- "w V" = with Virginia
+- "w R" = with Rebecca  
+- "w A" = with Anne
+- "w M" = with Megan
+- "solo" = solo work (Andrea Wilson working alone)
+- "me" or "Me" = Andrea Wilson (the business owner)
+
+BUSINESS CONTEXT:
+- Andrea Wilson is the business owner of this landscaping company
+- When notes mention "me", "Me", or "I", this refers to Andrea Wilson
+- Andrea often works alongside her employees or solo on client sites
+
+CLIENT NAMES:
+- Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
+
+CHARGES:
+- "charge 1 debris bag" 
+- "Charge: Sluggo, fert, 2-3 bags debris, 3 aspidistra (60 pdxn)"
+
+WORK TYPES:
+- maintenance (most common)
+- installation/planting
+- design/consultation
+- pruning
+- weeding
+- cleanup
+
+CRITICAL DATE PARSING RULES:
+- The current year is 2025 (Pacific Time zone)
+- For partial dates like "6/3", "5/13", "2/24", etc., ALWAYS assume the year 2025
+- All dates should be interpreted as Pacific Time (US West Coast)
+- Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
+- Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
+
+For each work activity, extract:
+- date (YYYY-MM-DD format, always assume 2025 unless specified otherwise)
+- clientName (convert any nicknames/codes to full client names if you can determine them)
+- workType (maintenance/installation/design/etc.)
+- employees (array of full employee names, include Andrea Wilson when "me"/"I" is mentioned)
+- startTime (HH:MM format, 24-hour)
+- endTime (HH:MM format, 24-hour)
+- totalHours (calculated from time range and number of employees)
+- travelTimeMinutes (extract from phrases like "inc 22x2 min drive", "add .5 drive")
+- breakTimeMinutes (extract break time if mentioned)
+- workDescription (summary of work performed)
+- charges (array of materials/services to charge)
+- confidence (0.0-1.0 score for how confident you are in the parsing)
+
+EMPLOYEE NAME MAPPING:
+- "V" or "Virginia" → "Virginia Dahl"
+- "R" or "Rebecca" → "Rebecca Soto" 
+- "A" or "Anne" → "Anne Malakasis"
+- "M" or "Megan" → "Megan Sanders"
+- "me", "Me", "I" → "Andrea Wilson"
+
+CLIENT NAME EXAMPLES (use exact spelling):
+- Stoller, Nadler, Kurzweil, Silver, Chen, Kumar, Patel, etc.
+
+IMPORTANT CALCULATION RULES:
+1. totalHours = (end time - start time in hours) × number of employees
+2. If multiple employees work different time ranges, calculate each person's hours separately then sum
+3. Travel time and break time are separate from work hours
+4. For "inc drive" mentions, extract the drive time in minutes
+5. Convert time mentions like ".5 drive" to 30 minutes, "22x2 min" to 44 minutes
+
+Return the data as a JSON object with this exact structure:
+{
+  "activities": [
+    {
+      "date": "2025-06-03",
+      "clientName": "Stoller", 
+      "workType": "maintenance",
+      "employees": ["Andrea Wilson", "Virginia Dahl"],
+      "startTime": "08:45",
+      "endTime": "15:10", 
+      "totalHours": 12.83,
+      "travelTimeMinutes": 44,
+      "breakTimeMinutes": 30,
+      "workDescription": "General maintenance work",
+      "charges": ["1 debris bag"],
+      "confidence": 0.95
+    }
+  ],
+  "summary": {
+    "totalActivities": 1,
+    "dateRange": "2025-06-03 to 2025-06-03",
+    "totalHours": 12.83,
+    "clients": ["Stoller"]
+  }
+}`;
+
+    try {
+      console.log('🤖 === ANTHROPIC API REQUEST START ===');
+      console.log('🎯 Method: parseWorkNotes (for Notion sync)');
+      console.log('📝 Input length:', workNotesText.length, 'characters');
+
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 8000,
+        messages: [
+          {
+            role: 'user',
+            content: `${prompt}\n\nWork Notes to Parse:\n${workNotesText}`
+          }
+        ]
+      });
+
+      console.log('✅ Anthropic API response received');
+      console.log('📊 Usage:', response.usage);
+      console.log('🔍 === ANTHROPIC API REQUEST END (SUCCESS) ===');
+
+      if (response.content[0].type === 'text') {
+        const responseText = response.content[0].text;
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          return parsed;
+        }
+      }
+
+      throw new Error('Failed to parse AI response');
+    } catch (error) {
+      console.error('💥 Error in Anthropic API request:', error);
+      console.log('🔍 === ANTHROPIC API REQUEST END (ERROR) ===');
+      throw new Error('Failed to parse work notes with AI');
+    }
+  }
 
   /**
    * Parse historical work data from Google Sheets
