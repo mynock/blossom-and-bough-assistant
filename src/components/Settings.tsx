@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Container,
   Typography,
@@ -11,7 +11,6 @@ import {
   Alert,
   Divider,
   Grid,
-  Paper,
   FormControl,
   InputLabel,
   Select,
@@ -24,7 +23,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemIcon,
   Chip,
   CircularProgress,
 } from '@mui/material';
@@ -34,7 +32,6 @@ import {
   ExpandMore,
   Save,
   RestoreOutlined,
-  Business,
   Home,
   Security,
   Notifications,
@@ -113,7 +110,7 @@ const Settings: React.FC = () => {
     setSnackbar({ open: true, message, severity });
   };
 
-  const fetchSettings = async () => {
+  const fetchSettings = useCallback(async () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/api/settings');
@@ -142,7 +139,7 @@ const Settings: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const updateFormStateFromSettings = (settingsList: Setting[]) => {
     const settingsMap = settingsList.reduce((acc, setting) => {
@@ -300,7 +297,7 @@ const Settings: React.FC = () => {
 
   useEffect(() => {
     fetchSettings();
-  }, []);
+  }, [fetchSettings]);
 
   const getCategoryIcon = (category: string) => {
     switch (category) {

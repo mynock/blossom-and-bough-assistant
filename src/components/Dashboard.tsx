@@ -18,10 +18,8 @@ import {
 } from '@mui/material';
 import { 
   Assignment,
-  People,
   Business,
   Add,
-  Analytics,
   Today,
   AccessTime,
   AttachMoney,

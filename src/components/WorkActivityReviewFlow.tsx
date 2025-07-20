@@ -157,15 +157,6 @@ interface BulkBreakTimeDate {
   clientsInvolved: string[];
 }
 
-// Helper functions for formatting
-const formatMinutes = (minutes: number | undefined | null) => {
-  if (minutes === undefined || minutes === null || isNaN(minutes)) {
-    return '0m';
-  }
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-};
 
 const formatHours = (hours: number | undefined | null) => {
   if (hours === undefined || hours === null || isNaN(hours)) {
@@ -223,11 +214,6 @@ const WorkActivityReviewFlow: React.FC = () => {
   const [breakTimePreview, setBreakTimePreview] = useState<BreakTimeAllocationResult | null>(null);
   const [breakTimeDialogOpen, setBreakTimeDialogOpen] = useState(false);
   const [allocatingBreakTime, setAllocatingBreakTime] = useState(false);
-  const [completionBreakSummary, setCompletionBreakSummary] = useState<{ 
-    datesWithUnallocatedBreak: string[]; 
-    totalUnallocatedMinutes: number;
-    activitiesWithBreak: number;
-  } | null>(null);
 
   const currentActivity = activitiesNeedingReview[currentIndex];
   const isLastActivity = currentIndex === activitiesNeedingReview.length - 1;
