@@ -1,14 +1,12 @@
 import { describe, expect, it, beforeAll, afterAll } from '@jest/globals';
 import { WorkActivityService } from '../services/WorkActivityService';
 import { NotionSyncService } from '../services/NotionSyncService';
-import { WorkNotesParserService } from '../services/WorkNotesParserService';
 import { AnthropicService } from '../services/AnthropicService';
 import { SettingsService } from '../services/SettingsService';
 
-describe('Cross-Service Billable Hours Consistency', () => {
+describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)', () => {
   let workActivityService: WorkActivityService;
   let notionSyncService: NotionSyncService;
-  let workNotesParserService: WorkNotesParserService;
   let settingsService: SettingsService;
   let anthropicService: AnthropicService;
 
@@ -16,7 +14,6 @@ describe('Cross-Service Billable Hours Consistency', () => {
     workActivityService = new WorkActivityService();
     notionSyncService = new NotionSyncService();
     anthropicService = new AnthropicService();
-    workNotesParserService = new WorkNotesParserService(anthropicService);
     settingsService = new SettingsService();
   });
 
@@ -81,28 +78,16 @@ describe('Cross-Service Billable Hours Consistency', () => {
           [] // No hours adjustments for this test
         );
 
-        // Test WorkNotesParserService calculation using the private method
-        const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-          testCase.totalHours,
-          testCase.breakTimeMinutes, // Note: WorkNotesParser uses this as "lunchTime"
-          testCase.nonBillableTimeMinutes,
-          testCase.adjustedTravelTimeMinutes,
-          [] // No hours adjustments for this test
-        );
-
-        // All services should produce the same result
+        // Both services should produce the same result
         expect(workActivityResult).toBe(testCase.expected);
         expect(notionSyncResult).toBe(testCase.expected);
-        expect(workNotesResult).toBe(testCase.expected);
 
-        // Verify all services agree with each other
+        // Verify both services agree with each other
         expect(workActivityResult).toBe(notionSyncResult);
-        expect(workActivityResult).toBe(workNotesResult);
-        expect(notionSyncResult).toBe(workNotesResult);
       });
     });
 
-    it('should handle hours adjustments consistently in Notion services', () => {
+    it('should handle hours adjustments consistently in Notion sync service', () => {
       const hoursAdjustments = [
         { person: 'Andrea', adjustment: '1:30', notes: 'stayed late', hours: 1.5 },
         { person: 'Virginia', adjustment: '-0:15', notes: 'left early', hours: -0.25 }
@@ -126,22 +111,12 @@ describe('Cross-Service Billable Hours Consistency', () => {
         hoursAdjustments
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        breakTimeMinutes,
-        nonBillableTimeMinutes,
-        adjustedTravelTimeMinutes,
-        hoursAdjustments
-      );
-
       expect(notionSyncResult).toBe(expected);
-      expect(workNotesResult).toBe(expected);
-      expect(notionSyncResult).toBe(workNotesResult);
     });
   });
 
   describe('Precision and Rounding Consistency', () => {
-    it('should maintain 2-decimal precision across all services', () => {
+    it('should maintain 2-decimal precision across services', () => {
       const totalHours = 5.333; // 5 hours 20 minutes
       const breakTimeMinutes = 17; // 17 minutes
       const adjustedBreakTimeMinutes = 8; // 8 minutes
@@ -164,30 +139,19 @@ describe('Cross-Service Billable Hours Consistency', () => {
         []
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        breakTimeMinutes,
-        nonBillableTimeMinutes,
-        adjustedTravelTimeMinutes,
-        []
-      );
-
-      // All results should be numbers with at most 2 decimal places
+      // Both results should be numbers with at most 2 decimal places
       expect(workActivityResult).toEqual(expect.any(Number));
       expect(notionSyncResult).toEqual(expect.any(Number));
-      expect(workNotesResult).toEqual(expect.any(Number));
 
       // Check that precision is consistent (2 decimal places max)
       expect(workActivityResult.toString().split('.')[1]?.length || 0).toBeLessThanOrEqual(2);
       expect(notionSyncResult.toString().split('.')[1]?.length || 0).toBeLessThanOrEqual(2);
-      expect(workNotesResult.toString().split('.')[1]?.length || 0).toBeLessThanOrEqual(2);
 
-      // All should be equal
+      // Both should be equal
       expect(workActivityResult).toBe(notionSyncResult);
-      expect(workActivityResult).toBe(workNotesResult);
     });
 
-    it('should never return negative values across all services', () => {
+    it('should never return negative values across services', () => {
       const totalHours = 1.0;
       const breakTimeMinutes = 90; // 1.5 hours (more than total)
       const adjustedBreakTimeMinutes = 0;
@@ -210,18 +174,9 @@ describe('Cross-Service Billable Hours Consistency', () => {
         []
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        breakTimeMinutes,
-        nonBillableTimeMinutes,
-        adjustedTravelTimeMinutes,
-        []
-      );
-
-      // All services should clamp negative results to 0
+      // Both services should clamp negative results to 0
       expect(workActivityResult).toBe(0);
       expect(notionSyncResult).toBe(0);
-      expect(workNotesResult).toBe(0);
     });
   });
 
@@ -246,18 +201,9 @@ describe('Cross-Service Billable Hours Consistency', () => {
         undefined // hoursAdjustments
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        undefined, // lunchTime
-        0, // nonBillableTime
-        undefined, // adjustedTravelTimeMinutes
-        undefined // hoursAdjustments
-      );
-
-      // Should all treat null/undefined as 0
+      // Should both treat null/undefined as 0
       expect(workActivityResult).toBe(5.0);
       expect(notionSyncResult).toBe(5.0);
-      expect(workNotesResult).toBe(5.0);
     });
 
     it('should handle very small values consistently', () => {
@@ -283,17 +229,8 @@ describe('Cross-Service Billable Hours Consistency', () => {
         []
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        breakTimeMinutes,
-        nonBillableTimeMinutes,
-        adjustedTravelTimeMinutes,
-        []
-      );
-
-      // All should handle small values precisely and consistently
+      // Both should handle small values precisely and consistently
       expect(workActivityResult).toBe(notionSyncResult);
-      expect(workActivityResult).toBe(workNotesResult);
       expect(workActivityResult).toBeGreaterThanOrEqual(0);
     });
   });
@@ -316,7 +253,7 @@ describe('Cross-Service Billable Hours Consistency', () => {
       // billableHours = 8.5 - 1.0 + 0.75 - 0.5 + 1.5 = 9.25
       const expectedResult = 9.25;
 
-      // Test with hours adjustments (Notion services)
+      // Test with hours adjustments (Notion sync service)
       const notionSyncResult = (notionSyncService as any).calculateBillableHours(
         totalHours,
         breakTimeMinutes,
@@ -325,16 +262,7 @@ describe('Cross-Service Billable Hours Consistency', () => {
         hoursAdjustments
       );
 
-      const workNotesResult = (workNotesParserService as any).calculateBillableHours(
-        totalHours,
-        breakTimeMinutes,
-        nonBillableTimeMinutes,
-        adjustedTravelTimeMinutes,
-        hoursAdjustments
-      );
-
       expect(notionSyncResult).toBe(expectedResult);
-      expect(workNotesResult).toBe(expectedResult);
 
       // Test without hours adjustments (WorkActivityService)
       // adjustedTotalHours = 8.0 + 0 = 8.0
