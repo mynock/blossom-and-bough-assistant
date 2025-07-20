@@ -2,6 +2,8 @@
 
 ## Billable Hours Regression Test Suite
 
+**Requirements:** Node.js 22+ (due to `connect-session-sequelize` dependency)
+
 This project now includes a focused regression test suite specifically for billable hours calculation - the core value proposition of the platform. These tests ensure that:
 
 - **Core billable hours formula** works correctly with all input components
