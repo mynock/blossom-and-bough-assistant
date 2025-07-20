@@ -2,6 +2,10 @@
   "name": "garden-care-crm",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
   "dependencies": {
     "@emotion/react": "^11.11.0",
     "@emotion/styled": "^11.11.0",
@@ -45,6 +49,7 @@
     "build:production": "CI=false react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
+    "fix-lockfile": "rm package-lock.json && npm install",
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "server": "cd server && npm run dev",
     "type-check": "tsc --noEmit",

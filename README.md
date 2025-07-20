@@ -1,4 +1,66 @@
-# Scheduling Assistant
+# Blossom & Bough Scheduling Assistant
+
+## Billable Hours Regression Test Suite
+
+**Requirements:** Node.js 22+ (due to `connect-session-sequelize` dependency)
+
+This project now includes a focused regression test suite specifically for billable hours calculation - the core value proposition of the platform. These tests ensure that:
+
+- **Core billable hours formula** works correctly with all input components
+- **Auto-recalculation** triggers when any input field changes  
+- **Rounding functionality** integrates properly with calculations
+- **Cross-service consistency** ensures all services use the same formula
+
+### Running Billable Hours Tests
+
+```bash
+# Run only the billable hours tests
+cd server
+npm run test:billable-hours
+
+# Run tests with watch mode for development
+npm run test:watch -- src/__tests__/billableHours
+
+# Run all tests (requires database setup)
+npm test
+```
+
+### CI/CD Integration
+
+The billable hours test suite is integrated into GitHub Actions:
+
+- **Main CI** (`ci.yml`) - Runs full test suite with PostgreSQL database on PR/push to main
+- **Quick Tests** (`quick-test.yml`) - Fast compilation checks only (no database tests)
+- **Billable Hours Tests** (`billable-hours-tests.yml`) - Dedicated workflow for regression testing
+
+The tests automatically run when billable hours-related files are modified:
+- `WorkActivityService.ts`, `NotionSyncService.ts`, `SettingsService.ts`
+- Billable hours test files
+- Documentation (`billable-hours-calculation.md`)
+
+### Test Coverage
+
+The billable hours test suite covers:
+
+1. **`billableHours.test.ts`** - Core calculation logic and auto-recalculation
+2. **`billableHours.crossService.test.ts`** - Cross-service consistency
+3. **`billableHours.rounding.test.ts`** - Rounding functionality and integration
+
+These tests focus specifically on the business logic without testing third-party integrations or data parsing, ensuring reliable detection of regressions in the core billable hours calculation system.
+
+### Billable Hours Formula
+
+The tests validate this core formula:
+```
+adjustedTotalHours = totalHours + hoursAdjustments
+billableHours = adjustedTotalHours 
+                - (breakTimeMinutes / 60)
+                + (adjustedBreakTimeMinutes / 60)
+                - (nonBillableTimeMinutes / 60) 
+                + (adjustedTravelTimeMinutes / 60)
+```
+
+For detailed documentation of the billable hours system, see `docs/billable-hours-calculation.md`.
 
 ![CI Status](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/workflows/Continuous%20Integration/badge.svg)
 ![Tests](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME/workflows/Quick%20Tests/badge.svg)
