@@ -606,7 +606,7 @@ export class NotionSyncService {
         breakTimeMinutes: breakTime || parsedActivity.lunchTime || 0,
         nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
-        tasks: parsedActivity.tasks?.join('\n') || null,
+        tasks: Array.isArray(parsedActivity.tasks) ? parsedActivity.tasks.join('\n') : parsedActivity.tasks || null,
         notionPageId: parsedActivity.notionPageId, // Set Notion page ID directly
         lastNotionSyncAt: new Date(parsedActivity.lastEditedTime), // Store Notion page's last_edited_time
         lastUpdatedBy: 'notion_sync' as const // Correctly mark as Notion sync from the start
@@ -726,7 +726,7 @@ export class NotionSyncService {
         breakTimeMinutes: breakTime || parsedActivity.lunchTime || 0,
         nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
-        tasks: parsedActivity.tasks?.join('\n') || null,
+        tasks: Array.isArray(parsedActivity.tasks) ? parsedActivity.tasks.join('\n') : parsedActivity.tasks || null,
         lastNotionSyncAt: new Date(parsedActivity.lastEditedTime), // Store Notion page's last_edited_time
         lastUpdatedBy: 'notion_sync' as const, // Mark that this update came from Notion sync
       };
