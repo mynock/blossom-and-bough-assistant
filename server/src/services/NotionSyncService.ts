@@ -284,7 +284,7 @@ export class NotionSyncService {
 
       if (existingActivity) {
         // We already know we should sync (checked above)
-        await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId);
+        await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId, page.properties);
         debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
@@ -302,7 +302,7 @@ export class NotionSyncService {
           onProgress(message);
         } : undefined;
         
-        await this.createWorkActivityFromParsedData(activityWithNotionId, clientProgressCallback);
+        await this.createWorkActivityFromParsedData(activityWithNotionId, page.properties, clientProgressCallback);
         debugLog.info(`Created new work activity from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
@@ -492,9 +492,19 @@ export class NotionSyncService {
    */
   private async createWorkActivityFromParsedData(
     parsedActivity: any, 
+    notionPageProperties?: any,
     onProgress?: (message: string) => void
   ): Promise<void> {
     try {
+      // Parse travel time and break time directly from Notion properties if available
+      let travelTime = 0;
+      let breakTime = 0;
+      if (notionPageProperties) {
+        travelTime = this.parseTravelTime(notionPageProperties, 'Travel Time') || 0;
+        breakTime = this.parseNonBillableTime(notionPageProperties, 'Break Minutes') || 0;
+        debugLog.info(`🚗 Direct Notion parsing for ${parsedActivity.clientName}: travelTime=${travelTime}, breakTime=${breakTime}`);
+      }
+
       // Calculate total hours if missing or zero and we have start/end times
       const calculatedTotalHours = this.calculateTotalHours(parsedActivity);
       if (calculatedTotalHours !== null && (!parsedActivity.totalHours || parsedActivity.totalHours === 0)) {
@@ -651,8 +661,17 @@ export class NotionSyncService {
   /**
    * Update an existing work activity from AI-parsed data
    */
-  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any): Promise<void> {
+  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any, notionPageProperties?: any): Promise<void> {
     try {
+      // Parse travel time and break time directly from Notion properties if available
+      let travelTime = 0;
+      let breakTime = 0;
+      if (notionPageProperties) {
+        travelTime = this.parseTravelTime(notionPageProperties, 'Travel Time') || 0;
+        breakTime = this.parseNonBillableTime(notionPageProperties, 'Break Minutes') || 0;
+        debugLog.info(`🚗 Direct Notion parsing for update ${workActivityId}: travelTime=${travelTime}, breakTime=${breakTime}`);
+      }
+
       // Calculate total hours if missing or zero and we have start/end times
       const calculatedTotalHours = this.calculateTotalHours(parsedActivity);
       if (calculatedTotalHours !== null && (!parsedActivity.totalHours || parsedActivity.totalHours === 0)) {
