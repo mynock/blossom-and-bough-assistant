@@ -44,7 +44,7 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         adjustedBreakTimeMinutes: 20,
         nonBillableTimeMinutes: 25,
         adjustedTravelTimeMinutes: 35,
-        expected: 6.42 // 6.75 - 0.75 + 0.33 - 0.42 + 0.58 (rounded to 2 decimals)
+        expected: 6.5 // 6.75 - 0.75 + 0.33 - 0.42 + 0.58 = 6.49 -> rounded to 2 decimals = 6.5
       },
       {
         name: 'potential negative result clamped to zero',
@@ -75,7 +75,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
           testCase.breakTimeMinutes, // Note: NotionSync uses this as "lunchTime"
           testCase.nonBillableTimeMinutes,
           testCase.adjustedTravelTimeMinutes,
-          [] // No hours adjustments for this test
+          [], // No hours adjustments for this test
+          testCase.adjustedBreakTimeMinutes
         );
 
         // Both services should produce the same result
@@ -108,7 +109,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         breakTimeMinutes,
         nonBillableTimeMinutes,
         adjustedTravelTimeMinutes,
-        hoursAdjustments
+        hoursAdjustments,
+        0 // adjustedBreakTimeMinutes
       );
 
       expect(notionSyncResult).toBe(expected);
@@ -136,7 +138,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         breakTimeMinutes,
         nonBillableTimeMinutes,
         adjustedTravelTimeMinutes,
-        []
+        [],
+        adjustedBreakTimeMinutes
       );
 
       // Both results should be numbers with at most 2 decimal places
@@ -171,7 +174,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         breakTimeMinutes,
         nonBillableTimeMinutes,
         adjustedTravelTimeMinutes,
-        []
+        [],
+        adjustedBreakTimeMinutes
       );
 
       // Both services should clamp negative results to 0
@@ -198,7 +202,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         undefined, // lunchTime
         0, // nonBillableTime
         undefined, // adjustedTravelTimeMinutes
-        undefined // hoursAdjustments
+        undefined, // hoursAdjustments
+        0 // adjustedBreakTimeMinutes
       );
 
       // Should both treat null/undefined as 0
@@ -226,7 +231,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         breakTimeMinutes,
         nonBillableTimeMinutes,
         adjustedTravelTimeMinutes,
-        []
+        [],
+        adjustedBreakTimeMinutes
       );
 
       // Both should handle small values precisely and consistently
@@ -259,7 +265,8 @@ describe('Cross-Service Billable Hours Consistency (WorkActivity vs NotionSync)'
         breakTimeMinutes,
         nonBillableTimeMinutes,
         adjustedTravelTimeMinutes,
-        hoursAdjustments
+        hoursAdjustments,
+        adjustedBreakTimeMinutes
       );
 
       expect(notionSyncResult).toBe(expectedResult);

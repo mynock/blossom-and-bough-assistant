@@ -12,6 +12,7 @@ describe('Billable Hours Calculation', () => {
   let settingsService: SettingsService;
   let testEmployeeId: number;
   let testClientId: number;
+  let testCounter = 0;
 
   beforeAll(async () => {
     db = new DatabaseService();
@@ -37,10 +38,12 @@ describe('Billable Hours Calculation', () => {
     await db.db.delete(employees);
     await db.db.delete(clients);
     
-    // Insert fresh test data for each test
+    // Insert fresh test data for each test with unique IDs
+    testCounter++;
+    const testId = `${Date.now()}_${testCounter}`; // Use timestamp + counter to ensure uniqueness
     const insertedEmployees = await db.db.insert(employees).values([
       { 
-        employeeId: 'TEST_EMP_001', 
+        employeeId: `TEST_EMP_${testId}`, 
         name: 'Test Employee 1', 
         hourlyRate: 25.0,
         regularWorkdays: 'monday,tuesday,wednesday,thursday,friday',
@@ -54,7 +57,7 @@ describe('Billable Hours Calculation', () => {
     
     const insertedClients = await db.db.insert(clients).values([
       { 
-        clientId: 'TEST_CLI_001', 
+        clientId: `TEST_CLI_${testId}`, 
         name: 'Test Client 1', 
         address: '123 Test St',
         geoZone: 'Test Zone'

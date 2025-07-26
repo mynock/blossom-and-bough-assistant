@@ -173,6 +173,11 @@ export class SettingsService {
       return hours;
     }
 
+    // Handle negative values by clamping to 0
+    if (hours < 0) {
+      return 0;
+    }
+
     // Round to nearest half hour
     const halfHours = hours * 2;
     let roundedHalfHours: number;

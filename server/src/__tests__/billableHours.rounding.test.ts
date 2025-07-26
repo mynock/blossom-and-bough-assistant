@@ -4,12 +4,15 @@ import { WorkActivityService } from '../services/WorkActivityService';
 import { DatabaseService } from '../services/DatabaseService';
 import { NewWorkActivity } from '../db/schema';
 import { CreateWorkActivityData } from '../services/WorkActivityService';
-import { workActivities, workActivityEmployees } from '../db/schema';
+import { workActivities, workActivityEmployees, employees, clients } from '../db/schema';
 
 describe('Billable Hours Rounding', () => {
   let settingsService: SettingsService;
   let workActivityService: WorkActivityService;
   let db: DatabaseService;
+  let testEmployeeId: number;
+  let testClientId: number;
+  let testCounter = 0;
 
   beforeAll(async () => {
     settingsService = new SettingsService();
@@ -22,9 +25,39 @@ describe('Billable Hours Rounding', () => {
   });
 
   beforeEach(async () => {
-    // Clear any existing work activities and reset settings before each test
-    await db.db.delete(workActivities);
+    // Clear all tables in proper dependency order (foreign keys first)
     await db.db.delete(workActivityEmployees);
+    await db.db.delete(workActivities);
+    // Clear other tables that might have foreign key dependencies
+    await db.db.delete(employees);
+    await db.db.delete(clients);
+    
+    // Insert fresh test data for each test with unique IDs
+    testCounter++;
+    const testId = `${Date.now()}_${testCounter}`; // Use timestamp + counter to ensure uniqueness
+    const insertedEmployees = await db.db.insert(employees).values([
+      { 
+        employeeId: `TEST_EMP_${testId}`, 
+        name: 'Test Employee 1', 
+        hourlyRate: 25.0,
+        regularWorkdays: 'monday,tuesday,wednesday,thursday,friday',
+        homeAddress: '123 Test St',
+        minHoursPerDay: 4,
+        maxHoursPerDay: 8,
+        capabilityLevel: 1.0
+      }
+    ]).returning();
+    testEmployeeId = insertedEmployees[0].id;
+    
+    const insertedClients = await db.db.insert(clients).values([
+      { 
+        clientId: `TEST_CLI_${testId}`, 
+        name: 'Test Client 1', 
+        address: '123 Test St',
+        geoZone: 'Test Zone'
+      }
+    ]).returning();
+    testClientId = insertedClients[0].id;
     
     // Reset to default settings
     await settingsService.setSetting('billable_hours_rounding', 'false');
@@ -168,7 +201,7 @@ describe('Billable Hours Rounding', () => {
 
       const createData: CreateWorkActivityData = {
         workActivity,
-        employees: [{ employeeId: 1, hours: 6.33 }],
+        employees: [{ employeeId: testEmployeeId, hours: 6.33 }],
         charges: []
       };
 
@@ -203,7 +236,7 @@ describe('Billable Hours Rounding', () => {
 
       const createData: CreateWorkActivityData = {
         workActivity,
-        employees: [{ employeeId: 1, hours: 6.0 }],
+        employees: [{ employeeId: testEmployeeId, hours: 6.0 }],
         charges: []
       };
 
@@ -247,7 +280,7 @@ describe('Billable Hours Rounding', () => {
 
       const createData: CreateWorkActivityData = {
         workActivity,
-        employees: [{ employeeId: 1, hours: 8.0 }],
+        employees: [{ employeeId: testEmployeeId, hours: 8.0 }],
         charges: []
       };
 
@@ -278,7 +311,7 @@ describe('Billable Hours Rounding', () => {
 
       const createData: CreateWorkActivityData = {
         workActivity,
-        employees: [{ employeeId: 1, hours: 5.0 }],
+        employees: [{ employeeId: testEmployeeId, hours: 5.0 }],
         charges: []
       };
 
@@ -388,7 +421,7 @@ describe('Billable Hours Rounding', () => {
 
         const createData: CreateWorkActivityData = {
           workActivity,
-          employees: [{ employeeId: 1, hours: workActivity.totalHours }],
+          employees: [{ employeeId: testEmployeeId, hours: workActivity.totalHours }],
           charges: []
         };
 

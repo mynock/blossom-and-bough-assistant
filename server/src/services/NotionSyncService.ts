@@ -609,7 +609,8 @@ export class NotionSyncService {
         parsedActivity.lunchTime,
         parsedActivity.nonBillableTime,
         0, // adjustedTravelTimeMinutes
-        parsedActivity.hoursAdjustments
+        parsedActivity.hoursAdjustments,
+        0 // adjustedBreakTimeMinutes
       );
 
       // Debug logging for billable hours calculation
@@ -812,7 +813,8 @@ export class NotionSyncService {
         parsedActivity.lunchTime,
         parsedActivity.nonBillableTime,
         0, // adjustedTravelTimeMinutes
-        parsedActivity.hoursAdjustments
+        parsedActivity.hoursAdjustments,
+        0 // adjustedBreakTimeMinutes
       );
 
       // For updates, we'll use a more direct approach since we already have an ID
@@ -1423,15 +1425,21 @@ export class NotionSyncService {
    * Note: totalHours represents total person-hours (duration × employee count)
    * Non-billable time (lunch, non-billable time) should be subtracted as a fixed amount, not per-person
    * Raw travel time is NOT subtracted - only adjustedTravelTimeMinutes affects billable hours
-   * Hours adjustments are applied to total hours first, then billable hours calculated\n   * Break time is billable, only non-billable time is subtracted\n   * Formula: adjustedTotalHours = totalHours + hoursAdjustments\n   *          billableHours = adjustedTotalHours - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
+   * Hours adjustments are applied to total hours first, then billable hours calculated
+   * Break time is billable, only non-billable time is subtracted
+   * Formula: adjustedTotalHours = totalHours + hoursAdjustments
+   *          billableHours = adjustedTotalHours - (breakTimeMinutes/60) + (adjustedBreakTimeMinutes/60) - (nonBillableTime/60) + (adjustedTravelTimeMinutes/60)
    */
   private calculateBillableHours(
     totalHours: number, 
-    lunchTime?: number, 
+    breakTimeMinutes?: number, 
     nonBillableTime?: number,
     adjustedTravelTimeMinutes: number = 0,
-    hoursAdjustments?: Array<{ person: string; adjustment: string; notes: string; hours?: number }>
+    hoursAdjustments?: Array<{ person: string; adjustment: string; notes: string; hours?: number }>,
+    adjustedBreakTimeMinutes: number = 0
   ): number {
+    const breakHours = (breakTimeMinutes || 0) / 60; // Convert minutes to hours
+    const adjustedBreakHours = adjustedBreakTimeMinutes / 60; // Convert minutes to hours
     const nonBillableHours = (nonBillableTime || 0) / 60; // Convert minutes to hours
     const adjustedTravelHours = adjustedTravelTimeMinutes / 60; // Convert minutes to hours
     
@@ -1453,8 +1461,8 @@ export class NotionSyncService {
     const adjustedTotalHours = totalHours + totalAdjustmentHours;
     debugLog.info(`📊 Adjusted total hours: ${totalHours} + ${totalAdjustmentHours} = ${adjustedTotalHours}`);
     
-    // Break time is billable, only subtract non-billable time
-    const billableHours = adjustedTotalHours - nonBillableHours + adjustedTravelHours;
+    // Remove implicit break time, then add back adjusted break time
+    const billableHours = adjustedTotalHours - breakHours + adjustedBreakHours - nonBillableHours + adjustedTravelHours;
     
     // Ensure billable hours is not negative
     return Math.max(0, Math.round(billableHours * 100) / 100); // Round to 2 decimal places
