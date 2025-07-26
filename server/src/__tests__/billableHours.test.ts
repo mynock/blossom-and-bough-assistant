@@ -1,10 +1,11 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import { DatabaseService } from '../services/DatabaseService';
 import { WorkActivityService } from '../services/WorkActivityService';
 import { SettingsService } from '../services/SettingsService';
 import { NewWorkActivity } from '../db/schema';
 import { CreateWorkActivityData } from '../services/WorkActivityService';
 import { workActivities, workActivityEmployees, employees, clients } from '../db/schema';
+import { sql } from 'drizzle-orm';
 
 describe('Billable Hours Calculation', () => {
   let db: DatabaseService;
@@ -64,6 +65,9 @@ describe('Billable Hours Calculation', () => {
       }
     ]).returning();
     testClientId = insertedClients[0].id;
+    
+    // Ensure rounding is disabled for these tests
+    await settingsService.setSetting('billable_hours_rounding', 'false');
   });
 
   describe('Core Billable Hours Formula', () => {

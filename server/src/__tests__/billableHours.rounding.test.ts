@@ -1,10 +1,11 @@
-import { describe, expect, it, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { describe, expect, it, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
 import { SettingsService } from '../services/SettingsService';
 import { WorkActivityService } from '../services/WorkActivityService';
 import { DatabaseService } from '../services/DatabaseService';
 import { NewWorkActivity } from '../db/schema';
 import { CreateWorkActivityData } from '../services/WorkActivityService';
 import { workActivities, workActivityEmployees, employees, clients } from '../db/schema';
+import { sql } from 'drizzle-orm';
 
 describe('Billable Hours Rounding', () => {
   let settingsService: SettingsService;
@@ -62,6 +63,8 @@ describe('Billable Hours Rounding', () => {
     // Reset to default settings
     await settingsService.setSetting('billable_hours_rounding', 'false');
     await settingsService.setSetting('billable_hours_rounding_method', 'nearest');
+    
+
   });
 
   describe('SettingsService Rounding Logic', () => {
@@ -345,9 +348,9 @@ describe('Billable Hours Rounding', () => {
       await settingsService.setSetting('billable_hours_rounding_method', 'nearest');
 
       const updatedNearest = await workActivityService.updateWorkActivity(created.id, {
-        nonBillableTimeMinutes: 20 // 5.0 - (20/60) = 4.67 -> rounds to nearest (5.0)
+        nonBillableTimeMinutes: 20 // 5.0 - (20/60) = 4.67 -> rounds to nearest (4.5)
       });
-      expect(updatedNearest?.billableHours).toBe(5.0);
+      expect(updatedNearest?.billableHours).toBe(4.5);
     });
   });
 
@@ -395,9 +398,10 @@ describe('Billable Hours Rounding', () => {
   describe('Bulk Rounding Operations', () => {
     it('should preview rounding changes without applying them', async () => {
       // This tests the preview functionality mentioned in the documentation
+      
+      // First, disable rounding to create activities with non-rounded hours
       await settingsService.setSetting('billable_hours_rounding', 'false');
-      await settingsService.setSetting('billable_hours_rounding_method', 'up');
-
+      
       // Create several work activities with non-rounded billable hours
       const activities = [];
       for (let i = 0; i < 3; i++) {
@@ -405,7 +409,7 @@ describe('Billable Hours Rounding', () => {
           workType: 'landscape_maintenance',
           date: '2025-01-20',
           status: 'completed',
-          billableHours: null,
+          billableHours: 5.33 + (i * 0.1), // Set explicit non-rounded hours
           totalHours: 5.33 + (i * 0.1),
           breakTimeMinutes: 0,
           adjustedBreakTimeMinutes: 0,
@@ -428,6 +432,10 @@ describe('Billable Hours Rounding', () => {
         const created = await workActivityService.createWorkActivity(createData);
         activities.push(created);
       }
+      
+      // Now enable rounding for the preview test
+      await settingsService.setSetting('billable_hours_rounding', 'true');
+      await settingsService.setSetting('billable_hours_rounding_method', 'up');
 
       // Preview rounding changes
       const preview = await settingsService.previewRoundingForExistingWorkActivities();
