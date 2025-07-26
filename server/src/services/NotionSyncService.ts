@@ -375,7 +375,9 @@ export class NotionSyncService {
       const endTime = this.getTextProperty(properties, 'End Time');
       const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
       const travelTime = this.parseTravelTime(properties, 'Travel Time');
-      const nonBillableTime = this.parseNonBillableTime(properties, 'Non Billable Time');
+      const breakTime = this.parseNonBillableTime(properties, 'Break Minutes');
+      
+      debugLog.info(`🚗 Notion travel time parsing for ${clientName}: travelTime=${travelTime}, breakTime=${breakTime}`);
 
       // Get page content
       const pageContent = await this.getPageContent(page.id);
@@ -406,14 +408,14 @@ export class NotionSyncService {
         naturalText += '\n';
       }
 
-      // Add non-billable time if present
-      if (nonBillableTime && nonBillableTime > 0) {
-        const hours = Math.floor(nonBillableTime / 60);
-        const minutes = nonBillableTime % 60;
+      // Add break time if present
+      if (breakTime && breakTime > 0) {
+        const hours = Math.floor(breakTime / 60);
+        const minutes = breakTime % 60;
         if (hours > 0) {
-          naturalText += `Non-billable time: ${hours}:${minutes.toString().padStart(2, '0')}\n`;
+          naturalText += `Break time: ${hours}:${minutes.toString().padStart(2, '0')}\n`;
         } else {
-          naturalText += `Non-billable time: ${minutes} min\n`;
+          naturalText += `Break time: ${minutes} min\n`;
         }
       }
 
@@ -564,8 +566,8 @@ export class NotionSyncService {
         hourlyRate: null,
         clientId: clientRecord.id,
         projectId: null,
-        travelTimeMinutes: parsedActivity.driveTime || 0,
-        breakTimeMinutes: parsedActivity.lunchTime || 0,
+        travelTimeMinutes: travelTime || parsedActivity.driveTime || 0,
+        breakTimeMinutes: breakTime || parsedActivity.lunchTime || 0,
         nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
@@ -675,8 +677,8 @@ export class NotionSyncService {
         endTime: parsedActivity.endTime || null,
         billableHours: billableHours,
         totalHours: parsedActivity.totalHours || 0,
-        travelTimeMinutes: parsedActivity.driveTime || 0,
-        breakTimeMinutes: parsedActivity.lunchTime || 0,
+        travelTimeMinutes: travelTime || parsedActivity.driveTime || 0,
+        breakTimeMinutes: breakTime || parsedActivity.lunchTime || 0,
         nonBillableTimeMinutes: parsedActivity.nonBillableTime || 0,
         notes: parsedActivity.notes || null,
         tasks: parsedActivity.tasks?.join('\n') || null,
@@ -1027,6 +1029,11 @@ export class NotionSyncService {
   private parseNonBillableTime(properties: any, propertyName: string): number | null {
     const prop = properties[propertyName];
     if (!prop) return null;
+    
+    // First try to get as number (legacy format)
+    if (prop.number) {
+      return prop.number;
+    }
     
     // Try to get as text
     let timeText = null;
