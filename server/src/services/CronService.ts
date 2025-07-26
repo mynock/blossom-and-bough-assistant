@@ -416,7 +416,7 @@ export class CronService {
       const clientName = dashFormat[0].trim();
       debugLog.info(`📝 Extracted client name (dash format): "${clientName}"`);
       if (clientName.length > 0) {
-        return clientName;
+        return this.cleanClientName(clientName);
       }
     }
     
@@ -425,47 +425,71 @@ export class CronService {
     if (parenMatch) {
       const beforeParen = parenMatch[1].trim();
       
-      // If it looks like "Client Name DESCRIPTION", try to extract just the client name
-      // Common patterns: "Condon BRING BLANK 1/2" LINE, DAPHNE" -> "Condon"
-      const words = beforeParen.split(/\s+/);
-      
-      // If first word is capitalized and looks like a name, use it
-      if (words.length > 0 && words[0].match(/^[A-Z][a-z]+$/)) {
-        const clientName = words[0];
-        debugLog.info(`📝 Extracted client name (first word): "${clientName}"`);
-        return clientName;
-      }
-      
-      // If first two words look like a name, use them
-      if (words.length >= 2 && words[0].match(/^[A-Z][a-z]+$/) && words[1].match(/^[A-Z][a-z]+$/)) {
-        const clientName = `${words[0]} ${words[1]}`;
-        debugLog.info(`📝 Extracted client name (first two words): "${clientName}"`);
-        return clientName;
-      }
-      
-      // Fallback to everything before parentheses
-      debugLog.info(`📝 Extracted client name (before paren): "${beforeParen}"`);
-      if (beforeParen.length > 0) {
-        return beforeParen;
+      // Clean up the client name by removing extra words that aren't part of the name
+      const cleanedName = this.cleanClientName(beforeParen);
+      debugLog.info(`📝 Extracted client name (before paren): "${beforeParen}" -> cleaned: "${cleanedName}"`);
+      if (cleanedName.length > 0) {
+        return cleanedName;
       }
     }
     
     // Format 3: Simple client name without special formatting
-    const words = title.split(/\s+/);
-    if (words.length > 0 && words[0].match(/^[A-Z][a-z]+$/)) {
-      const clientName = words[0];
-      debugLog.info(`📝 Extracted client name (simple): "${clientName}"`);
-      return clientName;
-    }
-    
-    // Format 4: Use the whole title as client name if it's reasonable
-    if (title.length > 0 && title.length <= 100) {
-      debugLog.info(`📝 Using full title as client name: "${title}"`);
-      return title;
+    const cleanedName = this.cleanClientName(title);
+    debugLog.info(`📝 Extracted client name (simple): "${title}" -> cleaned: "${cleanedName}"`);
+    if (cleanedName.length > 0) {
+      return cleanedName;
     }
     
     debugLog.warn(`⚠️  Could not extract client name from: "${title}"`);
     return null;
+  }
+
+  private cleanClientName(name: string): string {
+    if (!name) return '';
+    
+    // Split into words
+    const words = name.trim().split(/\s+/);
+    
+    // Filter out words that are clearly not part of a client name
+    const filteredWords = words.filter(word => {
+      const wordLower = word.toLowerCase();
+      
+      // Skip words that are clearly not names
+      const skipWords = [
+        'maintenance', 'maint', 'visit', 'work', 'service', 'job',
+        'ladder', 'bring', 'blank', 'line', 'daphne', 'boxwood',
+        'pruning', 'weeding', 'cleanup', 'mulching', 'planting',
+        'design', 'consultation', 'planning', 'scheduling',
+        'confirmed', 'tentative', 'planning', 'c', 't', 'p'
+      ];
+      
+      if (skipWords.includes(wordLower)) {
+        return false;
+      }
+      
+      // Skip words that are all caps (likely instructions or equipment)
+      if (word === word.toUpperCase() && word.length > 2) {
+        return false;
+      }
+      
+      // Skip words that contain numbers (likely quantities or measurements)
+      if (/\d/.test(word)) {
+        return false;
+      }
+      
+      return true;
+    });
+    
+    // Take the first 1-2 words that look like a proper name
+    const nameWords = filteredWords.slice(0, 2);
+    
+    // Ensure the first word starts with a capital letter
+    if (nameWords.length > 0 && nameWords[0].match(/^[A-Z][a-z]+$/)) {
+      return nameWords.join(' ');
+    }
+    
+    // If no proper name pattern found, return empty
+    return '';
   }
 
   private parseGoogleEventForCron(googleEvent: any): any | null {
@@ -523,62 +547,95 @@ export class CronService {
   }
 
   private isYellowClientVisit(event: any): boolean {
-    // Since we're working with processed CalendarEvent objects, use eventType and heuristics
-    const title = event.title?.toLowerCase() || '';
+    // Check the actual Google Calendar colorId property
+    // Yellow events have colorId "5" or "11" in Google Calendar
+    const colorId = event.rawEvent?.colorId;
     
-    // Exclude obvious non-client events
-    const excludePatterns = [
-      'meeting', 'office', 'admin', 'break', 'lunch', 'call', 'travel',
-      'team', 'training', 'review', 'planning', 'errand'
-    ];
+    debugLog.info(`🔍 Checking event "${event.title}" - colorId: ${colorId}`);
     
-    const isExcluded = excludePatterns.some(pattern => title.includes(pattern));
-    
-    if (isExcluded) {
-      debugLog.info(`⚪ Event "${event.title}" excluded by pattern matching`);
-      return false;
-    }
-    
-    // Check if it's a maintenance or client-related event type
-    if (event.eventType === 'maintenance' || event.eventType === 'ad_hoc') {
-      debugLog.info(`🟡 Event "${event.title}" identified as client visit (eventType: ${event.eventType})`);
+    // Yellow client visits should have colorId "5" or "11"
+    if (colorId === '5' || colorId === '11') {
+      debugLog.info(`🟡 Event "${event.title}" identified as yellow client visit (colorId: ${colorId})`);
       return true;
     }
     
-    // Check for typical client names/patterns in title
-    const hasClientPattern = /^[A-Z][a-z]+/.test(event.title); // Starts with capitalized word
-    const hasTimePattern = /\d{1,2}:\d{2}/.test(event.title); // Contains time
-    
-    if (hasClientPattern && !isExcluded) {
-      debugLog.info(`🟡 Event "${event.title}" assumed to be client visit (client name pattern)`);
-      return true;
+    // If no colorId is set, it might be using the default calendar color
+    // In this case, we need to be more conservative and only accept events
+    // that are clearly client visits based on the calendar they belong to
+    if (!colorId) {
+      debugLog.info(`⚪ Event "${event.title}" has no colorId - checking calendar context`);
+      
+      // Check if this is from the main work calendar (which should be yellow for client visits)
+      const calendarId = event.rawEvent?.organizer?.email || event.rawEvent?.creator?.email;
+      const isWorkCalendar = calendarId === process.env.GOOGLE_CALENDAR_ID;
+      
+      if (isWorkCalendar) {
+        // For work calendar events without explicit color, use more conservative heuristics
+        const title = event.title?.toLowerCase() || '';
+        
+        // Exclude obvious non-client events
+        const excludePatterns = [
+          'meeting', 'office', 'admin', 'break', 'lunch', 'call', 'travel',
+          'team', 'training', 'review', 'planning', 'errand', 'sched', 'comms'
+        ];
+        
+        const isExcluded = excludePatterns.some(pattern => title.includes(pattern));
+        
+        if (isExcluded) {
+          debugLog.info(`⚪ Event "${event.title}" excluded by pattern matching (no colorId)`);
+          return false;
+        }
+        
+        // Only accept if it has a clear client name pattern
+        const hasClientPattern = /^[A-Z][a-z]+/.test(event.title); // Starts with capitalized word
+        if (hasClientPattern) {
+          debugLog.info(`🟡 Event "${event.title}" assumed to be client visit (work calendar, client name pattern)`);
+          return true;
+        }
+      }
     }
     
-    debugLog.info(`⚪ Event "${event.title}" not identified as client visit`);
+    debugLog.info(`⚪ Event "${event.title}" not identified as yellow client visit (colorId: ${colorId})`);
     return false;
   }
 
   private isOrangeHelperEvent(event: any): boolean {
-    // Check if it's a simple name (likely a helper assignment)
-    const title = (event.summary || event.title || '').trim();
+    // Check the actual Google Calendar colorId property
+    // Orange helper events have colorId "6" in Google Calendar
+    const colorId = event.colorId;
     
-    // Simple heuristics: short names without special characters, likely helper names
-    const isSimpleName = title.length <= 20 && 
-                        !title.includes('-') && 
-                        !title.includes('(') && 
-                        !title.includes('@') &&
-                        title.split(' ').length <= 2;
+    debugLog.info(`🔍 Checking helper event "${event.summary || event.title}" - colorId: ${colorId}`);
     
-    // Also check for known helper names
-    const helperNames = ['anne', 'virginia', 'sarah', 'mike', 'andrea'];
-    const isKnownHelper = helperNames.some(name => title.toLowerCase().includes(name));
-    
-    if (isSimpleName || isKnownHelper) {
-      debugLog.info(`🟠 Event "${title}" assumed to be helper assignment (appears to be name)`);
+    // Orange helper events should have colorId "6"
+    if (colorId === '6') {
+      debugLog.info(`🟠 Event "${event.summary || event.title}" identified as orange helper event (colorId: ${colorId})`);
       return true;
     }
     
-    debugLog.info(`⚪ Event "${title}" not identified as helper assignment`);
+    // If no colorId is set, use heuristics as fallback
+    if (!colorId) {
+      debugLog.info(`⚪ Event "${event.summary || event.title}" has no colorId - using heuristics`);
+      
+      const title = (event.summary || event.title || '').trim();
+      
+      // Simple heuristics: short names without special characters, likely helper names
+      const isSimpleName = title.length <= 20 && 
+                          !title.includes('-') && 
+                          !title.includes('(') && 
+                          !title.includes('@') &&
+                          title.split(' ').length <= 2;
+      
+      // Also check for known helper names
+      const helperNames = ['anne', 'virginia', 'sarah', 'mike', 'andrea'];
+      const isKnownHelper = helperNames.some(name => title.toLowerCase().includes(name));
+      
+      if (isSimpleName || isKnownHelper) {
+        debugLog.info(`🟠 Event "${title}" assumed to be helper assignment (heuristics)`);
+        return true;
+      }
+    }
+    
+    debugLog.info(`⚪ Event "${event.summary || event.title}" not identified as orange helper event (colorId: ${colorId})`);
     return false;
   }
 
