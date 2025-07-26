@@ -66,7 +66,9 @@ interface WorkActivity {
   projectId?: number;
   clientId?: number;
   travelTimeMinutes?: number;
+  adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  adjustedBreakTimeMinutes?: number | null;
   notes: string | null;
   tasks: string | null;
   createdAt?: string;
@@ -98,6 +100,7 @@ const WorkActivityDetail: React.FC = () => {
   const [activity, setActivity] = useState<WorkActivity | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [resyncLoading, setResyncLoading] = useState(false);
 
   useEffect(() => {
     const fetchActivity = async () => {
@@ -121,7 +124,48 @@ const WorkActivityDetail: React.FC = () => {
     }
   }, [id]);
 
+  const handleResync = async () => {
+    if (!activity?.notionPageId) {
+      setError('No Notion page ID found for this work activity');
+      return;
+    }
 
+    try {
+      setResyncLoading(true);
+      setError(null);
+
+      const response = await fetch(`${API_ENDPOINTS.NOTION_SYNC_PAGE}/${activity.notionPageId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ forceSync: true })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to resync with Notion');
+      }
+
+      // Refresh the activity data to show updated sync timestamp
+      const activityResponse = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`);
+      if (activityResponse.ok) {
+        const updatedActivity = await activityResponse.json();
+        setActivity(updatedActivity);
+      }
+
+      // Show success message (you could add a snackbar/toast here)
+      console.log('Resync completed successfully:', result);
+      
+    } catch (err) {
+      console.error('Resync error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to resync with Notion');
+    } finally {
+      setResyncLoading(false);
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -387,7 +431,7 @@ const WorkActivityDetail: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Travel Time
+                    Original Travel Time
                   </Typography>
                   <Typography variant="body1">
                     {activity.travelTimeMinutes ? `${activity.travelTimeMinutes} minutes` : 'None'}
@@ -395,10 +439,26 @@ const WorkActivityDetail: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Typography variant="body2" color="text.secondary">
-                    Break Time
+                    Allocated Travel Time
+                  </Typography>
+                  <Typography variant="body1" color={activity.adjustedTravelTimeMinutes ? 'primary.main' : 'text.secondary'}>
+                    {activity.adjustedTravelTimeMinutes ? `${activity.adjustedTravelTimeMinutes} minutes` : 'Not allocated'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Original Break Time
                   </Typography>
                   <Typography variant="body1">
                     {activity.breakTimeMinutes ? `${activity.breakTimeMinutes} minutes` : 'None'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2" color="text.secondary">
+                    Allocated Break Time
+                  </Typography>
+                  <Typography variant="body1" color={activity.adjustedBreakTimeMinutes ? 'secondary.main' : 'text.secondary'}>
+                    {activity.adjustedBreakTimeMinutes ? `${activity.adjustedBreakTimeMinutes} minutes` : 'Not allocated'}
                   </Typography>
                 </Grid>
               </Grid>
@@ -599,17 +659,28 @@ const WorkActivityDetail: React.FC = () => {
                     <Typography variant="body2" color="text.secondary">
                       Notion Integration
                     </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                       <Sync color="info" />
                       <Typography variant="body2">
                         Synced with Notion
                       </Typography>
                     </Box>
                     {activity.lastNotionSyncAt && (
-                                          <Typography variant="caption" color="text.secondary">
-                      Last sync: {formatDateTimePacific(activity.lastNotionSyncAt)}
-                    </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                        Last sync: {formatDateTimePacific(activity.lastNotionSyncAt)}
+                      </Typography>
                     )}
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      color="info"
+                      startIcon={resyncLoading ? <CircularProgress size={16} /> : <Sync />}
+                      onClick={handleResync}
+                      disabled={resyncLoading}
+                      sx={{ mt: 0.5 }}
+                    >
+                      {resyncLoading ? 'Resyncing...' : 'Resync'}
+                    </Button>
                   </Box>
                 )}
               </Stack>

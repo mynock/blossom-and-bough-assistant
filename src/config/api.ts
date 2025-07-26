@@ -44,6 +44,10 @@ export const API_ENDPOINTS = {
   EMPLOYEES: createApiUrl('api/employees'),
   PROJECTS: createApiUrl('api/projects'),
   
+  // Notion Sync
+  NOTION_SYNC_PAGE: createApiUrl('api/notion-sync/sync-page'),
+  NOTION_SYNC_STATUS: createApiUrl('api/notion-sync/status'),
+  
   // Debug
   DEBUG_SYSTEM_PROMPT: createApiUrl('api/debug/system-prompt'),
   MIGRATION_STATUS: createApiUrl('api/migration/status'),

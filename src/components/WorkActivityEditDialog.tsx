@@ -49,6 +49,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  adjustedBreakTimeMinutes?: number | null;
   nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -175,6 +176,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
         travelTimeMinutes: 0,
         adjustedTravelTimeMinutes: null,
         breakTimeMinutes: 30,
+        adjustedBreakTimeMinutes: null,
         nonBillableTimeMinutes: 0,
       });
       setSelectedEmployees([]);
@@ -527,6 +529,37 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                 endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>
               }}
               helperText="Break duration"
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={3}>
+            <TextField
+              label="Adjusted Break Time"
+              type="number"
+              fullWidth
+              value={formData.adjustedBreakTimeMinutes || ''}
+              onChange={(e) => {
+                const value = e.target.value === '' ? null : parseInt(e.target.value);
+                handleInputChange('adjustedBreakTimeMinutes', value);
+              }}
+              inputProps={{ min: 0 }}
+              InputProps={{
+                endAdornment: <Typography sx={{ ml: 1, color: 'text.secondary' }}>min</Typography>,
+                startAdornment: formData.adjustedBreakTimeMinutes ? (
+                  <Typography sx={{ mr: 1, color: 'secondary.main', fontSize: '0.875rem' }}>⚡</Typography>
+                ) : null
+              }}
+              helperText="Proportionally allocated break time"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  '&:hover fieldset': {
+                    borderColor: formData.adjustedBreakTimeMinutes ? 'secondary.main' : undefined,
+                  },
+                  '&.Mui-focused fieldset': {
+                    borderColor: formData.adjustedBreakTimeMinutes ? 'secondary.main' : undefined,
+                  },
+                },
+              }}
             />
           </Grid>
 

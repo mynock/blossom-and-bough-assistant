@@ -51,6 +51,7 @@ interface WorkActivity {
   travelTimeMinutes?: number;
   adjustedTravelTimeMinutes?: number | null;
   breakTimeMinutes?: number;
+  adjustedBreakTimeMinutes?: number | null;
   nonBillableTimeMinutes?: number;
   notes: string | null;
   tasks: string | null;
@@ -451,12 +452,16 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                                     }
                                   </Typography>
                                   <Typography variant="body2" color="text.secondary">
-                                    Travel: {activity.adjustedTravelTimeMinutes !== null && activity.adjustedTravelTimeMinutes !== undefined
-                                      ? `${Math.floor(activity.adjustedTravelTimeMinutes / 60)}h ${activity.adjustedTravelTimeMinutes % 60}m`
-                                      : activity.travelTimeMinutes 
-                                        ? `${Math.floor(activity.travelTimeMinutes / 60)}h ${activity.travelTimeMinutes % 60}m`
-                                        : 'None'
-                                  }
+                                    Travel: {activity.travelTimeMinutes ? `${activity.travelTimeMinutes} min` : 'None'}
+                                    {activity.adjustedTravelTimeMinutes && activity.adjustedTravelTimeMinutes !== activity.travelTimeMinutes && (
+                                      <span style={{ color: 'primary.main' }}> → {activity.adjustedTravelTimeMinutes} min allocated</span>
+                                    )}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    Break: {activity.breakTimeMinutes ? `${activity.breakTimeMinutes} min` : 'None'}
+                                    {activity.adjustedBreakTimeMinutes && activity.adjustedBreakTimeMinutes !== activity.breakTimeMinutes && (
+                                      <span style={{ color: 'secondary.main' }}> → {activity.adjustedBreakTimeMinutes} min allocated</span>
+                                    )}
                                   </Typography>
                                 </Box>
                               </Box>
