@@ -30,12 +30,15 @@ export class CronService {
   }
 
   private initializeJobStatus(): void {
+    // Disable cron jobs in development by default unless explicitly enabled
+    const cronEnabled = process.env.NODE_ENV === 'production' || process.env.CRON_ENABLED === 'true';
+    
     this.jobStatus.set('maintenance-entries', {
       id: 'maintenance-entries',
       name: 'Maintenance Entry Creation',
       schedule: '0 3 * * *',
       description: 'Creates Notion maintenance entries for tomorrow\'s Google Calendar events',
-      enabled: true,
+      enabled: cronEnabled,
       status: 'scheduled'
     });
 
@@ -44,7 +47,7 @@ export class CronService {
       name: 'Notion Page Sync',
       schedule: '0 6,18 * * *',
       description: 'Syncs updated Notion pages into the CRM as work activities',
-      enabled: true,
+      enabled: cronEnabled,
       status: 'scheduled'
     });
   }
