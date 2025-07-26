@@ -767,6 +767,7 @@ IMPORTANT PATTERNS TO RECOGNIZE:
 
 TIME FORMATS:
 - "8:45-3:10 w V inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
+- "9:05-12:45 w Andrea & Anne inc 45 min drive" = start 9:05, end 12:45, with Andrea & Anne, including 45min drive
 - "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
 - "R 8:30-4:15, Me 9:40-5" = Rebecca 8:30-4:15, Me 9:40-5:00
 
@@ -813,8 +814,8 @@ For each work activity, extract:
 - startTime (HH:MM format, 24-hour)
 - endTime (HH:MM format, 24-hour)
 - totalHours (calculated from time range and number of employees)
-- travelTimeMinutes (extract from phrases like "inc 22x2 min drive", "add .5 drive")
-- breakTimeMinutes (extract break time if mentioned)
+- travelTimeMinutes (extract from phrases like "inc 22x2 min drive", "inc 45 min drive", "add .5 drive")
+- lunchTime (extract break time if mentioned)
 - workDescription (summary of work performed)
 - charges (array of materials/services to charge)
 - confidence (0.0-1.0 score for how confident you are in the parsing)
@@ -848,7 +849,7 @@ Return the data as a JSON object with this exact structure:
       "endTime": "15:10", 
       "totalHours": 12.83,
       "travelTimeMinutes": 44,
-      "breakTimeMinutes": 30,
+      "lunchTime": 30,
       "workDescription": "General maintenance work",
       "charges": ["1 debris bag"],
       "confidence": 0.95
