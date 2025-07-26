@@ -13,7 +13,6 @@ import {
 import {
   CalendarToday as CalendarIcon,
   ExpandMore as ExpandMoreIcon,
-  StickyNote2 as NotesIcon,
 } from '@mui/icons-material';
 import { formatDatePacific } from '../utils/dateUtils';
 
@@ -83,20 +82,6 @@ export const ClientNotesList: React.FC<ClientNotesListProps> = ({
     }
   };
 
-  // Helper function to strip HTML tags and get plain text preview
-  const getNotesPreview = (notes: string, maxLength: number = 150): string => {
-    if (!notes || !notes.trim()) return '';
-    
-    // Strip HTML tags
-    const textContent = notes.replace(/<[^>]*>/g, '');
-    
-    // Trim and add ellipsis if needed
-    if (textContent.length <= maxLength) {
-      return textContent;
-    }
-    
-    return textContent.substring(0, maxLength).trim() + '...';
-  };
 
   const handleDateToggle = (date: string) => {
     const newExpanded = new Set(expandedDates);
@@ -191,8 +176,6 @@ export const ClientNotesList: React.FC<ClientNotesListProps> = ({
             <AccordionDetails sx={{ p: 2 }}>
               <Stack spacing={2}>
                 {dateActivities.map((activity) => {
-                  const notesPreview = getNotesPreview(activity.notes || '');
-                  
                   return (
                     <Card key={activity.id} variant="outlined" sx={{ 
                       bgcolor: 'grey.50',
@@ -233,41 +216,6 @@ export const ClientNotesList: React.FC<ClientNotesListProps> = ({
                               </Typography>
                             )}
 
-                            {/* Notes Preview */}
-                            {notesPreview && (
-                              <Box sx={{ mb: 1 }}>
-                                <Typography variant="body2" sx={{ 
-                                  fontWeight: 600, 
-                                  color: 'info.main',
-                                  mb: 1,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 1
-                                }}>
-                                  <NotesIcon sx={{ fontSize: 16 }} />
-                                  Notes:
-                                </Typography>
-                                <Box sx={{ 
-                                  pl: 2, 
-                                  borderLeft: '3px solid',
-                                  borderColor: 'info.light',
-                                  bgcolor: 'info.50',
-                                  p: 1.5,
-                                  borderRadius: 1
-                                }}>
-                                  <Typography 
-                                    variant="body2" 
-                                    sx={{ 
-                                      lineHeight: 1.6,
-                                      fontSize: '0.875rem',
-                                      fontStyle: 'italic'
-                                    }}
-                                  >
-                                    {notesPreview}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            )}
 
                             {/* Full Notes Content - only show when expanded */}
                             {expandedDates.has(date) && activity.notes && (
