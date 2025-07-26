@@ -423,23 +423,23 @@ export class WorkActivityService extends DatabaseService {
       data.adjustedTravelTimeMinutes !== undefined
     );
     
-    // If billable hours is being updated directly (not from calculation), apply rounding
-    if (data.billableHours !== undefined && data.billableHours !== null && !billableHoursInputsChanged) {
+    // If billable hours is explicitly provided, use it (regardless of other changes)
+    if (data.billableHours !== undefined && data.billableHours !== null) {
       try {
         const roundedHours = await this.settingsService.roundHours(data.billableHours);
         finalUpdateData = {
           ...finalUpdateData,
           billableHours: roundedHours
         };
-        debugLog.info(`🧮 Applied rounding to billable hours for work activity ${id}: ${data.billableHours} -> ${roundedHours}`);
+        debugLog.info(`🧮 Using explicit billable hours for work activity ${id}: ${data.billableHours} -> ${roundedHours} (rounded)`);
       } catch (error) {
         debugLog.warn(`⚠️ Failed to apply rounding to billable hours for work activity ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         // Continue with unrounded hours if rounding fails
       }
     }
     
-    // If any input to billable hours calculation changed, recalculate billable hours
-    if (billableHoursInputsChanged) {
+    // If any input to billable hours calculation changed, recalculate billable hours (only if no explicit value was provided)
+    else if (billableHoursInputsChanged) {
              // Use updated values where provided, otherwise use current values
        const newTotalHours = data.totalHours !== undefined ? data.totalHours : currentActivity.totalHours;
        const newBreakTimeMinutes = data.breakTimeMinutes !== undefined ? (data.breakTimeMinutes || 0) : (currentActivity.breakTimeMinutes || 0);
