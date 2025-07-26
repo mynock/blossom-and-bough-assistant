@@ -360,6 +360,7 @@ export class NotionSyncService {
     return pages;
   }
 
+
   /**
    * Convert a Notion page to natural text format for AI parsing
    */
@@ -823,7 +824,8 @@ export class NotionSyncService {
               if (text.toLowerCase().includes('charges:')) {
                 inChargesSection = true;
                 currentSection = 'charges';
-              } else if (currentSection.includes('notes')) {
+              } else if (currentSection.includes('notes') || !inChargesSection && !inHoursAdjustmentsSection) {
+                // Add to notes if in notes section OR if not in any special section
                 notes += text + '\n';
               }
             }
