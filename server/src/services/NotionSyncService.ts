@@ -279,6 +279,16 @@ export class NotionSyncService {
       // Use the first parsed activity (assuming one activity per Notion page)
       const parsedActivity = aiResult.activities[0];
       
+      // Debug: Compare AI-parsed client name with directly extracted client name
+      const directlyExtractedClientName = this.extractClientNameFromNotionPage(page);
+      debugLog.info(`🔍 Client name comparison for page ${page.id}:`);
+      debugLog.info(`   📋 Directly extracted: "${directlyExtractedClientName}"`);
+      debugLog.info(`   🤖 AI parsed: "${parsedActivity.clientName}"`);
+      
+      if (directlyExtractedClientName !== 'Unknown Client' && directlyExtractedClientName !== parsedActivity.clientName) {
+        debugLog.warn(`⚠️ Client name mismatch! Direct: "${directlyExtractedClientName}" vs AI: "${parsedActivity.clientName}"`);
+      }
+      
       // Add Notion page ID and extracted content to the parsed activity
       const activityWithNotionId = {
         ...parsedActivity,
@@ -540,9 +550,24 @@ export class NotionSyncService {
 
       // Check if we need to create the client
       const existingClients = await this.clientService.getAllClients();
-      const existingClient = existingClients.find(client => 
+      
+      debugLog.info(`🔍 Looking for client: "${parsedActivity.clientName}"`);
+      
+      // Try exact match first
+      let existingClient = existingClients.find(client => 
         client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
       );
+      
+      // If no exact match, try fuzzy matching
+      if (!existingClient) {
+        const fuzzyMatch = this.findBestClientMatch(parsedActivity.clientName, existingClients);
+        if (fuzzyMatch && fuzzyMatch.client) {
+          existingClient = fuzzyMatch.client;
+          debugLog.info(`🎯 Using fuzzy matched client: "${parsedActivity.clientName}" → "${fuzzyMatch.client.name}"`);
+          // Update the parsed activity to use the matched client name
+          parsedActivity.clientName = fuzzyMatch.client.name;
+        }
+      }
 
       if (!existingClient && onProgress) {
         onProgress(`🏗️ Creating new client: ${parsedActivity.clientName}`);
@@ -551,7 +576,7 @@ export class NotionSyncService {
       // Ensure the client exists before validation
       await this.ensureClientExists(parsedActivity.clientName);
 
-      // Get the client ID after ensuring it exists
+      // Get the client ID after ensuring it exists (using the potentially updated client name)
       const updatedClients = await this.clientService.getAllClients();
       const clientRecord = updatedClients.find(client => 
         client.name.toLowerCase().trim() === parsedActivity.clientName.toLowerCase().trim()
@@ -647,7 +672,74 @@ export class NotionSyncService {
   }
 
   /**
-   * Ensure a client exists, creating it if necessary
+   * Calculate similarity between two strings using Levenshtein distance
+   */
+  private calculateSimilarity(str1: string, str2: string): number {
+    const a = str1.toLowerCase().trim();
+    const b = str2.toLowerCase().trim();
+    
+    if (a === b) return 1.0;
+    if (a.length === 0 || b.length === 0) return 0.0;
+    
+    const matrix: number[][] = [];
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+    
+    const maxLength = Math.max(a.length, b.length);
+    const distance = matrix[b.length][a.length];
+    return (maxLength - distance) / maxLength;
+  }
+
+  /**
+   * Find the best matching client using fuzzy matching
+   */
+  private findBestClientMatch(clientName: string, existingClients: any[]): { client: any; similarity: number; } | null {
+    debugLog.info(`🔍 Finding best match for client: "${clientName}"`);
+    debugLog.info(`📋 Available clients: ${existingClients.map(c => c.name).join(', ')}`);
+    
+    let bestMatch: any = null;
+    let bestSimilarity = 0;
+    
+    for (const client of existingClients) {
+      const similarity = this.calculateSimilarity(clientName, client.name);
+      debugLog.info(`📊 Similarity "${clientName}" vs "${client.name}": ${(similarity * 100).toFixed(1)}%`);
+      
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        bestMatch = client;
+      }
+    }
+    
+    // Consider it a match if similarity is above 85%
+    if (bestSimilarity >= 0.85) {
+      debugLog.info(`✅ Found good match: "${clientName}" → "${bestMatch.name}" (${(bestSimilarity * 100).toFixed(1)}%)`);
+      return { client: bestMatch, similarity: bestSimilarity };
+    }
+    
+    debugLog.info(`❌ No good match found for "${clientName}" (best: ${(bestSimilarity * 100).toFixed(1)}%)`);
+    return null;
+  }
+
+  /**
+   * Ensure a client exists, creating it if necessary with improved matching
    */
   private async ensureClientExists(clientName: string): Promise<void> {
     if (!clientName || clientName.trim() === '') {
@@ -657,13 +749,22 @@ export class NotionSyncService {
     try {
       // Check if client already exists (case-insensitive search)
       const existingClients = await this.clientService.getAllClients();
+      
+      // First try exact match
       const existingClient = existingClients.find(client => 
         client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
       );
 
       if (existingClient) {
-        debugLog.info(`Client "${clientName}" already exists (ID: ${existingClient.id})`);
+        debugLog.info(`✅ Exact match found: "${clientName}" → "${existingClient.name}" (ID: ${existingClient.id})`);
         return;
+      }
+
+      // Try fuzzy matching for similar names
+      const fuzzyMatch = this.findBestClientMatch(clientName, existingClients);
+      if (fuzzyMatch) {
+        debugLog.info(`🎯 Using fuzzy match: "${clientName}" → "${fuzzyMatch.client.name}" (${(fuzzyMatch.similarity * 100).toFixed(1)}% match)`);
+        return; // Use the existing similar client instead of creating a new one
       }
 
       // Create the client if it doesn't exist
@@ -1154,12 +1255,21 @@ export class NotionSyncService {
    */
   private extractClientNameFromNotionPage(page: any): string {
     try {
+      debugLog.info(`🏷️ Extracting client name from Notion page ${page.id}`);
+      debugLog.info(`📋 Available properties: ${Object.keys(page.properties || {}).join(', ')}`);
+      
       if (page.properties && page.properties['Client Name'] && page.properties['Client Name'].select) {
-        return page.properties['Client Name'].select.name || 'Unknown Client';
+        const clientName = page.properties['Client Name'].select.name || 'Unknown Client';
+        debugLog.info(`✅ Found client name in 'Client Name' property: "${clientName}"`);
+        return clientName;
       }
       if (page.properties && page.properties['Client'] && page.properties['Client'].select) {
-        return page.properties['Client'].select.name || 'Unknown Client';
+        const clientName = page.properties['Client'].select.name || 'Unknown Client';
+        debugLog.info(`✅ Found client name in 'Client' property: "${clientName}"`);
+        return clientName;
       }
+      
+      debugLog.warn(`❌ No client name found in Notion page ${page.id} properties`);
       return 'Unknown Client';
     } catch (error) {
       debugLog.warn(`Error extracting client name from page ${page.id}:`, error);
