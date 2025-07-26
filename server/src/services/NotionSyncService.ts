@@ -243,7 +243,9 @@ export class NotionSyncService {
 
       // Only do expensive AI processing if we need to sync or create new activity
       // Convert Notion page to natural text format
-      const naturalText = await this.convertNotionPageToNaturalText(page);
+      const conversionResult = await this.convertNotionPageToNaturalText(page);
+      const naturalText = conversionResult.naturalText;
+      const extractedContent = conversionResult.extractedContent;
       
       if (!naturalText.trim()) {
         debugLog.warn(`Skipping page ${page.id} - no content to parse`);
@@ -261,7 +263,9 @@ export class NotionSyncService {
 
       // Use AI to parse the natural text
       debugLog.info(`Parsing Notion page ${page.id} with AI...`);
+      debugLog.info(`📤 AI Input (${naturalText.length} chars):`, naturalText);
       const aiResult = await this.anthropicService.parseWorkNotes(naturalText);
+      debugLog.info(`📥 AI Response:`, JSON.stringify(aiResult, null, 2));
 
       if (!aiResult.activities || aiResult.activities.length === 0) {
         debugLog.warn(`Skipping page ${page.id} - AI could not extract work activities`);
@@ -275,11 +279,14 @@ export class NotionSyncService {
       // Use the first parsed activity (assuming one activity per Notion page)
       const parsedActivity = aiResult.activities[0];
       
-      // Add Notion page ID to the parsed activity
+      // Add Notion page ID and extracted content to the parsed activity
       const activityWithNotionId = {
         ...parsedActivity,
         notionPageId: page.id,
-        lastEditedTime: page.last_edited_time
+        lastEditedTime: page.last_edited_time,
+        // Prioritize directly extracted content over AI parsing results
+        notes: extractedContent.notes || parsedActivity.notes,
+        tasks: extractedContent.tasks || parsedActivity.tasks
       };
 
       if (existingActivity) {
@@ -364,7 +371,13 @@ export class NotionSyncService {
   /**
    * Convert a Notion page to natural text format for AI parsing
    */
-  private async convertNotionPageToNaturalText(page: any): Promise<string> {
+  private async convertNotionPageToNaturalText(page: any): Promise<{
+    naturalText: string;
+    extractedContent: {
+      notes: string | null;
+      tasks: string | null;
+    };
+  }> {
     try {
       const properties = page.properties;
 
@@ -467,11 +480,23 @@ export class NotionSyncService {
       }
 
       debugLog.info(`Converted Notion page ${page.id} to natural text (${naturalText.length} chars)`);
-      return naturalText;
+      return {
+        naturalText,
+        extractedContent: {
+          notes: pageContent.notes || null,
+          tasks: pageContent.tasks || null,
+        }
+      };
 
     } catch (error) {
       debugLog.error(`Error converting Notion page ${page.id} to text:`, error);
-      return '';
+      return {
+        naturalText: '',
+        extractedContent: {
+          notes: null,
+          tasks: null,
+        }
+      };
     }
   }
 
