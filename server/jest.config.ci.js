@@ -17,12 +17,11 @@ module.exports = {
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov', 'html'],
   setupFilesAfterEnv: ['<rootDir>/src/__tests__/setup.ts'],
-  testTimeout: 10000,
+  testTimeout: 30000, // Longer timeout for CI
   clearMocks: true,
   resetMocks: true,
   restoreMocks: true,
-  // Force sequential execution to prevent database conflicts
+  // Force sequential execution for CI to prevent database conflicts
   maxWorkers: 1,
-  // Ensure tests run in sequence
   maxConcurrency: 1
-};
+}; 

@@ -63,8 +63,6 @@ describe('Billable Hours Rounding', () => {
     // Reset to default settings
     await settingsService.setSetting('billable_hours_rounding', 'false');
     await settingsService.setSetting('billable_hours_rounding_method', 'nearest');
-    
-
   });
 
   describe('SettingsService Rounding Logic', () => {

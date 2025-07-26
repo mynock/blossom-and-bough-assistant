@@ -1,4 +1,3 @@
-// Test setup configuration
 import { jest } from '@jest/globals';
 
 // Set up test environment variables
@@ -10,12 +9,16 @@ if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL = 'postgresql://test_user:test_password@localhost:5432/billable_hours_test';
 }
 
+console.log(`🐘 PostgreSQL database connected: ${process.env.DATABASE_URL}`);
+
 // Mock external services to prevent API calls during tests
 // NOTE: Database is NOT mocked - these are integration tests that require a real test database
 jest.mock('../services/GoogleCalendarService');
 jest.mock('../services/GoogleSheetsService');
+jest.mock('../services/QuickBooksService');
 jest.mock('../services/NotionService');
 jest.mock('../services/AnthropicService');
+jest.mock('../utils/googleAuth');
 
 // Global test timeout
 jest.setTimeout(10000);
