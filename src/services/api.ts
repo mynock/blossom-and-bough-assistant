@@ -181,4 +181,79 @@ export const notionApi = {
     const response = await apiClient.get('/notion/health');
     return response.data;
   },
+};
+
+// Reports API
+export interface ReportFilters {
+  startDate?: string;
+  endDate?: string;
+  clientId?: number;
+  employeeId?: number;
+  dayOfWeek?: string;
+}
+
+export interface TimeSeriesDataPoint {
+  date: string;
+  billableHours: number;
+  totalHours: number;
+  travelTimeHours: number;
+  breakTimeHours: number;
+  clientName?: string;
+  employeeName?: string;
+}
+
+export interface ReportSummary {
+  totalBillableHours: number;
+  totalHours: number;
+  totalTravelTimeHours: number;
+  totalBreakTimeHours: number;
+  totalActivities: number;
+  averageHoursPerActivity: number;
+  clientBreakdown: Array<{
+    clientId: number;
+    clientName: string;
+    billableHours: number;
+    totalHours: number;
+    activities: number;
+  }>;
+  employeeBreakdown: Array<{
+    employeeId: number;
+    employeeName: string;
+    billableHours: number;
+    totalHours: number;
+    activities: number;
+  }>;
+  dayOfWeekBreakdown: Array<{
+    dayOfWeek: string;
+    billableHours: number;
+    totalHours: number;
+    activities: number;
+  }>;
+}
+
+export const reportsApi = {
+  getTimeSeriesData: async (filters?: ReportFilters, groupBy: string = 'day'): Promise<TimeSeriesDataPoint[]> => {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.clientId) params.append('clientId', filters.clientId.toString());
+    if (filters?.employeeId) params.append('employeeId', filters.employeeId.toString());
+    if (filters?.dayOfWeek) params.append('dayOfWeek', filters.dayOfWeek);
+    params.append('groupBy', groupBy);
+
+    const response = await apiClient.get(`/reports/time-series?${params.toString()}`);
+    return response.data;
+  },
+
+  getSummaryData: async (filters?: ReportFilters): Promise<ReportSummary> => {
+    const params = new URLSearchParams();
+    if (filters?.startDate) params.append('startDate', filters.startDate);
+    if (filters?.endDate) params.append('endDate', filters.endDate);
+    if (filters?.clientId) params.append('clientId', filters.clientId.toString());
+    if (filters?.employeeId) params.append('employeeId', filters.employeeId.toString());
+    if (filters?.dayOfWeek) params.append('dayOfWeek', filters.dayOfWeek);
+
+    const response = await apiClient.get(`/reports/summary?${params.toString()}`);
+    return response.data;
+  },
 }; 
