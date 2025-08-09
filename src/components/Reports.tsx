@@ -81,23 +81,21 @@ const Reports: React.FC = () => {
   const loadClients = async () => {
     try {
       const response = await clientsApi.getAll();
-      setClients(response.clients.map(c => ({ id: c.id, name: c.name })));
+      setClients((response.clients || []).map(c => ({ id: c.id, name: c.name })));
     } catch (error) {
       console.error('Error loading clients:', error);
+      setClients([]);
     }
   };
 
   const loadEmployees = async () => {
     try {
       const response = await employeesApi.getAll();
-      setEmployees(response.employees);
+      setEmployees(response.employees || []);
     } catch (error) {
       console.error('Error loading employees:', error);
-      // Fallback to placeholder data if API fails
-      setEmployees([
-        { id: 1, name: 'Andrea' },
-        { id: 2, name: 'Employee 2' },
-      ]);
+      // Fallback to empty array if API fails
+      setEmployees([]);
     }
   };
 

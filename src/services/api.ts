@@ -100,7 +100,12 @@ export const clientsApi = {
 export const employeesApi = {
   getAll: async (): Promise<{ employees: Array<{ id: number; name: string }> }> => {
     const response = await apiClient.get('/employees');
-    return response.data;
+    // Transform the Employee objects to just id and name
+    const employees = response.data.map((emp: any) => ({
+      id: emp.id,
+      name: emp.name
+    }));
+    return { employees };
   },
 };
 
