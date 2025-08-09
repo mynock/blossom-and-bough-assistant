@@ -24,6 +24,7 @@ import NotionEmbedPage from './components/NotionEmbedPage';
 import QuickBooksIntegration from './components/QuickBooksIntegration';
 import Invoices from './components/Invoices';
 import Settings from './components/Settings';
+import Reports from './components/Reports';
 
 const theme = createTheme({
   palette: {
@@ -79,6 +80,7 @@ function App() {
                       <Route path="/notion-sync" element={<NotionSync />} />
                       <Route path="/quickbooks" element={<QuickBooksIntegration />} />
                       <Route path="/invoices" element={<Invoices />} />
+                      <Route path="/reports" element={<Reports />} />
                       <Route path="/debug" element={<Debug />} />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/admin" element={<Admin />} />

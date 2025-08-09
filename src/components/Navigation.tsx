@@ -87,7 +87,8 @@ const Navigation: React.FC = () => {
 
   // Secondary items
   const secondaryNavItems = [
-    { path: '/debug', label: 'Reports', icon: <Analytics /> },
+    { path: '/reports', label: 'Reports', icon: <Analytics /> },
+    { path: '/debug', label: 'Debug', icon: <Analytics /> },
     { path: '/settings', label: 'Settings', icon: <Settings /> },
     { path: '/admin', label: 'Admin', icon: <Settings /> },
   ];

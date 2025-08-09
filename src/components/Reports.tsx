@@ -18,12 +18,13 @@ import {
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { subDays, subWeeks, subMonths, subYears, format } from 'date-fns';
-import { 
+import {
   reportsApi, 
   ReportFilters, 
   TimeSeriesDataPoint, 
   ReportSummary,
   clientsApi,
+  employeesApi,
 } from '../services/api';
 import TimeSeriesChart from './charts/TimeSeriesChart';
 import BreakdownChart from './charts/BreakdownChart';
@@ -89,15 +90,15 @@ const Reports: React.FC = () => {
 
   const loadEmployees = async () => {
     try {
-      // Note: You'll need to add an employees API endpoint similar to clients
-      // For now, we'll use a placeholder
+      const response = await employeesApi.getAll();
+      setEmployees(response.employees);
+    } catch (error) {
+      console.error('Error loading employees:', error);
+      // Fallback to placeholder data if API fails
       setEmployees([
         { id: 1, name: 'Andrea' },
         { id: 2, name: 'Employee 2' },
-        // Add more employees as needed
       ]);
-    } catch (error) {
-      console.error('Error loading employees:', error);
     }
   };
 

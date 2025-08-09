@@ -97,6 +97,13 @@ export const clientsApi = {
   },
 };
 
+export const employeesApi = {
+  getAll: async (): Promise<{ employees: Array<{ id: number; name: string }> }> => {
+    const response = await apiClient.get('/employees');
+    return response.data;
+  },
+};
+
 export const calendarApi = {
   getEvents: async (days: number = 7): Promise<{ events: CalendarEvent[] }> => {
     const response = await apiClient.get(`/calendar?days=${days}`);
