@@ -752,7 +752,131 @@ Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and 
   }
 
   /**
-   * Parse free-form work notes into structured work activities (used by Notion sync)
+   * Process structured Notion data and fill in missing fields (new approach)
+   */
+  async processStructuredNotionData(notionData: any): Promise<WorkNotesParseResult> {
+    if (!this.client) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    const prompt = `You are an expert at processing landscaping work data from Notion. 
+
+You will receive structured data from a Notion work entry and need to:
+1. Validate and normalize the data
+2. Extract structured information from any unstructured content
+3. Calculate missing fields 
+4. Return a standardized work activity record
+
+IMPORTANT PROCESSING RULES:
+
+HOURS CALCULATION:
+- If totalHours is provided, use it as-is
+- If missing, calculate from: (end time - start time) × number of team members
+- Apply any hours adjustments if provided
+- Travel time and break time are separate from work hours
+
+EMPLOYEE PROCESSING:
+- Use team member names exactly as provided
+- Convert "me", "Me", "I" → "Andrea"
+- Keep all other names as-is
+
+CHARGES EXTRACTION:
+- Extract materials/charges from materialsData or tasksContent/notesContent
+- Look for patterns like "charge X", "bill for Y", "materials: Z"
+- Include costs if mentioned
+
+TASKS AND NOTES:
+- Clean up and format tasksContent 
+- Extract key work completed items
+- Summarize important notes
+
+The input data structure:
+\`\`\`json
+${JSON.stringify(notionData, null, 2)}
+\`\`\`
+
+Return the processed data as a JSON object with this exact structure:
+{
+  "activities": [
+    {
+      "date": "2025-08-07",
+      "clientName": "Pankow", 
+      "workType": "maintenance",
+      "employees": ["Andrea", "Megan", "Anne"],
+      "startTime": "14:00",
+      "endTime": "16:35", 
+      "totalHours": 8.5,
+      "travelTimeMinutes": 34,
+      "lunchTime": 30,
+      "workDescription": "General maintenance work",
+      "tasks": "Cleaned tasks and work completed",
+      "notes": "Processed notes and observations",
+      "charges": [{"description": "Material name", "cost": 25.00, "type": "material"}],
+      "confidence": 0.95,
+      "hoursAdjustments": [{"person": "Andrea", "adjustment": "-0:25", "notes": "Late arrival"}]
+    }
+  ],
+  "summary": {
+    "totalActivities": 1,
+    "dateRange": "2025-08-07 to 2025-08-07",
+    "totalHours": 8.5,
+    "clients": ["Pankow"]
+  }
+}`;
+
+    try {
+      console.log('🤖 === ANTHROPIC API REQUEST START ===');
+      console.log('🎯 Method: processStructuredNotionData');
+      console.log('📝 Input data keys:', Object.keys(notionData));
+
+      const response = await this.client.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      });
+
+      console.log('✅ Anthropic API response received');
+      console.log('📊 Usage:', response.usage);
+
+      const content = response.content[0];
+      if (content.type !== 'text') {
+        throw new Error('Unexpected response type from Anthropic API');
+      }
+
+      console.log('🔍 === ANTHROPIC API REQUEST END (SUCCESS) ===');
+
+      // Parse JSON response
+      let parsedResponse;
+      try {
+        // Extract JSON from response (handle potential markdown code blocks)
+        const jsonMatch = content.text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        const jsonText = jsonMatch ? jsonMatch[1] : content.text;
+        parsedResponse = JSON.parse(jsonText);
+      } catch (parseError) {
+        console.error('❌ Failed to parse AI response as JSON:', parseError);
+        console.error('📄 Raw response:', content.text);
+        throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+      }
+
+      return parsedResponse;
+
+    } catch (error) {
+      console.error('❌ Anthropic API request failed:', error);
+      console.log('🔍 === ANTHROPIC API REQUEST END (FAILED) ===');
+      throw error;
+    }
+  }
+
+  /**
+   * Parse free-form work notes into structured work activities (LEGACY METHOD - UNUSED)
+   * 
+   * @deprecated This method is replaced by processStructuredNotionData() and is no longer used.
+   * It will be removed in a future cleanup.
    */
   async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
     if (!this.client) {
@@ -766,18 +890,15 @@ Parse the following work notes and extract individual work activities. Each acti
 IMPORTANT PATTERNS TO RECOGNIZE:
 
 TIME FORMATS:
-- "8:45-3:10 w V inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
+- "8:45-3:10 w Virginia inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
 - "9:05-12:45 w Andrea & Anne inc 45 min drive" = start 9:05, end 12:45, with Andrea & Anne, including 45min drive
+- "2:00 pm-4:35 pm w Andrea & Megan & Anne" = start 2:00 pm, end 4:35 pm, with Andrea, Megan, and Anne
 - "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
-- "R 8:30-4:15, Me 9:40-5" = Rebecca 8:30-4:15, Me 9:40-5:00
 
-EMPLOYEE CODES:
-- "w V" = with Virginia
-- "w R" = with Rebecca  
-- "w A" = with Anne
-- "w M" = with Megan
-- "solo" = solo work (Andrea Wilson working alone)
-- "me" or "Me" = Andrea Wilson (the business owner)
+EMPLOYEE NAMES:
+- Names are provided directly (e.g., "Andrea", "Megan", "Anne", "Virginia", "Rebecca")
+- "solo" = solo work (Andrea working alone)
+- "me" or "Me" = Andrea (the business owner)
 
 BUSINESS CONTEXT:
 - Andrea Wilson is the business owner of this landscaping company
@@ -820,12 +941,10 @@ For each work activity, extract:
 - charges (array of materials/services to charge)
 - confidence (0.0-1.0 score for how confident you are in the parsing)
 
-EMPLOYEE NAME MAPPING:
-- "V" or "Virginia" → "Virginia Dahl"
-- "R" or "Rebecca" → "Rebecca Soto" 
-- "A" or "Anne" → "Anne Malakasis"
-- "M" or "Megan" → "Megan Sanders"
-- "me", "Me", "I" → "Andrea Wilson"
+EMPLOYEE NAME PROCESSING:
+- Use employee names as provided in the text
+- Convert "me", "Me", "I" → "Andrea"
+- Keep all other names as-is (Andrea, Megan, Anne, Virginia, Rebecca, etc.)
 
 CLIENT NAME EXAMPLES (use exact spelling):
 - Stoller, Nadler, Kurzweil, Silver, Chen, Kumar, Patel, etc.
@@ -844,7 +963,7 @@ Return the data as a JSON object with this exact structure:
       "date": "2025-06-03",
       "clientName": "Stoller", 
       "workType": "maintenance",
-      "employees": ["Andrea Wilson", "Virginia Dahl"],
+      "employees": ["Andrea", "Virginia"],
       "startTime": "08:45",
       "endTime": "15:10", 
       "totalHours": 12.83,
@@ -1273,7 +1392,10 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
   }
 
   /**
-   * Normalize employee names from abbreviations
+   * Normalize employee names from abbreviations (LEGACY METHOD - UNUSED)
+   * 
+   * @deprecated This method is only used by the deprecated parseWorkNotes() method.
+   * It will be removed in a future cleanup.
    */
   private normalizeEmployeeNames(employees: string[]): string[] {
     const nameMap: Record<string, string> = {
