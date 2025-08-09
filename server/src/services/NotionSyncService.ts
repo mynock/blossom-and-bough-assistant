@@ -583,18 +583,7 @@ export class NotionSyncService {
     }
   }
 
-  /**
-   * Get employee abbreviation for natural text format
-   */
-  private getEmployeeAbbreviation(memberName: string): string {
-    const name = memberName.toLowerCase();
-    if (name.includes('virginia')) return 'V';
-    if (name.includes('rebecca')) return 'R';
-    if (name.includes('anne')) return 'A';
-    if (name.includes('megan')) return 'M';
-    if (name.includes('andrea')) return 'Me';
-    return memberName; // Return full name if no abbreviation found
-  }
+  // REMOVED: getEmployeeAbbreviation() - no longer needed with structured data approach
 
   /**
    * Parse hours property from Notion (handles various formats)

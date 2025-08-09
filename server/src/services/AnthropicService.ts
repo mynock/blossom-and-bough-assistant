@@ -873,7 +873,10 @@ Return the processed data as a JSON object with this exact structure:
   }
 
   /**
-   * Parse free-form work notes into structured work activities (legacy method)
+   * Parse free-form work notes into structured work activities (LEGACY METHOD - UNUSED)
+   * 
+   * @deprecated This method is replaced by processStructuredNotionData() and is no longer used.
+   * It will be removed in a future cleanup.
    */
   async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
     if (!this.client) {
@@ -1389,7 +1392,10 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
   }
 
   /**
-   * Normalize employee names from abbreviations
+   * Normalize employee names from abbreviations (LEGACY METHOD - UNUSED)
+   * 
+   * @deprecated This method is only used by the deprecated parseWorkNotes() method.
+   * It will be removed in a future cleanup.
    */
   private normalizeEmployeeNames(employees: string[]): string[] {
     const nameMap: Record<string, string> = {
