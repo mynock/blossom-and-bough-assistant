@@ -32,6 +32,7 @@ import { createNotionSyncRouter } from './routes/notionSync';
 import travelTimeRouter from './routes/travelTime';
 import breakTimeRouter from './routes/breakTime';
 import settingsRouter from './routes/settings';
+import reportsRouter from './routes/reports';
 import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
@@ -141,6 +142,7 @@ app.use('/api/travel-time', requireAuth, travelTimeRouter);
 app.use('/api/break-time', requireAuth, breakTimeRouter);
 app.use('/api/migration', requireAuth, migrationRouter);
 app.use('/api/settings', settingsRouter); // Settings routes handle their own auth
+app.use('/api/reports', requireAuth, reportsRouter); // Reports routes
 app.use('/api/notion', notionRouter); // Public routes for embedded usage
 app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
