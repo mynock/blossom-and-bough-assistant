@@ -1,0 +1,35 @@
+# Development Dockerfile for Frontend with better caching
+FROM node:18-alpine
+
+# Install dumb-init for proper signal handling
+RUN apk add --no-cache dumb-init
+
+# Create app user
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nodejs -u 1001
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files FIRST for better Docker layer caching
+# This layer will only rebuild if package.json or package-lock.json changes
+COPY package*.json ./
+
+# Install dependencies in separate layer for better caching
+RUN npm ci && npm cache clean --force
+
+# Copy source code (this layer rebuilds when source changes)
+COPY . .
+
+# Change ownership to nodejs user
+RUN chown -R nodejs:nodejs /app
+USER nodejs
+
+# Expose port
+EXPOSE 3000
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Default command (can be overridden in docker-compose.yml)
+CMD ["npm", "start"]
