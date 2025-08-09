@@ -17,7 +17,10 @@ import {
   ListItem,
   ListItemButton,
   useTheme,
-  useMediaQuery
+  useMediaQuery,
+  Paper,
+  MenuList,
+  ClickAwayListener
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -34,7 +37,11 @@ import {
   Analytics,
   Settings,
   Receipt,
-  AccountBalance
+  AccountBalance,
+  KeyboardArrowDown,
+  FolderOpen,
+  Build,
+  Computer
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -47,6 +54,11 @@ const Navigation: React.FC = () => {
   
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [dropdownAnchors, setDropdownAnchors] = useState<{[key: string]: HTMLElement | null}>({
+    resources: null,
+    tools: null,
+    system: null
+  });
 
   const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setUserMenuAnchor(event.currentTarget);
@@ -65,46 +77,106 @@ const Navigation: React.FC = () => {
     setMobileDrawerOpen(!mobileDrawerOpen);
   };
 
-  // Main navigation items
-  const mainNavItems = [
+  const handleDropdownToggle = (dropdown: string) => (event: React.MouseEvent<HTMLElement>) => {
+    setDropdownAnchors(prev => {
+      // Close all other dropdowns and toggle this one
+      const newState: {[key: string]: HTMLElement | null} = {
+        resources: null,
+        tools: null,
+        system: null
+      };
+      
+      // Toggle the clicked dropdown
+      newState[dropdown] = prev[dropdown] ? null : event.currentTarget;
+      
+      return newState;
+    });
+  };
+
+  const handleDropdownClose = (dropdown: string) => () => {
+    setDropdownAnchors(prev => ({
+      ...prev,
+      [dropdown]: null
+    }));
+  };
+
+  const handleDropdownItemClick = (path: string, dropdown: string) => () => {
+    navigate(path);
+    handleDropdownClose(dropdown)();
+  };
+
+  const handleTopLevelNavClick = (path: string) => () => {
+    // Close all dropdowns when navigating to top-level items
+    setDropdownAnchors({
+      resources: null,
+      tools: null,
+      system: null
+    });
+    navigate(path);
+  };
+
+  // Top-level navigation items
+  const topLevelNavItems = [
     { path: '/', label: 'Dashboard', icon: <Dashboard /> },
-    { path: '/review', label: 'Review', icon: <Assignment /> },
-    { path: '/work-activities', label: 'Work', icon: <Work /> },
-    { path: '/clients', label: 'Clients', icon: <Business /> },
-    { path: '/employees', label: 'Employees', icon: <People /> },
-    { path: '/projects', label: 'Projects', icon: <Assignment /> },
-    { path: '/invoices', label: 'Invoices', icon: <Receipt /> },
-    ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
     { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
-    { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
-    // { path: '/chat', label: 'AI Assistant', icon: <Chat /> }, // Hidden for now
-  ];
-
-  // Management items (now empty, but keeping for future use)
-  const managementNavItems: Array<{ path: string; label: string; icon: React.ReactElement }> = [
-    // { path: '/work-notes-import', label: 'Import Notes', icon: <Upload /> }, // Hidden for now
-  ];
-
-  // Secondary items
-  const secondaryNavItems = [
     { path: '/reports', label: 'Reports', icon: <Analytics /> },
-    { path: '/debug', label: 'Debug', icon: <Analytics /> },
-    { path: '/settings', label: 'Settings', icon: <Settings /> },
-    { path: '/admin', label: 'Admin', icon: <Settings /> },
+  ];
+
+  // Dropdown navigation groups
+  const dropdownNavGroups = {
+    resources: {
+      label: 'Resources',
+      icon: <FolderOpen />,
+      items: [
+        { path: '/review', label: 'Review', icon: <Assignment /> },
+        { path: '/work-activities', label: 'Work', icon: <Work /> },
+        { path: '/clients', label: 'Clients', icon: <Business /> },
+        { path: '/projects', label: 'Projects', icon: <Assignment /> },
+        { path: '/employees', label: 'Employees', icon: <People /> },
+        { path: '/invoices', label: 'Invoices', icon: <Receipt /> },
+      ]
+    },
+    tools: {
+      label: 'Tools',
+      icon: <Build />,
+      items: [
+        { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
+        ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
+      ]
+    },
+    system: {
+      label: 'System',
+      icon: <Computer />,
+      items: [
+        { path: '/settings', label: 'Settings', icon: <Settings /> },
+        { path: '/admin', label: 'Admin', icon: <Settings /> },
+        { path: '/debug', label: 'Debug', icon: <Analytics /> },
+      ]
+    }
+  };
+
+  // All items for mobile navigation (flattened)
+  const allNavItems = [
+    ...topLevelNavItems,
+    ...Object.values(dropdownNavGroups).flatMap(group => group.items)
   ];
 
   const isActiveItem = (path: string) => location.pathname === path;
 
+  const isDropdownActive = (groupKey: string) => {
+    return dropdownNavGroups[groupKey as keyof typeof dropdownNavGroups].items.some(item => isActiveItem(item.path));
+  };
+
   // Desktop Navigation
   const DesktopNav = () => (
     <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-      {/* Main Navigation */}
-      {mainNavItems.map((item) => (
+      {/* Top-level Navigation Items */}
+      {topLevelNavItems.map((item) => (
         <Button
           key={item.path}
           color="inherit"
           startIcon={item.icon}
-          onClick={() => navigate(item.path)}
+          onClick={handleTopLevelNavClick(item.path)}
           sx={{
             bgcolor: isActiveItem(item.path) ? 'rgba(255,255,255,0.15)' : 'transparent',
             borderRadius: 2,
@@ -119,30 +191,73 @@ const Navigation: React.FC = () => {
         </Button>
       ))}
 
-      {/* Management Items - Condensed */}
-      {managementNavItems.map((item) => (
-        <Button
-          key={item.path}
-          color="inherit"
-          startIcon={item.icon}
-          onClick={() => navigate(item.path)}
-          size="small"
-          sx={{
-            bgcolor: isActiveItem(item.path) ? 'rgba(255,255,255,0.15)' : 'transparent',
-            borderRadius: 2,
-            px: 1.5,
-            py: 1,
-            minWidth: 'auto',
-            '&:hover': {
-              bgcolor: 'rgba(255,255,255,0.1)',
-            },
-            '& .MuiButton-startIcon': {
-              mr: 0.5,
-            }
-          }}
-        >
-          {item.label}
-        </Button>
+      {/* Dropdown Navigation Groups */}
+      {Object.entries(dropdownNavGroups).map(([groupKey, group]) => (
+        <Box key={groupKey} sx={{ position: 'relative' }}>
+          <Button
+            color="inherit"
+            startIcon={group.icon}
+            endIcon={<KeyboardArrowDown />}
+            onClick={handleDropdownToggle(groupKey)}
+            sx={{
+              bgcolor: (isDropdownActive(groupKey) || Boolean(dropdownAnchors[groupKey])) ? 'rgba(255,255,255,0.15)' : 'transparent',
+              borderRadius: 2,
+              px: 2,
+              py: 1,
+              '&:hover': {
+                bgcolor: 'rgba(255,255,255,0.1)',
+              },
+            }}
+          >
+            {group.label}
+          </Button>
+          {Boolean(dropdownAnchors[groupKey]) && (
+            <Paper
+              elevation={4}
+              sx={{
+                position: 'absolute',
+                top: '100%',
+                left: 0,
+                mt: 1,
+                minWidth: 180,
+                zIndex: 1300,
+                bgcolor: 'background.paper',
+              }}
+            >
+              <ClickAwayListener onClickAway={handleDropdownClose(groupKey)}>
+                <MenuList dense sx={{ py: 1 }}>
+                  {group.items.map((item) => (
+                    <MenuItem
+                      key={item.path}
+                      onClick={handleDropdownItemClick(item.path, groupKey)}
+                      selected={isActiveItem(item.path)}
+                      sx={{
+                        px: 2,
+                        py: 1,
+                        '&:hover': {
+                          bgcolor: 'action.hover',
+                        },
+                        '&.Mui-selected': {
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          '&:hover': {
+                            bgcolor: 'primary.dark',
+                          },
+                          '& .MuiListItemIcon-root': {
+                            color: 'inherit',
+                          },
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+                      <ListItemText primary={item.label} />
+                    </MenuItem>
+                  ))}
+                </MenuList>
+              </ClickAwayListener>
+            </Paper>
+          )}
+        </Box>
       ))}
     </Box>
   );
@@ -165,8 +280,8 @@ const Navigation: React.FC = () => {
         <Divider />
 
         <List>
-          {/* Main Items */}
-          {mainNavItems.map((item) => (
+          {/* Top-level Items */}
+          {topLevelNavItems.map((item) => (
             <ListItem key={item.path} disablePadding>
               <ListItemButton
                 onClick={() => {
@@ -183,38 +298,40 @@ const Navigation: React.FC = () => {
 
           <Divider sx={{ my: 1 }} />
 
-          {/* Management Items */}
-          {managementNavItems.map((item) => (
-            <ListItem key={item.path} disablePadding>
-              <ListItemButton
-                onClick={() => {
-                  navigate(item.path);
-                  setMobileDrawerOpen(false);
-                }}
-                selected={isActiveItem(item.path)}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-
-          <Divider sx={{ my: 1 }} />
-
-          {/* Secondary Items */}
-          {secondaryNavItems.map((item) => (
-            <ListItem key={item.path} disablePadding>
-              <ListItemButton
-                onClick={() => {
-                  navigate(item.path);
-                  setMobileDrawerOpen(false);
-                }}
-                selected={isActiveItem(item.path)}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            </ListItem>
+          {/* Grouped Items */}
+          {Object.entries(dropdownNavGroups).map(([groupKey, group]) => (
+            <Box key={groupKey}>
+              {/* Group Header */}
+              <ListItem>
+                <ListItemIcon>{group.icon}</ListItemIcon>
+                <ListItemText 
+                  primary={group.label} 
+                  primaryTypographyProps={{ 
+                    variant: 'subtitle2', 
+                    fontWeight: 'bold',
+                    color: 'text.secondary' 
+                  }} 
+                />
+              </ListItem>
+              
+              {/* Group Items */}
+              {group.items.map((item) => (
+                <ListItem key={item.path} disablePadding sx={{ pl: 2 }}>
+                  <ListItemButton
+                    onClick={() => {
+                      navigate(item.path);
+                      setMobileDrawerOpen(false);
+                    }}
+                    selected={isActiveItem(item.path)}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
+                    <ListItemText primary={item.label} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+              
+              {groupKey !== 'system' && <Divider sx={{ my: 1 }} />}
+            </Box>
           ))}
         </List>
       </Box>
