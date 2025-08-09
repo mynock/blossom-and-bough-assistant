@@ -9,7 +9,6 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  TextField,
   Button,
   Alert,
   CircularProgress,
@@ -17,7 +16,7 @@ import {
   ToggleButtonGroup,
 } from '@mui/material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import { subDays, subWeeks, subMonths, subYears, format } from 'date-fns';
+import { subDays, subMonths, subYears, format } from 'date-fns';
 import {
   reportsApi, 
   ReportFilters, 
@@ -77,7 +76,7 @@ const Reports: React.FC = () => {
   // Load data when filters change
   useEffect(() => {
     loadReportData();
-  }, [filters, timeScale]);
+  }, [filters, timeScale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadClients = async () => {
     try {
@@ -339,6 +338,7 @@ const Reports: React.FC = () => {
             <BreakdownChart
               data={summaryData.clientBreakdown.map(c => ({
                 name: c.clientName,
+                value: c.billableHours,
                 billableHours: c.billableHours,
                 totalHours: c.totalHours,
                 activities: c.activities,
@@ -353,6 +353,7 @@ const Reports: React.FC = () => {
             <BreakdownChart
               data={summaryData.employeeBreakdown.map(e => ({
                 name: e.employeeName,
+                value: e.billableHours,
                 billableHours: e.billableHours,
                 totalHours: e.totalHours,
                 activities: e.activities,
@@ -367,6 +368,7 @@ const Reports: React.FC = () => {
             <BreakdownChart
               data={summaryData.dayOfWeekBreakdown.map(d => ({
                 name: d.dayOfWeek,
+                value: d.billableHours,
                 billableHours: d.billableHours,
                 totalHours: d.totalHours,
                 activities: d.activities,
