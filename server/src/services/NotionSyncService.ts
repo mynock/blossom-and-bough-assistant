@@ -4,7 +4,7 @@ import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
 import { debugLog } from '../utils/logger';
-import { NewWorkActivity, otherCharges } from '../db/schema';
+import { NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 const notion = new Client({
@@ -242,29 +242,32 @@ export class NotionSyncService {
       }
 
       // Only do expensive AI processing if we need to sync or create new activity
-      // Convert Notion page to natural text format
-      const conversionResult = await this.convertNotionPageToNaturalText(page);
-      const naturalText = conversionResult.naturalText;
-      const extractedContent = conversionResult.extractedContent;
+      // Extract structured data from Notion page
+      const structuredResult = await this.extractNotionStructuredData(page);
+      const structuredData = structuredResult.structuredData;
+      const extractedContent = structuredResult.extractedContent;
       
-      if (!naturalText.trim()) {
-        debugLog.warn(`Skipping page ${page.id} - no content to parse`);
-        const skipMessage = `${this.createPageReference(page)}: No content to parse`;
+      debugLog.info(`📊 Structured data extracted for AI processing`);
+      debugLog.info(`📋 Extracted content: ${JSON.stringify(extractedContent)}`);
+      
+      if (!structuredData) {
+        debugLog.warn(`Skipping page ${page.id} - failed to extract structured data`);
+        const skipMessage = `${this.createPageReference(page)}: Failed to extract structured data`;
         if (onProgress) {
-          onProgress(`Skipped - no content to parse`);
+          onProgress(`Skipped - data extraction failed`);
         }
         return { action: 'skipped', message: skipMessage };
       }
 
-      // Send AI parsing progress update
+      // Send AI processing progress update
       if (onProgress) {
-        onProgress(`Parsing page with AI...`);
+        onProgress(`Processing structured data with AI...`);
       }
 
-      // Use AI to parse the natural text
-      debugLog.info(`Parsing Notion page ${page.id} with AI...`);
-      debugLog.info(`📤 AI Input (${naturalText.length} chars):`, naturalText);
-      const aiResult = await this.anthropicService.parseWorkNotes(naturalText);
+      // Use AI to process the structured data
+      debugLog.info(`Processing Notion page ${page.id} with AI using structured data...`);
+      debugLog.info(`📤 AI Input structured data:`, JSON.stringify(structuredData, null, 2));
+      const aiResult = await this.anthropicService.processStructuredNotionData(structuredData);
       debugLog.info(`📥 AI Response:`, JSON.stringify(aiResult, null, 2));
 
       if (!aiResult.activities || aiResult.activities.length === 0) {
@@ -379,7 +382,78 @@ export class NotionSyncService {
 
 
   /**
-   * Convert a Notion page to natural text format for AI parsing
+   * Extract structured data from Notion page for AI processing
+   */
+  private async extractNotionStructuredData(page: any): Promise<{
+    structuredData: any;
+    extractedContent: {
+      notes: string | null;
+      tasks: string | null;
+    };
+  }> {
+    try {
+      const properties = page.properties;
+
+      // Extract all structured properties
+      const clientName = this.getSelectProperty(properties, 'Client Name');
+      const date = this.getDateProperty(properties, 'Date');
+      const workType = this.getSelectProperty(properties, 'Work Type');
+      const startTime = this.getTextProperty(properties, 'Start Time');
+      const endTime = this.getTextProperty(properties, 'End Time');
+      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
+      const travelTime = this.parseTravelTime(properties, 'Travel Time');
+      const breakTime = this.parseNonBillableTime(properties, 'Break Minutes');
+      const totalHours = this.parseHoursProperty(properties, 'Total Hours');
+      
+      debugLog.info(`📊 Extracting structured data for ${clientName}: travel=${travelTime}min, break=${breakTime}min, hours=${totalHours}`);
+
+      // Get page content (unstructured data)
+      const pageContent = await this.getPageContent(page.id);
+
+      // Create structured data object for AI
+      const structuredData = {
+        // Structured fields from Notion properties
+        clientName,
+        date,
+        workType,
+        startTime,
+        endTime,
+        teamMembers,
+        travelTimeMinutes: travelTime,
+        breakTimeMinutes: breakTime,
+        totalHours,
+        notionPageId: page.id,
+        lastEditedTime: page.last_edited_time,
+        
+        // Unstructured content from page blocks
+        tasksContent: pageContent.tasks,
+        notesContent: pageContent.notes,
+        materialsData: pageContent.materials,
+        hoursAdjustments: pageContent.hoursAdjustments
+      };
+
+      debugLog.info(`✅ Extracted structured data from Notion page ${page.id}`);
+      return {
+        structuredData,
+        extractedContent: {
+          notes: pageContent.notes || null,
+          tasks: pageContent.tasks || null,
+        }
+      };
+    } catch (error) {
+      debugLog.error(`Error extracting structured data from Notion page ${page.id}:`, error);
+      return {
+        structuredData: null,
+        extractedContent: {
+          notes: null,
+          tasks: null
+        }
+      };
+    }
+  }
+
+  /**
+   * Convert a Notion page to natural text format for AI parsing (legacy method)
    */
   private async convertNotionPageToNaturalText(page: any): Promise<{
     naturalText: string;
@@ -422,9 +496,8 @@ export class NotionSyncService {
       if (startTime && endTime) {
         naturalText += `Time: ${startTime}-${endTime}`;
         if (teamMembers && teamMembers.length > 0) {
-          // Convert team member names to abbreviations if possible
-          const memberAbbrevs = teamMembers.map(member => this.getEmployeeAbbreviation(member)).join(' & ');
-          naturalText += ` w ${memberAbbrevs}`;
+          // Use team member names directly without abbreviation conversion
+          naturalText += ` w ${teamMembers.join(' & ')}`;
         }
         if (travelTime) {
           naturalText += ` inc ${travelTime} min drive`;
@@ -524,7 +597,351 @@ export class NotionSyncService {
   }
 
   /**
-   * Create a new work activity from AI-parsed data
+   * Parse hours property from Notion (handles various formats)
+   */
+  private parseHoursProperty(properties: any, propertyName: string): number | null {
+    try {
+      const property = properties[propertyName];
+      if (!property) return null;
+
+      if (property.type === 'number' && property.number) {
+        return property.number;
+      }
+
+      if (property.type === 'rich_text' && property.rich_text?.[0]?.text?.content) {
+        const text = property.rich_text[0].text.content.trim();
+        const hours = parseFloat(text);
+        return isNaN(hours) ? null : hours;
+      }
+
+      return null;
+    } catch (error) {
+      debugLog.warn(`Failed to parse hours property '${propertyName}':`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Calculate hours from time range and employee count
+   */
+  private calculateHoursFromTimeRange(startTime: string, endTime: string, employeeCount: number): number | null {
+    try {
+      // Parse time strings (e.g., "2:00 pm", "4:35 pm")
+      const start = this.parseTime(startTime);
+      const end = this.parseTime(endTime);
+      
+      if (!start || !end) return null;
+
+      let duration = end - start;
+      if (duration < 0) duration += 24; // Handle overnight work
+
+      // Total work hours = duration × number of employees
+      return duration * employeeCount;
+    } catch (error) {
+      debugLog.warn(`Failed to calculate hours from time range ${startTime}-${endTime}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Parse time string to decimal hours
+   */
+  private parseTime(timeStr: string): number | null {
+    try {
+      const time = timeStr.toLowerCase().trim();
+      
+      // Handle formats like "2:00 pm", "14:30", "2:30"
+      const pmMatch = time.match(/(\d{1,2}):(\d{2})\s*pm/);
+      const amMatch = time.match(/(\d{1,2}):(\d{2})\s*am/);
+      const militaryMatch = time.match(/(\d{1,2}):(\d{2})$/);
+
+      if (pmMatch) {
+        let hours = parseInt(pmMatch[1]);
+        const minutes = parseInt(pmMatch[2]);
+        if (hours !== 12) hours += 12;
+        return hours + minutes / 60;
+      }
+
+      if (amMatch) {
+        let hours = parseInt(amMatch[1]);
+        const minutes = parseInt(amMatch[2]);
+        if (hours === 12) hours = 0;
+        return hours + minutes / 60;
+      }
+
+      if (militaryMatch) {
+        const hours = parseInt(militaryMatch[1]);
+        const minutes = parseInt(militaryMatch[2]);
+        return hours + minutes / 60;
+      }
+
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Apply hours adjustments from Notion page content
+   */
+  private applyHoursAdjustments(baseHours: number, adjustments: Array<{ person: string; adjustment: string; notes: string }>): number {
+    let totalAdjustment = 0;
+
+    for (const adj of adjustments) {
+      try {
+        const adjustmentStr = adj.adjustment.trim();
+        
+        // Parse adjustment like "-0:25", "0:10", "+1:30"
+        const match = adjustmentStr.match(/([+-]?)(\d+):(\d{2})/);
+        if (match) {
+          const sign = match[1] === '-' ? -1 : 1;
+          const hours = parseInt(match[2]);
+          const minutes = parseInt(match[3]);
+          const adjustmentHours = sign * (hours + minutes / 60);
+          
+          totalAdjustment += adjustmentHours;
+          debugLog.info(`   Applied adjustment: ${adj.person} ${adjustmentStr} = ${adjustmentHours}h (${adj.notes})`);
+        }
+      } catch (error) {
+        debugLog.warn(`Failed to parse hours adjustment "${adj.adjustment}":`, error);
+      }
+    }
+
+    return Math.max(0, baseHours + totalAdjustment);
+  }
+
+  /**
+   * Find employee match with flexible name matching
+   */
+  private findEmployeeMatch(searchName: string, employees: any[]): any | null {
+    const search = searchName.toLowerCase().trim();
+    
+    // Define name mappings for AI-generated names to common first names
+    const nameVariants: Record<string, string[]> = {
+      'andrea': ['andrea', 'andy'],
+      'virginia': ['virginia', 'ginny', 'ginger'],
+      'rebecca': ['rebecca', 'becca', 'becky'],
+      'anne': ['anne', 'anna', 'annie'],
+      'megan': ['megan', 'meg', 'meghan'],
+      'jessica': ['jessica', 'jess', 'jessie'],
+      'sarah': ['sarah', 'sara'],
+      'michael': ['michael', 'mike', 'mick'],
+      'carlos': ['carlos', 'carl'],
+    };
+    
+    // Strategy 1: Exact match
+    let match = employees.find(emp => emp.name.toLowerCase() === search);
+    if (match) {
+      debugLog.info(`   📍 Found exact match: "${searchName}" = "${match.name}"`);
+      return match;
+    }
+    
+    // Strategy 2: Contains match (original logic)
+    match = employees.find(emp => 
+      emp.name.toLowerCase().includes(search) ||
+      search.includes(emp.name.toLowerCase())
+    );
+    if (match) {
+      debugLog.info(`   📍 Found contains match: "${searchName}" ~ "${match.name}"`);
+      return match;
+    }
+    
+    // Strategy 3: First name matching with variants
+    const searchFirstName = search.split(' ')[0];
+    for (const [baseName, variants] of Object.entries(nameVariants)) {
+      if (variants.includes(searchFirstName)) {
+        // Look for employees whose first name matches any variant of this base name
+        match = employees.find(emp => {
+          const empFirstName = emp.name.toLowerCase().split(' ')[0];
+          return variants.includes(empFirstName) || empFirstName === baseName;
+        });
+        if (match) {
+          debugLog.info(`   📍 Found variant match: "${searchName}" (${searchFirstName}) -> "${match.name}" via ${baseName}`);
+          return match;
+        }
+      }
+    }
+    
+    // Strategy 4: Partial first name match (for common nicknames)
+    match = employees.find(emp => {
+      const empFirstName = emp.name.toLowerCase().split(' ')[0];
+      return empFirstName.startsWith(searchFirstName) || searchFirstName.startsWith(empFirstName);
+    });
+    if (match) {
+      debugLog.info(`   📍 Found partial first name match: "${searchName}" ~ "${match.name}"`);
+      return match;
+    }
+    
+    debugLog.info(`   ❌ No match found for "${searchName}" using any strategy`);
+    return null;
+  }
+
+  /**
+   * Create work activity directly from structured Notion data (bypassing AI parsing)
+   */
+  private async createWorkActivityFromStructuredData(
+    page: any,
+    onProgress?: (message: string) => void
+  ): Promise<void> {
+    try {
+      const properties = page.properties;
+
+      // Extract all structured data directly from Notion
+      const clientName = this.getSelectProperty(properties, 'Client Name');
+      const date = this.getDateProperty(properties, 'Date');
+      const workType = this.getSelectProperty(properties, 'Work Type') || 'maintenance';
+      const startTime = this.getTextProperty(properties, 'Start Time');
+      const endTime = this.getTextProperty(properties, 'End Time');
+      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members') || [];
+      const travelTime = this.parseTravelTime(properties, 'Travel Time') || 0;
+      const breakTime = this.parseNonBillableTime(properties, 'Break Minutes') || 0;
+      const totalHoursFromNotion = this.parseHoursProperty(properties, 'Total Hours');
+
+      debugLog.info(`📊 Direct Notion data extraction for ${clientName}:`);
+      debugLog.info(`   Date: ${date}, Work Type: ${workType}`);
+      debugLog.info(`   Time: ${startTime} - ${endTime}`);
+      debugLog.info(`   Team Members: ${teamMembers.join(', ')}`);
+      debugLog.info(`   Travel: ${travelTime}min, Break: ${breakTime}min`);
+      debugLog.info(`   Total Hours from Notion: ${totalHoursFromNotion}`);
+
+      // Get page content for tasks, notes, and charges
+      const pageContent = await this.getPageContent(page.id);
+
+      // Calculate total hours if not provided in Notion
+      let totalHours = totalHoursFromNotion;
+      if (!totalHours && startTime && endTime) {
+        const calculatedHours = this.calculateHoursFromTimeRange(startTime, endTime, teamMembers.length);
+        if (calculatedHours) {
+          totalHours = calculatedHours;
+          debugLog.info(`📊 Calculated total hours: ${totalHours}h (${startTime}-${endTime} × ${teamMembers.length} employees)`);
+        }
+      }
+
+      if (!totalHours) {
+        throw new Error(`Cannot determine total hours for work activity - no 'Total Hours' field and unable to calculate from time range`);
+      }
+
+      // Apply hours adjustments if any
+      if (pageContent.hoursAdjustments && pageContent.hoursAdjustments.length > 0) {
+        const adjustedHours = this.applyHoursAdjustments(totalHours, pageContent.hoursAdjustments);
+        debugLog.info(`📊 Applied hours adjustments: ${totalHours} → ${adjustedHours}`);
+        totalHours = adjustedHours;
+      }
+
+      // Ensure client exists
+      if (!clientName) {
+        throw new Error('Client name is required but not found in Notion page');
+      }
+      
+      await this.ensureClientExists(clientName);
+      const allClients = await this.clientService.getAllClients();
+      const clientRecord = allClients.find(client => 
+        client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
+      );
+
+      if (!clientRecord) {
+        throw new Error(`Could not find client "${clientName}" after creation`);
+      }
+
+      // Match employees
+      const allEmployees = await this.employeeService.getAllEmployees();
+      const employeeIds: number[] = [];
+      
+      debugLog.info(`🔍 Matching employees for ${clientName}:`);
+      debugLog.info(`   Team members from Notion: ${JSON.stringify(teamMembers)}`);
+      debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
+      
+      for (const memberName of teamMembers) {
+        const matchedEmployee = this.findEmployeeMatch(memberName, allEmployees);
+        if (matchedEmployee) {
+          employeeIds.push(matchedEmployee.id);
+          debugLog.info(`   ✅ Matched "${memberName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
+        } else {
+          debugLog.info(`   ❌ No match found for "${memberName}"`);
+        }
+      }
+
+      debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')}`);
+      
+      if (employeeIds.length === 0) {
+        debugLog.warn(`⚠️ No employees matched - work activity will have no employee assignments!`);
+      }
+
+      // Calculate billable hours
+      const billableHours = this.calculateBillableHours(
+        totalHours,
+        breakTime,
+        0, // nonBillableTime
+        0, // adjustedTravelTimeMinutes  
+        pageContent.hoursAdjustments,
+        0  // adjustedBreakTimeMinutes
+      );
+
+      debugLog.info(`🧮 Hours calculation: totalHours=${totalHours}, billableHours=${billableHours}`);
+
+      // Create work activity
+      if (!date) {
+        throw new Error('Date is required but not found in Notion page');
+      }
+      
+      const workActivity: NewWorkActivity = {
+        workType: (workType || 'maintenance').toUpperCase() as any,
+        date: date,
+        status: 'needs_review',
+        startTime: startTime || null,
+        endTime: endTime || null,
+        billableHours: billableHours,
+        totalHours: totalHours,
+        hourlyRate: null,
+        clientId: clientRecord.id,
+        projectId: null,
+        travelTimeMinutes: travelTime,
+        breakTimeMinutes: breakTime,
+        nonBillableTimeMinutes: 0,
+        notes: pageContent.notes || null,
+        tasks: pageContent.tasks || null,
+        notionPageId: page.id,
+        lastNotionSyncAt: new Date(page.last_edited_time),
+        lastUpdatedBy: 'notion_sync' as const
+      };
+
+      // Prepare employee assignments
+      const workDuration = employeeIds.length > 0 ? totalHours / employeeIds.length : totalHours;
+      const employees = employeeIds.map(employeeId => ({
+        employeeId,
+        hours: workDuration
+      }));
+
+      debugLog.info(`📊 Employee assignments: ${employees.map(e => `Employee ${e.employeeId}: ${e.hours}h`).join(', ')}`);
+
+      // Prepare charges
+      const charges = pageContent.materials?.map((material: any) => ({
+        chargeType: 'material',
+        description: material.description || 'Unknown material',
+        quantity: material.quantity || null,
+        unitRate: material.cost || null,
+        totalCost: material.cost || null,
+        billable: true
+      })).filter((charge: any) => charge.description && charge.description !== 'Unknown material') || [];
+
+      // Create work activity
+      const createData: CreateWorkActivityData = {
+        workActivity,
+        employees,
+        charges
+      };
+
+      await this.workActivityService.createWorkActivity(createData);
+      debugLog.info(`✅ Created work activity from structured Notion data with ${employees.length} employees and ${charges.length} charges`);
+
+    } catch (error) {
+      debugLog.error('Error creating work activity from structured Notion data:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a new work activity from AI-parsed data (legacy method)
    */
   private async createWorkActivityFromParsedData(
     parsedActivity: any, 
@@ -590,17 +1007,30 @@ export class NotionSyncService {
       const allEmployees = await this.employeeService.getAllEmployees();
       const employeeIds: number[] = [];
       
-      // Match employees from parsed activity
+      // Match employees from parsed activity with improved matching logic
+      debugLog.info(`🔍 Matching employees for ${parsedActivity.clientName}:`);
+      debugLog.info(`   Parsed employees: ${JSON.stringify(parsedActivity.employees)}`);
+      debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
+      
       if (parsedActivity.employees && parsedActivity.employees.length > 0) {
         for (const empName of parsedActivity.employees) {
-          const matchedEmployee = allEmployees.find(emp => 
-            emp.name.toLowerCase().includes(empName.toLowerCase()) ||
-            empName.toLowerCase().includes(emp.name.toLowerCase())
-          );
+          debugLog.info(`   Looking for match for: "${empName}"`);
+          const matchedEmployee = this.findEmployeeMatch(empName, allEmployees);
           if (matchedEmployee) {
             employeeIds.push(matchedEmployee.id);
+            debugLog.info(`   ✅ Matched "${empName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
+          } else {
+            debugLog.info(`   ❌ No match found for "${empName}"`);
           }
         }
+      }
+      
+      debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')}`);
+      debugLog.info(`   Employee count: ${employeeIds.length}`);
+      
+      // If no employees matched, log this as a warning but don't default to anyone
+      if (employeeIds.length === 0) {
+        debugLog.warn(`⚠️  No employees matched for ${parsedActivity.clientName} - work activity will have no employee assignments!`);
       }
 
       // Calculate billable hours - do NOT subtract raw travel time, only adjusted travel time
@@ -641,10 +1071,17 @@ export class NotionSyncService {
       // Prepare employee assignments - each employee gets the full work duration
       // Since totalHours is already duration × employees, we need to get back to the base duration
       const workDuration = employeeIds.length > 0 ? parsedActivity.totalHours / employeeIds.length : parsedActivity.totalHours;
+      debugLog.info(`📊 Employee assignment calculation for ${parsedActivity.clientName}:`);
+      debugLog.info(`   Total hours from AI: ${parsedActivity.totalHours}`);
+      debugLog.info(`   Number of employees: ${employeeIds.length}`);
+      debugLog.info(`   Work duration per employee: ${workDuration}`);
+      
       const employees = employeeIds.map(employeeId => ({
         employeeId,
         hours: workDuration // Each employee gets the work duration
       }));
+      
+      debugLog.info(`   Employee assignments: ${employees.map(e => `Employee ${e.employeeId}: ${e.hours}h`).join(', ')}`);
 
       // Prepare charges
       const charges = parsedActivity.charges?.map((charge: any) => ({
@@ -895,7 +1332,62 @@ export class NotionSyncService {
         debugLog.info(`📝 No charges to update for work activity ${workActivityId} (parsedActivity.charges: ${parsedActivity.charges?.length || 'undefined'})`);
       }
       
-      debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data and charges`);
+      // Handle employee assignments update - delete existing assignments and recreate them
+      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
+        debugLog.info(`👥 Updating employee assignments for work activity ${workActivityId}`);
+        
+        // Get all employees for matching
+        const allEmployees = await this.employeeService.getAllEmployees();
+        const employeeIds: number[] = [];
+        
+        // Match employees from parsed activity with improved matching logic
+        debugLog.info(`🔍 Matching employees for update ${workActivityId}:`);
+        debugLog.info(`   Parsed employees: ${JSON.stringify(parsedActivity.employees)}`);
+        debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
+        
+        for (const empName of parsedActivity.employees) {
+          debugLog.info(`   Looking for match for: "${empName}"`);
+          const matchedEmployee = this.findEmployeeMatch(empName, allEmployees);
+          if (matchedEmployee) {
+            employeeIds.push(matchedEmployee.id);
+            debugLog.info(`   ✅ Matched "${empName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
+          } else {
+            debugLog.info(`   ❌ No match found for "${empName}"`);
+          }
+        }
+        
+        debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')}`);
+        debugLog.info(`   Employee count: ${employeeIds.length}`);
+        
+        if (employeeIds.length > 0) {
+          // Delete existing employee assignments
+          await this.workActivityService.db.delete(workActivityEmployees)
+            .where(eq(workActivityEmployees.workActivityId, workActivityId));
+          
+          // Calculate work duration per employee
+          const workDuration = parsedActivity.totalHours / employeeIds.length;
+          debugLog.info(`📊 Employee assignment calculation for update ${workActivityId}:`);
+          debugLog.info(`   Total hours from AI: ${parsedActivity.totalHours}`);
+          debugLog.info(`   Number of employees: ${employeeIds.length}`);
+          debugLog.info(`   Work duration per employee: ${workDuration}`);
+          
+          // Create new employee assignments
+          const employeeAssignments = employeeIds.map(employeeId => ({
+            workActivityId,
+            employeeId,
+            hours: workDuration
+          }));
+          
+          await this.workActivityService.db.insert(workActivityEmployees).values(employeeAssignments);
+          debugLog.info(`✅ Updated employee assignments for work activity ${workActivityId}: ${employeeAssignments.map(e => `Employee ${e.employeeId}: ${e.hours}h`).join(', ')}`);
+        } else {
+          debugLog.warn(`⚠️ No employees matched for update ${workActivityId} - employee assignments not updated`);
+        }
+      } else {
+        debugLog.info(`📝 No employees to update for work activity ${workActivityId} (parsedActivity.employees: ${parsedActivity.employees?.length || 'undefined'})`);
+      }
+      
+      debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data, charges, and employee assignments`);
 
     } catch (error) {
       debugLog.error(`Error updating work activity ${workActivityId}:`, error);
