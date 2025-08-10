@@ -38,6 +38,7 @@ import {
   Settings,
   Receipt,
   AccountBalance,
+  Psychology,
   KeyboardArrowDown,
   FolderOpen,
   Build,
@@ -140,6 +141,7 @@ const Navigation: React.FC = () => {
       label: 'Tools',
       icon: <Build />,
       items: [
+        { path: '/ask-data', label: 'Ask Your Data', icon: <Psychology /> },
         { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
         ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
       ]
@@ -155,11 +157,7 @@ const Navigation: React.FC = () => {
     }
   };
 
-  // All items for mobile navigation (flattened)
-  const allNavItems = [
-    ...topLevelNavItems,
-    ...Object.values(dropdownNavGroups).flatMap(group => group.items)
-  ];
+
 
   const isActiveItem = (path: string) => location.pathname === path;
 

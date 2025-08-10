@@ -33,6 +33,7 @@ import travelTimeRouter from './routes/travelTime';
 import breakTimeRouter from './routes/breakTime';
 import settingsRouter from './routes/settings';
 import reportsRouter from './routes/reports';
+import naturalLanguageSQLRouter from './routes/naturalLanguageSQL';
 import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
@@ -147,6 +148,7 @@ app.use('/api/notion', notionRouter); // Public routes for embedded usage
 app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
 app.use('/api/qbo', quickbooksRouter); // QuickBooks Online routes
+app.use('/api/natural-language-sql', naturalLanguageSQLRouter); // Natural language SQL query routes
 
 // Get all helpers
 app.get('/api/helpers', requireAuth, async (req, res) => {
