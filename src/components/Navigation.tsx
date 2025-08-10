@@ -34,7 +34,8 @@ import {
   Analytics,
   Settings,
   Receipt,
-  AccountBalance
+  AccountBalance,
+  Psychology
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -75,6 +76,7 @@ const Navigation: React.FC = () => {
     { path: '/projects', label: 'Projects', icon: <Assignment /> },
     { path: '/invoices', label: 'Invoices', icon: <Receipt /> },
     ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
+    { path: '/ask-data', label: 'Ask Your Data', icon: <Psychology /> },
     { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
     { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
     // { path: '/chat', label: 'AI Assistant', icon: <Chat /> }, // Hidden for now
