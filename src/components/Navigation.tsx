@@ -157,11 +157,7 @@ const Navigation: React.FC = () => {
     }
   };
 
-  // All items for mobile navigation (flattened)
-  const allNavItems = [
-    ...topLevelNavItems,
-    ...Object.values(dropdownNavGroups).flatMap(group => group.items)
-  ];
+
 
   const isActiveItem = (path: string) => location.pathname === path;
 
