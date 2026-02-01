@@ -1,14 +1,15 @@
 import express from 'express';
 import { requireAuth } from '../middleware/auth';
-import { NaturalLanguageSQLService, NaturalLanguageQueryRequest } from '../services/NaturalLanguageSQLService';
+import { NaturalLanguageQueryRequest } from '../services/NaturalLanguageSQLService';
+import { services } from '../services/container';
 
 const router = express.Router();
 
 // Apply authentication middleware to all routes
 router.use(requireAuth);
 
-// Initialize the service
-const nlSQLService = new NaturalLanguageSQLService();
+// Get service from container
+const nlSQLService = services.naturalLanguageSQLService;
 
 // POST /api/natural-language-sql/query
 // Process a natural language question and return SQL results

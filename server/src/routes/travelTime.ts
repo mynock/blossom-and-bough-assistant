@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { TravelTimeAllocationService } from '../services/TravelTimeAllocationService';
+import { services } from '../services/container';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -7,7 +7,7 @@ const router = Router();
 // Apply authentication to all routes
 router.use(requireAuth);
 
-const travelTimeService = new TravelTimeAllocationService();
+const travelTimeService = services.travelTimeAllocationService;
 
 /**
  * Get work activities for a specific date to preview travel time allocation

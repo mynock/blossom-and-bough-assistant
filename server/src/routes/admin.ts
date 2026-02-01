@@ -1,5 +1,6 @@
 import express from 'express';
-import { AdminService, WorkActivityImportOptions, ImportProgress } from '../services/AdminService';
+import { ImportProgress, WorkActivityImportOptions } from '../services/AdminService';
+import { services } from '../services/container';
 import { requireAuth, getCurrentUser } from '../middleware/auth';
 import { debugLog } from '../utils/logger';
 
@@ -11,7 +12,7 @@ const activeImports = new Map<string, {
 }>();
 
 const router = express.Router();
-const adminService = new AdminService();
+const adminService = services.adminService;
 
 // Middleware to check admin permissions
 const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {

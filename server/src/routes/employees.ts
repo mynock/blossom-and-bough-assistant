@@ -1,12 +1,11 @@
 import express from 'express';
-import { EmployeeService } from '../services/EmployeeService';
-import { WorkActivityService } from '../services/WorkActivityService';
+import { services } from '../services/container';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { calculateEmployeeActivitySummary, EmployeeActivityWithHours } from '../utils/activitySummary';
 
 const router = express.Router();
-const employeeService = new EmployeeService();
-const workActivityService = new WorkActivityService();
+const employeeService = services.employeeService;
+const workActivityService = services.workActivityService;
 
 /**
  * GET /api/employees

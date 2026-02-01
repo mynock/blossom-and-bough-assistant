@@ -1,31 +1,15 @@
 import { Router } from 'express';
-import { ClientService } from '../services/ClientService';
-import { ClientNotesService } from '../services/ClientNotesService';
-import { WorkActivityService } from '../services/WorkActivityService';
-import { SchedulingService } from '../services/SchedulingService';
-import { GoogleSheetsService } from '../services/GoogleSheetsService';
-import { GoogleCalendarService } from '../services/GoogleCalendarService';
-import { AnthropicService } from '../services/AnthropicService';
-import { TravelTimeService } from '../services/TravelTimeService';
+import { services } from '../services/container';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { calculateClientActivitySummary } from '../utils/activitySummary';
 
 const router = Router();
-const clientService = new ClientService();
-const clientNotesService = new ClientNotesService();
-const workActivityService = new WorkActivityService();
 
-// Initialize scheduling service for calendar integration
-const googleSheetsService = new GoogleSheetsService();
-const googleCalendarService = new GoogleCalendarService();
-const anthropicService = new AnthropicService();
-const travelTimeService = new TravelTimeService();
-const schedulingService = new SchedulingService(
-  googleSheetsService,
-  googleCalendarService,
-  anthropicService,
-  travelTimeService
-);
+// Access services through the container
+const clientService = services.clientService;
+const clientNotesService = services.clientNotesService;
+const workActivityService = services.workActivityService;
+const schedulingService = services.schedulingService;
 
 // GET /api/clients - Get all clients with work activity statistics
 router.get('/', asyncHandler(async (req, res) => {

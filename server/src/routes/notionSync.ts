@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { NotionSyncService } from '../services/NotionSyncService';
 import { AnthropicService } from '../services/AnthropicService';
+import { services } from '../services/container';
 import { debugLog } from '../utils/logger';
 
 // Create a factory function that accepts the anthropicService
@@ -303,6 +304,5 @@ export function createNotionSyncRouter(anthropicService: AnthropicService) {
   return router;
 }
 
-// For backward compatibility, export a default router (though this should be deprecated)
-const anthropicService = new AnthropicService();
-export default createNotionSyncRouter(anthropicService); 
+// For backward compatibility, export a default router using service container
+export default createNotionSyncRouter(services.anthropicService); 

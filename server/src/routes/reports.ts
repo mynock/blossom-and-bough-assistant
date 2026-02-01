@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { WorkActivityService } from '../services/WorkActivityService';
+import { services } from '../services/container';
 import { debugLog } from '../utils/logger';
 
 const router = Router();
-const workActivityService = new WorkActivityService();
+const workActivityService = services.workActivityService;
 
 export interface ReportFilters {
   startDate?: string;

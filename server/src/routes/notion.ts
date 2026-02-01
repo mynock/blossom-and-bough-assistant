@@ -1,9 +1,10 @@
 import { Request, Response, Router } from 'express';
-import { NotionService, CreateSmartEntryRequest } from '../services/NotionService';
+import { CreateSmartEntryRequest } from '../services/NotionService';
+import { services } from '../services/container';
 import { debugLog } from '../utils/logger';
 
 const router = Router();
-const notionService = new NotionService();
+const notionService = services.notionService;
 
 // POST /api/notion/create-smart-entry
 router.post('/create-smart-entry', async (req: Request, res: Response) => {
@@ -50,11 +51,7 @@ router.get('/clients', async (req: Request, res: Response) => {
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
     
-    // Import here to avoid circular dependencies
-    const { ClientService } = await import('../services/ClientService');
-    const clientService = new ClientService();
-    
-    const clients = await clientService.getAllClients();
+    const clients = await services.clientService.getAllClients();
     
     // Return only the data needed for the dropdown
     const clientList = clients.map(client => ({

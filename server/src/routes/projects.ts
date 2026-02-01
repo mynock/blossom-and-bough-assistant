@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { ProjectService } from '../services/ProjectService';
+import { services } from '../services/container';
 import { asyncHandler } from '../middleware/asyncHandler';
 
 const router = Router();
-const projectService = new ProjectService();
+const projectService = services.projectService;
 
 // GET /api/projects - Get all projects
 router.get('/', asyncHandler(async (req, res) => {

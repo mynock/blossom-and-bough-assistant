@@ -1,13 +1,13 @@
 import express from 'express';
 import { requireAuth } from '../middleware/auth';
-import { BreakTimeAllocationService } from '../services/BreakTimeAllocationService';
+import { services } from '../services/container';
 
 const router = express.Router();
 
 // Apply auth middleware to all routes
 router.use(requireAuth);
 
-const breakTimeService = new BreakTimeAllocationService();
+const breakTimeService = services.breakTimeAllocationService;
 
 /**
  * Get work activities for a specific date to preview break time allocation

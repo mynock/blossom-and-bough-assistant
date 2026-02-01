@@ -1,8 +1,8 @@
 import express from 'express';
-import { DataMigrationService } from '../services/DataMigrationService';
+import { services } from '../services/container';
 
 const router = express.Router();
-const migrationService = new DataMigrationService();
+const migrationService = services.dataMigrationService;
 
 /**
  * GET /api/migration/status
@@ -170,11 +170,10 @@ router.post('/seed-reset', async (req, res) => {
  */
 router.get('/test-sheets', async (req, res) => {
   try {
-    const { GoogleSheetsService } = await import('../services/GoogleSheetsService');
-    const sheetsService = new GoogleSheetsService();
-    
+    const sheetsService = services.googleSheetsService;
+
     console.log('🧪 Testing Google Sheets connectivity...');
-    
+
     const [employees, clients] = await Promise.all([
       sheetsService.getHelpers(),
       sheetsService.getClients()

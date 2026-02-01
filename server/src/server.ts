@@ -11,13 +11,9 @@ import passport from 'passport';
 import type { CorsOptions } from 'cors';
 import type { Options as MorganOptions } from 'morgan';
 
-import { SchedulingService } from './services/SchedulingService';
-import { GoogleSheetsService } from './services/GoogleSheetsService';
-import { GoogleCalendarService } from './services/GoogleCalendarService';
-import { AnthropicService } from './services/AnthropicService';
-import { TravelTimeService } from './services/TravelTimeService';
 import { AuthService } from './services/AuthService';
 import { CronService } from './services/CronService';
+import { services } from './services/container';
 import { SchedulingRequest, TravelTimeRequest } from './types';
 import workActivitiesRouter from './routes/workActivities';
 import employeesRouter from './routes/employees';
@@ -112,19 +108,11 @@ app.use(passport.session());
 app.use(morgan('combined'));
 app.use(express.json());
 
-// Initialize services
-const googleSheetsService = new GoogleSheetsService();
-const googleCalendarService = new GoogleCalendarService();
-const anthropicService = new AnthropicService();
-const travelTimeService = new TravelTimeService();
+// Initialize services from container
+const schedulingService = services.schedulingService;
+const anthropicService = services.anthropicService;
 const authService = new AuthService();
 const cronService = new CronService();
-const schedulingService = new SchedulingService(
-  googleSheetsService,
-  googleCalendarService,
-  anthropicService,
-  travelTimeService
-);
 
 // Mount authentication routes (before other routes)
 app.use('/api/auth', authRouter);
@@ -266,8 +254,7 @@ app.get('/api/debug/system-prompt', requireAuth, async (req, res) => {
     const { fullContent } = req.query;
     const context = await schedulingService.getSchedulingContext();
     
-    const tempAnthropicService = new AnthropicService();
-    const systemPrompt = tempAnthropicService.buildSystemPrompt(context);
+    const systemPrompt = services.anthropicService.buildSystemPrompt(context);
     
     // Estimate tokens (rough approximation: 1 token ≈ 4 characters)
     const estimateTokens = (text: string) => Math.round(text.length / 4);
@@ -317,12 +304,11 @@ app.post('/api/debug/api-response', requireAuth, async (req, res) => {
     console.log(`📝 Debug query: "${query}"`);
     
     const context = await schedulingService.getSchedulingContext();
-    const tempAnthropicService = new AnthropicService();
-    tempAnthropicService.setSchedulingService(schedulingService);
-    
+    services.anthropicService.setSchedulingService(schedulingService);
+
     // Make the API call and capture detailed response info
     try {
-      const result = await tempAnthropicService.getSchedulingRecommendation(query, context);
+      const result = await services.anthropicService.getSchedulingRecommendation(query, context);
       
       res.json({
         success: true,
@@ -360,7 +346,7 @@ app.post('/api/travel-time', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Both origin and destination are required' });
     }
 
-    const travelInfo = await travelTimeService.calculateTravelTime(origin, destination);
+    const travelInfo = await services.travelTimeService.calculateTravelTime(origin, destination);
     res.json(travelInfo);
   } catch (error) {
     console.error('Error calculating travel time:', error);
@@ -403,7 +389,7 @@ app.post('/api/schedule-optimization', requireAuth, async (req, res) => {
 // Business settings
 app.get('/api/settings', requireAuth, async (req, res) => {
   try {
-    const settings = await googleSheetsService.getBusinessSettings();
+    const settings = await services.googleSheetsService.getBusinessSettings();
     res.json(settings);
   } catch (error) {
     console.error('Error fetching business settings:', error);
@@ -425,7 +411,7 @@ app.post('/api/calendar/template', async (req, res) => {
       });
     }
 
-    const template = googleCalendarService.generateEventTemplate(
+    const template = services.googleCalendarService.generateEventTemplate(
       clientId, 
       helperId, 
       serviceType, 

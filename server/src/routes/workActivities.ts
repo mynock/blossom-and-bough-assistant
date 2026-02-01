@@ -1,9 +1,9 @@
 import express from 'express';
-import { WorkActivityService } from '../services/WorkActivityService';
+import { services } from '../services/container';
 import { asyncHandler } from '../middleware/asyncHandler';
 
 const router = express.Router();
-const workActivityService = new WorkActivityService();
+const workActivityService = services.workActivityService;
 
 /**
  * GET /api/work-activities

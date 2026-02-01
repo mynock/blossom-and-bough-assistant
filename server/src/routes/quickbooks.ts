@@ -1,13 +1,12 @@
 import { Router } from 'express';
-import { QuickBooksService } from '../services/QuickBooksService';
-import { InvoiceService } from '../services/InvoiceService';
+import { services } from '../services/container';
 import { requireAuth } from '../middleware/auth';
 import { invoices, invoiceLineItems, workActivities, clients, otherCharges } from '../db';
 import { eq, and, inArray } from 'drizzle-orm';
 
 const router = Router();
-const qbService = new QuickBooksService();
-const invoiceService = new InvoiceService();
+const qbService = services.quickBooksService;
+const invoiceService = services.invoiceService;
 
 /**
  * Handle OAuth callback (must be public, not require auth)
@@ -188,8 +187,6 @@ router.post('/invoices', async (req, res) => {
     if (useAIGeneration) {
       console.log('🤖 AI enhancement requested');
     }
-    
-    const invoiceService = new InvoiceService();
     
     const result = await invoiceService.createInvoiceFromWorkActivities({
       workActivityIds,
@@ -471,7 +468,6 @@ router.delete('/invoices/:invoiceId', async (req, res) => {
     
     console.log(`Deleting invoice ID: ${invoiceId}`);
     
-    const invoiceService = new InvoiceService();
     await invoiceService.deleteInvoice(invoiceId);
     
     res.json({ 

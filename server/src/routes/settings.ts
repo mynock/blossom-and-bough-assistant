@@ -1,9 +1,9 @@
 import { Router } from 'express';
-import { SettingsService } from '../services/SettingsService';
+import { services } from '../services/container';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
-const settingsService = new SettingsService();
+const settingsService = services.settingsService;
 
 // Apply authentication to all routes
 router.use(requireAuth);
