@@ -1,3 +1,15 @@
+/**
+ * @deprecated This module is deprecated. Use '../services/api' instead.
+ *
+ * This file is being phased out in favor of the consolidated API client
+ * in src/services/api.ts which uses Axios with proper interceptors.
+ *
+ * Migration guide:
+ * - Replace `import { apiClient } from '../config/api'` with `import { apiClient } from '../services/api'`
+ * - Replace `API_ENDPOINTS.X` with the corresponding function in services/api.ts
+ * - For OAuth login URL, use `getOAuthLoginUrl()` from services/api.ts
+ */
+
 // API Configuration
 // This handles the difference between development and production environments
 
