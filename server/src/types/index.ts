@@ -1,3 +1,39 @@
+/**
+ * Canonical Entity Types
+ *
+ * These types are derived from the database schema (Drizzle ORM) and represent
+ * the actual shape of data stored in PostgreSQL. Use these for all database operations.
+ */
+export {
+  type Client as DbClient,
+  type NewClient,
+  type Employee as DbEmployee,
+  type NewEmployee,
+  type WorkActivity as DbWorkActivity,
+  type NewWorkActivity,
+  type WorkActivityEmployee,
+  type NewWorkActivityEmployee,
+  type Project as DbProject,
+  type NewProject,
+  type OtherCharge,
+  type NewOtherCharge,
+  type ClientNote,
+  type NewClientNote,
+} from '../db/schema';
+
+/**
+ * @deprecated Legacy Types
+ *
+ * The types below are from an earlier design and don't match the current database schema.
+ * They are kept for backwards compatibility with code that still references them.
+ *
+ * Migration guide:
+ * - For database operations, use the DbXxx types above (e.g., DbClient, DbEmployee)
+ * - For API responses, the database types should be used
+ * - These legacy types may be removed in a future update
+ */
+
+/** @deprecated Use DbEmployee from '../db/schema' for database operations */
 export interface Helper {
   id: string;
   name: string;
@@ -16,6 +52,7 @@ export interface Helper {
   };
 }
 
+/** @deprecated Use DbClient from '../db/schema' for database operations */
 export interface Client {
   id: string;
   name: string;
@@ -42,6 +79,7 @@ export interface Client {
   notes?: string;
 }
 
+/** @deprecated Use DbProject from '../db/schema' for database operations */
 export interface Project {
   id: string;
   clientId: string;
