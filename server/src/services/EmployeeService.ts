@@ -1,112 +1,78 @@
-import { DatabaseService } from './DatabaseService';
+import { BaseCrudService } from './BaseCrudService';
 import { employees, type Employee, type NewEmployee } from '../db';
-import { eq, like } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
-export class EmployeeService extends DatabaseService {
-  
+export class EmployeeService extends BaseCrudService<typeof employees, Employee, NewEmployee> {
+  protected table = employees;
+  protected idColumn = employees.id;
+
   /**
    * Get all employees
    */
   async getAllEmployees(): Promise<Employee[]> {
-    return await this.db.select().from(employees);
+    return this.getAll();
   }
 
   /**
    * Get an employee by ID
    */
   async getEmployeeById(id: number): Promise<Employee | undefined> {
-    const results = await this.db
-      .select()
-      .from(employees)
-      .where(eq(employees.id, id));
-    
-    return results[0];
+    return this.getById(id);
   }
 
   /**
    * Get an employee by employee ID (external identifier)
    */
   async getEmployeeByEmployeeId(employeeId: string): Promise<Employee | undefined> {
-    const results = await this.db
-      .select()
-      .from(employees)
-      .where(eq(employees.employeeId, employeeId));
-    
-    return results[0];
+    return this.getOneWhere(eq(employees.employeeId, employeeId));
   }
 
   /**
    * Create a new employee
    */
   async createEmployee(data: NewEmployee): Promise<Employee> {
-    const results = await this.db
-      .insert(employees)
-      .values(data)
-      .returning();
-    
-    return results[0];
+    return this.create(data);
   }
 
   /**
    * Update an employee
    */
   async updateEmployee(id: number, data: Partial<NewEmployee>): Promise<Employee | undefined> {
-    const results = await this.db
-      .update(employees)
-      .set({ ...data, updatedAt: this.formatTimestamp(new Date()) })
-      .where(eq(employees.id, id))
-      .returning();
-    
-    return results[0];
+    return this.update(id, data);
   }
 
   /**
    * Delete an employee
    */
   async deleteEmployee(id: number): Promise<boolean> {
-    const result = await this.db.delete(employees).where(eq(employees.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return this.delete(id);
   }
 
   /**
    * Search employees by name
    */
   async searchEmployeesByName(searchTerm: string): Promise<Employee[]> {
-    return await this.db
-      .select()
-      .from(employees)
-      .where(like(employees.name, `%${searchTerm}%`));
+    return this.searchByColumn(employees.name, searchTerm);
   }
 
   /**
    * Get active employees only
    */
   async getActiveEmployees(): Promise<Employee[]> {
-    return await this.db
-      .select()
-      .from(employees)
-      .where(eq(employees.activeStatus, 'active'));
+    return this.getWhere(eq(employees.activeStatus, 'active'));
   }
 
   /**
    * Get employees available on specific workdays
    */
   async getEmployeesByWorkdays(workdays: string): Promise<Employee[]> {
-    return await this.db
-      .select()
-      .from(employees)
-      .where(like(employees.regularWorkdays, `%${workdays}%`));
+    return this.searchByColumn(employees.regularWorkdays, workdays);
   }
 
   /**
    * Get an employee by name (exact match)
    */
   async getEmployeeByName(name: string): Promise<Employee | undefined> {
-    const results = await this.db
-      .select()
-      .from(employees)
-      .where(eq(employees.name, name));
-    
-    return results[0];
+    return this.getOneWhere(eq(employees.name, name));
   }
-} 
+}

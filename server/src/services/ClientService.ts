@@ -1,14 +1,16 @@
-import { DatabaseService } from './DatabaseService';
+import { BaseCrudService } from './BaseCrudService';
 import { clients, workActivities, type Client, type NewClient } from '../db';
-import { eq, like, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
-export class ClientService extends DatabaseService {
-  
+export class ClientService extends BaseCrudService<typeof clients, Client, NewClient> {
+  protected table = clients;
+  protected idColumn = clients.id;
+
   /**
    * Get all clients
    */
   async getAllClients(): Promise<Client[]> {
-    return await this.db.select().from(clients);
+    return this.getAll();
   }
 
   /**
@@ -58,88 +60,55 @@ export class ClientService extends DatabaseService {
    * Get a client by ID
    */
   async getClientById(id: number): Promise<Client | undefined> {
-    const results = await this.db
-      .select()
-      .from(clients)
-      .where(eq(clients.id, id));
-    
-    return results[0];
+    return this.getById(id);
   }
 
   /**
    * Get a client by client ID (external identifier)
    */
   async getClientByClientId(clientId: string): Promise<Client | undefined> {
-    const results = await this.db
-      .select()
-      .from(clients)
-      .where(eq(clients.clientId, clientId));
-    
-    return results[0];
+    return this.getOneWhere(eq(clients.clientId, clientId));
   }
 
   /**
    * Create a new client
    */
   async createClient(data: NewClient): Promise<Client> {
-    const results = await this.db
-      .insert(clients)
-      .values(data)
-      .returning();
-    
-    return results[0];
+    return this.create(data);
   }
 
   /**
    * Update a client
    */
   async updateClient(id: number, data: Partial<NewClient>): Promise<Client | undefined> {
-    const results = await this.db
-      .update(clients)
-      .set({ ...data, updatedAt: this.formatTimestamp(new Date()) })
-      .where(eq(clients.id, id))
-      .returning();
-    
-    return results[0];
+    return this.update(id, data);
   }
 
   /**
    * Delete a client
    */
   async deleteClient(id: number): Promise<boolean> {
-    const result = await this.db.delete(clients).where(eq(clients.id, id));
-    return (result.rowCount ?? 0) > 0;
+    return this.delete(id);
   }
 
   /**
    * Search clients by name
    */
   async searchClientsByName(searchTerm: string): Promise<Client[]> {
-    return await this.db
-      .select()
-      .from(clients)
-      .where(like(clients.name, `%${searchTerm}%`));
+    return this.searchByColumn(clients.name, searchTerm);
   }
 
   /**
    * Get active clients only
    */
   async getActiveClients(): Promise<Client[]> {
-    return await this.db
-      .select()
-      .from(clients)
-      .where(eq(clients.activeStatus, 'active'));
+    return this.getWhere(eq(clients.activeStatus, 'active'));
   }
 
   /**
    * Get a client by name (exact match)
    */
   async getClientByName(name: string): Promise<Client | undefined> {
-    const results = await this.db
-      .select()
-      .from(clients)
-      .where(eq(clients.name, name));
-    
-    return results[0];
+    return this.getOneWhere(eq(clients.name, name));
   }
-} 
+}
