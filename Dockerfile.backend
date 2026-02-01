@@ -11,20 +11,20 @@ RUN adduser -S nodejs -u 1001
 # Set working directory
 WORKDIR /app
 
+# Prepare app directories and ownership before installs
+RUN mkdir -p /app/server && chown -R nodejs:nodejs /app
+USER nodejs
+
 # Copy package files for root and server
-COPY package*.json ./
-COPY server/package*.json ./server/
+COPY --chown=nodejs:nodejs package*.json ./
+COPY --chown=nodejs:nodejs server/package*.json ./server/
 
 # Install dependencies
 RUN npm ci
 RUN cd server && npm ci
 
 # Copy source code
-COPY . .
-
-# Change ownership to nodejs user
-RUN chown -R nodejs:nodejs /app
-USER nodejs
+COPY --chown=nodejs:nodejs . .
 
 # Change to server directory
 WORKDIR /app/server
