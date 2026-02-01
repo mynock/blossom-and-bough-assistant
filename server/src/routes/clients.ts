@@ -8,6 +8,7 @@ import { GoogleCalendarService } from '../services/GoogleCalendarService';
 import { AnthropicService } from '../services/AnthropicService';
 import { TravelTimeService } from '../services/TravelTimeService';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { calculateClientActivitySummary } from '../utils/activitySummary';
 
 const router = Router();
 const clientService = new ClientService();
@@ -55,30 +56,7 @@ router.get('/:id/work-activities', asyncHandler(async (req, res) => {
   }
 
   const activities = await workActivityService.getWorkActivitiesByClientId(id);
-
-  // Calculate summary statistics
-  const summary = {
-    totalActivities: activities.length,
-    totalHours: activities.reduce((sum, a) => sum + a.totalHours, 0),
-    totalBillableHours: activities.reduce((sum, a) => sum + (a.billableHours || 0), 0),
-    totalCharges: activities.reduce((sum, a) => sum + a.totalCharges, 0),
-    statusBreakdown: activities.reduce((acc, a) => {
-      acc[a.status] = (acc[a.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    workTypeBreakdown: activities.reduce((acc, a) => {
-      acc[a.workType] = (acc[a.workType] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>),
-    lastActivityDate: activities.length > 0 ? activities[0].date : null,
-    yearToDateHours: activities
-      .filter(a => {
-        const activityYear = new Date(a.date).getFullYear();
-        const currentYear = new Date().getFullYear();
-        return activityYear === currentYear;
-      })
-      .reduce((sum, a) => sum + a.totalHours, 0)
-  };
+  const summary = calculateClientActivitySummary(activities);
 
   res.json({ activities, summary });
 }));

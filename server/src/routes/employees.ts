@@ -2,6 +2,7 @@ import express from 'express';
 import { EmployeeService } from '../services/EmployeeService';
 import { WorkActivityService } from '../services/WorkActivityService';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { calculateEmployeeActivitySummary, EmployeeActivityWithHours } from '../utils/activitySummary';
 
 const router = express.Router();
 const employeeService = new EmployeeService();
@@ -76,94 +77,13 @@ router.get('/:id/work-activities', asyncHandler(async (req, res) => {
   // Get work activities for this employee
   const activities = await workActivityService.getWorkActivitiesByEmployeeId(id);
 
-  // Calculate summary statistics
-  const totalActivities = activities.length;
-  const totalHours = activities.reduce((sum, activity) => {
-    const employeeHours = activity.employeesList.find(emp => emp.employeeId === id)?.hours || 0;
-    return sum + employeeHours;
-  }, 0);
-
-  const totalBillableHours = activities.reduce((sum, activity) => {
-    if ((activity as any).billableHours && activity.employeesList.some(emp => emp.employeeId === id)) {
-      const employeeHours = activity.employeesList.find(emp => emp.employeeId === id)?.hours || 0;
-      const billableRatio = (activity as any).billableHours / (activity as any).totalHours;
-      return sum + (employeeHours * billableRatio);
-    }
-    return sum;
-  }, 0);
-
-  const totalEarnings = activities.reduce((sum, activity) => {
-    const employeeHours = activity.employeesList.find(emp => emp.employeeId === id)?.hours || 0;
-    const hourlyRate = (activity as any).hourlyRate || employee.hourlyRate || 0;
-    return sum + (employeeHours * hourlyRate);
-  }, 0);
-
-  // Status breakdown
-  const statusBreakdown: Record<string, number> = {};
-  activities.forEach(activity => {
-    statusBreakdown[(activity as any).status] = (statusBreakdown[(activity as any).status] || 0) + 1;
-  });
-
-  // Work type breakdown
-  const workTypeBreakdown: Record<string, number> = {};
-  activities.forEach(activity => {
-    workTypeBreakdown[(activity as any).workType] = (workTypeBreakdown[(activity as any).workType] || 0) + 1;
-  });
-
-  // Find last activity date
-  const lastActivityDate = activities.length > 0 ? (activities[0] as any).date : null;
-
-  // Calculate year-to-date hours (current year)
-  const currentYear = new Date().getFullYear();
-  const yearToDateHours = activities
-    .filter(activity => new Date((activity as any).date).getFullYear() === currentYear)
-    .reduce((sum, activity) => {
-      const employeeHours = activity.employeesList.find(emp => emp.employeeId === id)?.hours || 0;
-      return sum + employeeHours;
-    }, 0);
-
-  // Calculate average hours per day (based on activities in last 30 days)
-  const thirtyDaysAgo = new Date();
-  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-  const recentActivities = activities.filter(activity =>
-    new Date((activity as any).date) >= thirtyDaysAgo
+  // Cast activities to the expected type for summary calculation
+  const activitiesWithHours = activities as unknown as EmployeeActivityWithHours[];
+  const summary = calculateEmployeeActivitySummary(
+    activitiesWithHours,
+    id,
+    employee.hourlyRate
   );
-
-  const recentTotalHours = recentActivities.reduce((sum, activity) => {
-    const employeeHours = activity.employeesList.find(emp => emp.employeeId === id)?.hours || 0;
-    return sum + employeeHours;
-  }, 0);
-
-  const uniqueDays = new Set(recentActivities.map(activity => (activity as any).date)).size;
-  const averageHoursPerDay = uniqueDays > 0 ? recentTotalHours / uniqueDays : 0;
-
-  // Calculate completion rate
-  const completedActivities = activities.filter(activity =>
-    (activity as any).status === 'completed' || (activity as any).status === 'invoiced'
-  ).length;
-  const completionRate = totalActivities > 0 ? (completedActivities / totalActivities) * 100 : 0;
-
-  // Get unique clients worked with
-  const clientsWorkedWith = [...new Set(
-    activities
-      .filter(activity => activity.clientName)
-      .map(activity => activity.clientName!)
-  )];
-
-  const summary = {
-    totalActivities,
-    totalHours,
-    totalBillableHours,
-    totalEarnings,
-    statusBreakdown,
-    workTypeBreakdown,
-    lastActivityDate,
-    yearToDateHours,
-    averageHoursPerDay,
-    completionRate,
-    clientsWorkedWith
-  };
 
   res.json({
     activities,
