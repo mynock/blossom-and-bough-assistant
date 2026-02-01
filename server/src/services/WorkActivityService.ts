@@ -43,6 +43,47 @@ export interface WorkActivityWithDetails extends WorkActivity {
   totalCharges: number;
 }
 
+/**
+ * Reusable select fields for work activity queries.
+ * This constant is used across multiple methods to ensure consistency
+ * and reduce duplication.
+ */
+const WORK_ACTIVITY_SELECT_FIELDS = {
+  id: workActivities.id,
+  workType: workActivities.workType,
+  date: workActivities.date,
+  status: workActivities.status,
+  startTime: workActivities.startTime,
+  endTime: workActivities.endTime,
+  billableHours: workActivities.billableHours,
+  totalHours: workActivities.totalHours,
+  hourlyRate: workActivities.hourlyRate,
+  projectId: workActivities.projectId,
+  clientId: workActivities.clientId,
+  travelTimeMinutes: workActivities.travelTimeMinutes,
+  adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
+  breakTimeMinutes: workActivities.breakTimeMinutes,
+  adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
+  nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
+  notes: workActivities.notes,
+  tasks: workActivities.tasks,
+  notionPageId: workActivities.notionPageId,
+  lastNotionSyncAt: workActivities.lastNotionSyncAt,
+  lastUpdatedBy: workActivities.lastUpdatedBy,
+  createdAt: workActivities.createdAt,
+  updatedAt: workActivities.updatedAt,
+} as const;
+
+/**
+ * Select fields including joined client and project names.
+ * Used for queries that need related entity names.
+ */
+const WORK_ACTIVITY_WITH_RELATIONS_SELECT = {
+  ...WORK_ACTIVITY_SELECT_FIELDS,
+  clientName: clients.name,
+  projectName: projects.name,
+} as const;
+
 export class WorkActivityService extends DatabaseService {
   private settingsService: SettingsService;
 
@@ -97,33 +138,7 @@ export class WorkActivityService extends DatabaseService {
 
     // Build the base query
     const baseQuery = this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id));
@@ -162,33 +177,7 @@ export class WorkActivityService extends DatabaseService {
    */
   async getWorkActivityById(id: number): Promise<WorkActivityWithDetails | undefined> {
     const results = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
@@ -216,33 +205,7 @@ export class WorkActivityService extends DatabaseService {
    */
   async getWorkActivitiesByDateRange(startDate: string, endDate: string): Promise<WorkActivityWithDetails[]> {
     const activities = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
@@ -561,33 +524,7 @@ export class WorkActivityService extends DatabaseService {
    */
   async findExistingWorkActivities(clientId: number, date: string): Promise<WorkActivityWithDetails[]> {
     const activities = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
@@ -623,33 +560,7 @@ export class WorkActivityService extends DatabaseService {
    */
   async getWorkActivitiesByClientId(clientId: number): Promise<WorkActivityWithDetails[]> {
     const activities = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
@@ -683,33 +594,7 @@ export class WorkActivityService extends DatabaseService {
   async getWorkActivitiesByEmployeeId(employeeId: number): Promise<WorkActivityWithDetails[]> {
     // Use a join query to get activities where the employee participated
     const activities = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .innerJoin(workActivityEmployees, eq(workActivities.id, workActivityEmployees.workActivityId))
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
@@ -743,33 +628,7 @@ export class WorkActivityService extends DatabaseService {
    */
   async getWorkActivityByNotionPageId(notionPageId: string): Promise<WorkActivityWithDetails | undefined> {
     const results = await this.db
-      .select({
-        id: workActivities.id,
-        workType: workActivities.workType,
-        date: workActivities.date,
-        status: workActivities.status,
-        startTime: workActivities.startTime,
-        endTime: workActivities.endTime,
-        billableHours: workActivities.billableHours,
-        totalHours: workActivities.totalHours,
-        hourlyRate: workActivities.hourlyRate,
-        projectId: workActivities.projectId,
-        clientId: workActivities.clientId,
-        travelTimeMinutes: workActivities.travelTimeMinutes,
-        adjustedTravelTimeMinutes: workActivities.adjustedTravelTimeMinutes,
-        breakTimeMinutes: workActivities.breakTimeMinutes,
-        adjustedBreakTimeMinutes: workActivities.adjustedBreakTimeMinutes,
-        nonBillableTimeMinutes: workActivities.nonBillableTimeMinutes,
-        notes: workActivities.notes,
-        tasks: workActivities.tasks,
-        notionPageId: workActivities.notionPageId,
-        lastNotionSyncAt: workActivities.lastNotionSyncAt,
-        lastUpdatedBy: workActivities.lastUpdatedBy,
-        createdAt: workActivities.createdAt,
-        updatedAt: workActivities.updatedAt,
-        clientName: clients.name,
-        projectName: projects.name
-      })
+      .select(WORK_ACTIVITY_WITH_RELATIONS_SELECT)
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
