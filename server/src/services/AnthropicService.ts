@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
 import { debugLog } from '../utils/logger';
+import { ANTHROPIC_MODEL } from '../constants';
 
 export interface ParsedWorkActivity {
   date: string;
@@ -106,7 +107,7 @@ export class AnthropicService {
       ];
       
       let currentMessage = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         temperature: 0.3,
         system: systemPrompt,
@@ -163,7 +164,7 @@ export class AnthropicService {
         
         // Continue conversation - no conversation trimming
         currentMessage = await this.client.messages.create({
-          model: 'claude-sonnet-4-20250514',
+          model: ANTHROPIC_MODEL,
           max_tokens: 4000,
           temperature: 0.3,
           system: systemPrompt,
@@ -830,7 +831,7 @@ Return the processed data as a JSON object with this exact structure:
       console.log('📝 Input data keys:', Object.keys(notionData));
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         messages: [
           {
@@ -988,7 +989,7 @@ Return the data as a JSON object with this exact structure:
       console.log('📝 Input length:', workNotesText.length, 'characters');
 
       const response = await this.client.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: ANTHROPIC_MODEL,
         max_tokens: 8000,
         messages: [
           {
@@ -1289,7 +1290,7 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
     console.log(`🤖 Calling Claude Sonnet 4 for batch ${batchNumber}...`);
     
     const response = await this.client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ANTHROPIC_MODEL,
       max_tokens: 8000, // Smaller batches = less tokens needed
       temperature: 0.1,
       system: systemPrompt,
@@ -1476,7 +1477,7 @@ CRITICAL:
 
     try {
       const response = await this.client.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         temperature: 0.3,
         system: systemPrompt,

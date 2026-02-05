@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { debugLog } from '../utils/logger';
+import { ANTHROPIC_MODEL } from '../constants';
 
 export interface SQLQueryResult {
   query: string;
@@ -82,7 +83,7 @@ export class NaturalLanguageSQLService {
     const systemPrompt = this.buildSQLGenerationPrompt();
 
     const response = await this.client!.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ANTHROPIC_MODEL,
       max_tokens: 2000,
       temperature: 0.1,
       system: systemPrompt,
@@ -169,7 +170,7 @@ Provide analysis in this JSON format:
 Only include chartConfig if the data is suitable for visualization (has numeric values and categorical data).`;
 
     const response = await this.client!.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: ANTHROPIC_MODEL,
       max_tokens: 1500,
       temperature: 0.3,
       system: systemPrompt,
