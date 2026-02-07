@@ -82,9 +82,7 @@ router.get('/time-series', async (req, res) => {
     let filteredActivities = activities;
     if (filters.dayOfWeek) {
       filteredActivities = activities.filter(activity => {
-        const activityDate = new Date(activity.date);
-        const dayName = activityDate.toLocaleDateString('en-US', { weekday: 'long' });
-        return dayName === filters.dayOfWeek;
+        return getDayName(activity.date) === filters.dayOfWeek;
       });
     }
 
@@ -126,9 +124,7 @@ router.get('/summary', async (req, res) => {
     let filteredActivities = activities;
     if (filters.dayOfWeek) {
       filteredActivities = activities.filter(activity => {
-        const activityDate = new Date(activity.date);
-        const dayName = activityDate.toLocaleDateString('en-US', { weekday: 'long' });
-        return dayName === filters.dayOfWeek;
+        return getDayName(activity.date) === filters.dayOfWeek;
       });
     }
 
@@ -143,27 +139,57 @@ router.get('/summary', async (req, res) => {
 });
 
 /**
+ * Parse a 'YYYY-MM-DD' date string into { year, month, day } without timezone issues.
+ * Using new Date('YYYY-MM-DD') creates a UTC date, but getDay()/getMonth()/etc.
+ * use local time, which shifts dates back by one day in western timezones.
+ */
+export function parseDateParts(dateStr: string): { year: number; month: number; day: number } {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  return { year, month, day };
+}
+
+/**
+ * Get the day of the week for a YYYY-MM-DD date string (0=Sunday, 6=Saturday).
+ * Uses UTC methods to avoid timezone issues.
+ */
+export function getDayOfWeek(dateStr: string): number {
+  const { year, month, day } = parseDateParts(dateStr);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
+/**
+ * Get the weekday name for a YYYY-MM-DD date string.
+ */
+export function getDayName(dateStr: string): string {
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return days[getDayOfWeek(dateStr)];
+}
+
+/**
  * Helper function to group activities by time period
  */
-function groupActivitiesByTimePeriod(activities: any[], groupBy: string): TimeSeriesDataPoint[] {
+export function groupActivitiesByTimePeriod(activities: any[], groupBy: string): TimeSeriesDataPoint[] {
   const groupedMap = new Map<string, TimeSeriesDataPoint>();
 
   activities.forEach(activity => {
-    const date = new Date(activity.date);
+    const { year, month, day } = parseDateParts(activity.date);
     let groupKey: string;
 
     switch (groupBy) {
-      case 'week':
-        // Get Monday of the week
-        const monday = new Date(date);
-        monday.setDate(date.getDate() - date.getDay() + 1);
-        groupKey = monday.toISOString().split('T')[0];
+      case 'week': {
+        // Get Monday of the week using UTC to avoid timezone shifts
+        const utcDate = new Date(Date.UTC(year, month - 1, day));
+        const dayOfWeek = utcDate.getUTCDay();
+        const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        utcDate.setUTCDate(utcDate.getUTCDate() + mondayOffset);
+        groupKey = utcDate.toISOString().split('T')[0];
         break;
+      }
       case 'month':
-        groupKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-01`;
+        groupKey = `${year}-${String(month).padStart(2, '0')}-01`;
         break;
       case 'year':
-        groupKey = `${date.getFullYear()}-01-01`;
+        groupKey = `${year}-01-01`;
         break;
       default: // day
         groupKey = activity.date;
@@ -181,28 +207,28 @@ function groupActivitiesByTimePeriod(activities: any[], groupBy: string): TimeSe
     }
 
     const groupData = groupedMap.get(groupKey)!;
-    groupData.billableHours += activity.billableHours || 0;
-    groupData.totalHours += activity.totalHours || 0;
-    groupData.travelTimeHours += (activity.adjustedTravelTimeMinutes || activity.travelTimeMinutes || 0) / 60;
-    groupData.breakTimeHours += (activity.adjustedBreakTimeMinutes || activity.breakTimeMinutes || 0) / 60;
+    groupData.billableHours += activity.billableHours ?? 0;
+    groupData.totalHours += activity.totalHours ?? 0;
+    groupData.travelTimeHours += ((activity.adjustedTravelTimeMinutes ?? activity.travelTimeMinutes ?? 0) / 60);
+    groupData.breakTimeHours += ((activity.adjustedBreakTimeMinutes ?? activity.breakTimeMinutes ?? 0) / 60);
   });
 
   // Convert map to array and sort by date
-  return Array.from(groupedMap.values()).sort((a, b) => 
-    new Date(a.date).getTime() - new Date(b.date).getTime()
+  return Array.from(groupedMap.values()).sort((a, b) =>
+    a.date.localeCompare(b.date)
   );
 }
 
 /**
  * Helper function to calculate summary statistics
  */
-function calculateReportSummary(activities: any[]): ReportSummary {
-  const totalBillableHours = activities.reduce((sum, a) => sum + (a.billableHours || 0), 0);
-  const totalHours = activities.reduce((sum, a) => sum + (a.totalHours || 0), 0);
-  const totalTravelTimeHours = activities.reduce((sum, a) => 
-    sum + ((a.adjustedTravelTimeMinutes || a.travelTimeMinutes || 0) / 60), 0);
-  const totalBreakTimeHours = activities.reduce((sum, a) => 
-    sum + ((a.adjustedBreakTimeMinutes || a.breakTimeMinutes || 0) / 60), 0);
+export function calculateReportSummary(activities: any[]): ReportSummary {
+  const totalBillableHours = activities.reduce((sum, a) => sum + (a.billableHours ?? 0), 0);
+  const totalHours = activities.reduce((sum, a) => sum + (a.totalHours ?? 0), 0);
+  const totalTravelTimeHours = activities.reduce((sum, a) =>
+    sum + ((a.adjustedTravelTimeMinutes ?? a.travelTimeMinutes ?? 0) / 60), 0);
+  const totalBreakTimeHours = activities.reduce((sum, a) =>
+    sum + ((a.adjustedBreakTimeMinutes ?? a.breakTimeMinutes ?? 0) / 60), 0);
 
   // Client breakdown
   const clientMap = new Map<number, any>();
@@ -218,8 +244,8 @@ function calculateReportSummary(activities: any[]): ReportSummary {
         });
       }
       const client = clientMap.get(activity.clientId)!;
-      client.billableHours += activity.billableHours || 0;
-      client.totalHours += activity.totalHours || 0;
+      client.billableHours += activity.billableHours ?? 0;
+      client.totalHours += activity.totalHours ?? 0;
       client.activities += 1;
     }
   });
@@ -240,7 +266,7 @@ function calculateReportSummary(activities: any[]): ReportSummary {
       const employee = employeeMap.get(emp.employeeId)!;
       // Proportional allocation based on employee hours vs total activity hours
       const proportion = emp.hours / (activity.totalHours || 1);
-      employee.billableHours += (activity.billableHours || 0) * proportion;
+      employee.billableHours += (activity.billableHours ?? 0) * proportion;
       employee.totalHours += emp.hours;
       employee.activities += 1;
     });
@@ -249,9 +275,8 @@ function calculateReportSummary(activities: any[]): ReportSummary {
   // Day of week breakdown
   const dayOfWeekMap = new Map<string, any>();
   activities.forEach(activity => {
-    const date = new Date(activity.date);
-    const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
-    
+    const dayName = getDayName(activity.date);
+
     if (!dayOfWeekMap.has(dayName)) {
       dayOfWeekMap.set(dayName, {
         dayOfWeek: dayName,
@@ -261,8 +286,8 @@ function calculateReportSummary(activities: any[]): ReportSummary {
       });
     }
     const day = dayOfWeekMap.get(dayName)!;
-    day.billableHours += activity.billableHours || 0;
-    day.totalHours += activity.totalHours || 0;
+    day.billableHours += activity.billableHours ?? 0;
+    day.totalHours += activity.totalHours ?? 0;
     day.activities += 1;
   });
 
