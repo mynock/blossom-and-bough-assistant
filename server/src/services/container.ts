@@ -32,6 +32,7 @@ import { TravelTimeService } from './TravelTimeService';
 import { SchedulingService } from './SchedulingService';
 import { ClickUpService } from './ClickUpService';
 import { VoiceTodoService } from './VoiceTodoService';
+import { ProductionPullService } from './ProductionPullService';
 
 class ServiceContainer {
   // Core business services
@@ -71,6 +72,9 @@ class ServiceContainer {
 
   // Migration service
   private _dataMigrationService?: DataMigrationService;
+
+  // Production pull service
+  private _productionPullService?: ProductionPullService;
 
   // Core business services
   get clientService(): ClientService {
@@ -176,6 +180,11 @@ class ServiceContainer {
   // Migration service
   get dataMigrationService(): DataMigrationService {
     return this._dataMigrationService ??= new DataMigrationService();
+  }
+
+  // Production pull service
+  get productionPullService(): ProductionPullService {
+    return this._productionPullService ??= new ProductionPullService();
   }
 }
 

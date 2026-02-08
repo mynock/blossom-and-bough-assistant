@@ -1,5 +1,6 @@
 import express from 'express';
 import { ImportProgress, WorkActivityImportOptions } from '../services/AdminService';
+import { PullProgress } from '../services/ProductionPullService';
 import { services } from '../services/container';
 import { requireAuth, getCurrentUser } from '../middleware/auth';
 import { debugLog } from '../utils/logger';
@@ -7,6 +8,13 @@ import { debugLog } from '../utils/logger';
 // Store active import sessions for progress tracking
 const activeImports = new Map<string, {
   progress: ImportProgress[];
+  isComplete: boolean;
+  result?: any;
+}>();
+
+// Store active production pull sessions for progress tracking
+const activePulls = new Map<string, {
+  progress: PullProgress[];
   isComplete: boolean;
   result?: any;
 }>();
@@ -497,4 +505,144 @@ router.get('/google-auth-config', async (req, res) => {
   }
 });
 
-export default router; 
+/**
+ * Start a pull from production
+ */
+router.post('/pull-from-production', async (req, res) => {
+  try {
+    const user = getCurrentUser(req);
+    const { startDate, endDate, dryRun = true, force = false } = req.body;
+
+    debugLog.info('Admin: Pull from production requested', { userId: user?.id, startDate, endDate, dryRun, force });
+
+    // Generate unique session ID for progress tracking
+    const sessionId = `pull_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Initialize progress tracking
+    activePulls.set(sessionId, {
+      progress: [],
+      isComplete: false,
+    });
+
+    const pullService = services.productionPullService;
+
+    // Start pull in background
+    (async () => {
+      try {
+        // Phase 1: Fetch data from production
+        const session = activePulls.get(sessionId);
+        if (session) {
+          session.progress.push({
+            phase: 'fetching',
+            message: 'Fetching data from production server...',
+          });
+        }
+
+        const data = await pullService.fetchFromProduction({ startDate, endDate, dryRun, force });
+
+        if (session) {
+          session.progress.push({
+            phase: 'fetching',
+            message: `Fetched ${data.activities.length} activities, ${data.clients.length} clients, ${data.employees.length} employees from production`,
+          });
+        }
+
+        // Phase 2: Import data locally
+        const result = await pullService.importData(data, { startDate, endDate, dryRun, force }, (progress) => {
+          const s = activePulls.get(sessionId);
+          if (s) {
+            s.progress.push(progress);
+          }
+        });
+
+        const s = activePulls.get(sessionId);
+        if (s) {
+          s.isComplete = true;
+          s.result = result;
+        }
+
+        debugLog.info('Admin: Pull from production completed', {
+          userId: user?.id,
+          sessionId,
+          success: result.success,
+          duration: result.duration,
+        });
+      } catch (error) {
+        const s = activePulls.get(sessionId);
+        if (s) {
+          s.isComplete = true;
+          s.progress.push({
+            phase: 'error',
+            message: `Pull failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          });
+          s.result = {
+            success: false,
+            message: 'Pull failed',
+            duration: 0,
+            error: error instanceof Error ? error.message : 'Unknown error',
+          };
+        }
+
+        debugLog.error('Admin: Pull from production failed', {
+          userId: user?.id,
+          sessionId,
+          error,
+        });
+      }
+    })();
+
+    // Return session ID for progress tracking
+    res.json({
+      success: true,
+      message: 'Pull started',
+      sessionId,
+    });
+  } catch (error) {
+    debugLog.error('Admin: Error starting pull from production', { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start pull',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * Get pull from production progress
+ */
+router.get('/pull-from-production/progress/:sessionId', async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const session = activePulls.get(sessionId);
+
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pull session not found',
+      });
+    }
+
+    res.json({
+      success: true,
+      progress: session.progress,
+      isComplete: session.isComplete,
+      result: session.result,
+    });
+
+    // Clean up completed sessions after 5 minutes
+    if (session.isComplete) {
+      setTimeout(() => {
+        activePulls.delete(sessionId);
+      }, 5 * 60 * 1000);
+    }
+  } catch (error) {
+    debugLog.error('Admin: Error getting pull progress', { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get pull progress',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+export default router;
