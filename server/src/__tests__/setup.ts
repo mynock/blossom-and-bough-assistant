@@ -18,6 +18,7 @@ jest.mock('../services/GoogleSheetsService');
 jest.mock('../services/QuickBooksService');
 jest.mock('../services/NotionService');
 jest.mock('../services/AnthropicService');
+jest.mock('../services/ClickUpService');
 jest.mock('../utils/googleAuth');
 
 // Global test timeout
