@@ -30,6 +30,7 @@ import { GoogleCalendarService } from './GoogleCalendarService';
 import { AnthropicService } from './AnthropicService';
 import { TravelTimeService } from './TravelTimeService';
 import { SchedulingService } from './SchedulingService';
+import { ProductionPullService } from './ProductionPullService';
 
 class ServiceContainer {
   // Core business services
@@ -65,6 +66,9 @@ class ServiceContainer {
 
   // Migration service
   private _dataMigrationService?: DataMigrationService;
+
+  // Production pull service
+  private _productionPullService?: ProductionPullService;
 
   // Core business services
   get clientService(): ClientService {
@@ -156,6 +160,11 @@ class ServiceContainer {
   // Migration service
   get dataMigrationService(): DataMigrationService {
     return this._dataMigrationService ??= new DataMigrationService();
+  }
+
+  // Production pull service
+  get productionPullService(): ProductionPullService {
+    return this._productionPullService ??= new ProductionPullService();
   }
 }
 
