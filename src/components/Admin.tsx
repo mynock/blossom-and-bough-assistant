@@ -43,6 +43,7 @@ import {
   Refresh,
   Storage,
   CloudUpload,
+  CloudDownload,
   DeleteForever,
   Warning,
   CheckCircle,
@@ -159,6 +160,20 @@ const Admin: React.FC = () => {
   const [, setImportResult] = useState<ImportResult | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showProgressDetails, setShowProgressDetails] = useState(false);
+
+  // Production Pull State
+  const [pullStartDate, setPullStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [pullEndDate, setPullEndDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
+  const [pullDryRun, setPullDryRun] = useState(true);
+  const [pullForce, setPullForce] = useState(false);
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullProgress, setPullProgress] = useState<ImportProgress[]>([]);
+  const [pullResult, setPullResult] = useState<any>(null);
+  const [showPullDetails, setShowPullDetails] = useState(false);
 
   useEffect(() => {
     loadStatus();
@@ -417,6 +432,61 @@ const Admin: React.FC = () => {
       batchSize: 8,
       force: false
     });
+  };
+
+  // Production Pull Functions
+  const startProductionPull = async () => {
+    setIsPulling(true);
+    setPullProgress([]);
+    setPullResult(null);
+
+    try {
+      const response = await api.post('/admin/pull-from-production', {
+        startDate: pullStartDate,
+        endDate: pullEndDate,
+        dryRun: pullDryRun,
+        force: pullForce,
+      });
+
+      if (response.data.sessionId) {
+        pollPullProgress(response.data.sessionId);
+      }
+    } catch (error: any) {
+      console.error('Error starting production pull:', error);
+      setPullResult({
+        success: false,
+        message: 'Failed to start pull',
+        error: error?.response?.data?.error || error?.message || String(error),
+      });
+      setIsPulling(false);
+    }
+  };
+
+  const pollPullProgress = async (sessionId: string) => {
+    try {
+      const response = await api.get(`/admin/pull-from-production/progress/${sessionId}`);
+
+      if (response.data.progress) {
+        setPullProgress(response.data.progress);
+      }
+
+      if (response.data.isComplete) {
+        setPullResult(response.data.result);
+        setIsPulling(false);
+        await loadStatus();
+      } else {
+        setTimeout(() => pollPullProgress(sessionId), 1000);
+      }
+    } catch (error: any) {
+      console.error('Error polling pull progress:', error);
+      setIsPulling(false);
+    }
+  };
+
+  const getPullProgressPercentage = () => {
+    const lastProgress = pullProgress[pullProgress.length - 1];
+    if (!lastProgress || !lastProgress.total) return 0;
+    return Math.round((lastProgress.progress || 0) / lastProgress.total * 100);
   };
 
   const openImportDialog = async () => {
@@ -742,13 +812,13 @@ const Admin: React.FC = () => {
 
       {/* Data Import Tools */}
       <Card sx={{ mb: 3 }}>
-        <CardHeader 
-          title="Data Import Tools" 
+        <CardHeader
+          title="Data Import Tools"
           subheader="Import work activities from various sources"
         />
         <CardContent>
           <Grid container spacing={2}>
-            
+
             <Grid item xs={12} md={6}>
               <Button
                 fullWidth
@@ -766,6 +836,189 @@ const Admin: React.FC = () => {
               </Button>
             </Grid>
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Pull from Production */}
+      <Card sx={{ mb: 3 }}>
+        <CardHeader
+          title="Pull from Production"
+          subheader="Import work activities, clients, and employees from the production server"
+        />
+        <CardContent>
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                label="Start Date"
+                type="date"
+                value={pullStartDate}
+                onChange={(e) => setPullStartDate(e.target.value)}
+                disabled={isPulling}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <TextField
+                fullWidth
+                label="End Date"
+                type="date"
+                value={pullEndDate}
+                onChange={(e) => setPullEndDate(e.target.value)}
+                disabled={isPulling}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={pullDryRun}
+                    onChange={(e) => setPullDryRun(e.target.checked)}
+                    disabled={isPulling}
+                  />
+                }
+                label="Dry Run"
+              />
+            </Grid>
+            <Grid item xs={6} sm={3} md={2}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={pullForce}
+                    onChange={(e) => setPullForce(e.target.checked)}
+                    disabled={isPulling}
+                  />
+                }
+                label="Force Overwrite"
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <Button
+                fullWidth
+                variant="contained"
+                color="primary"
+                onClick={startProductionPull}
+                disabled={isPulling}
+                startIcon={isPulling ? <CircularProgress size={20} /> : <CloudDownload />}
+                sx={{ height: '100%', minHeight: 40 }}
+              >
+                {isPulling ? 'Pulling...' : pullDryRun ? 'Preview Pull' : 'Pull'}
+              </Button>
+            </Grid>
+          </Grid>
+
+          {!pullDryRun && !pullForce && (
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Duplicate activities will be skipped. Enable "Force Overwrite" to replace existing entries.
+            </Alert>
+          )}
+          {!pullDryRun && pullForce && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              Force overwrite is enabled. Existing matching activities will be deleted and re-created.
+            </Alert>
+          )}
+
+          {/* Pull Progress Display */}
+          {(isPulling || pullProgress.length > 0) && (
+            <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Timeline color="primary" />
+                  Pull Progress
+                </Typography>
+              </Box>
+
+              {pullProgress.length > 0 && (
+                <>
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      {pullProgress[pullProgress.length - 1]?.message}
+                    </Typography>
+                    {getPullProgressPercentage() > 0 && (
+                      <>
+                        <LinearProgress
+                          variant="determinate"
+                          value={getPullProgressPercentage()}
+                          sx={{ mt: 1 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          {getPullProgressPercentage()}% complete
+                        </Typography>
+                      </>
+                    )}
+                  </Box>
+
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Typography variant="body2">
+                      Phase: {pullProgress[pullProgress.length - 1]?.phase}
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={() => setShowPullDetails(!showPullDetails)}
+                      endIcon={showPullDetails ? <ExpandLess /> : <ExpandMore />}
+                    >
+                      {showPullDetails ? 'Hide' : 'Show'} Details
+                    </Button>
+                  </Box>
+
+                  <Collapse in={showPullDetails}>
+                    <Box sx={{ mt: 2, maxHeight: 200, overflow: 'auto' }}>
+                      <List dense>
+                        {pullProgress.map((progress, index) => (
+                          <ListItem key={index}>
+                            <ListItemIcon>
+                              {progress.phase === 'error' ? (
+                                <Error color="error" />
+                              ) : progress.phase === 'complete' ? (
+                                <CheckCircle color="success" />
+                              ) : (
+                                <CircularProgress size={20} />
+                              )}
+                            </ListItemIcon>
+                            <ListItemText
+                              primary={progress.message}
+                              secondary={progress.phase}
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </Box>
+                  </Collapse>
+                </>
+              )}
+            </Box>
+          )}
+
+          {/* Pull Result Display */}
+          {pullResult && (
+            <Alert severity={pullResult.success ? 'success' : 'error'} sx={{ mt: 2 }}>
+              <Typography variant="subtitle2">{pullResult.message}</Typography>
+              {pullResult.details && (
+                <Typography variant="body2" sx={{ mt: 1 }}>
+                  Clients: {pullResult.details.clientsCreated} created, {pullResult.details.clientsSkipped} skipped
+                  {' | '}
+                  Employees: {pullResult.details.employeesCreated} created, {pullResult.details.employeesSkipped} skipped
+                  {' | '}
+                  Activities: {pullResult.details.activitiesCreated} created, {pullResult.details.activitiesSkipped} skipped
+                  {pullResult.details.activitiesErrored > 0 && `, ${pullResult.details.activitiesErrored} errors`}
+                </Typography>
+              )}
+              {pullResult.details?.errors?.length > 0 && (
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="error">
+                    Errors: {pullResult.details.errors.slice(0, 5).join('; ')}
+                    {pullResult.details.errors.length > 5 && ` (+${pullResult.details.errors.length - 5} more)`}
+                  </Typography>
+                </Box>
+              )}
+              {pullResult.error && (
+                <Typography variant="body2" color="error" sx={{ mt: 1 }}>
+                  {pullResult.error}
+                </Typography>
+              )}
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
