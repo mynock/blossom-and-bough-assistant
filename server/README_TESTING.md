@@ -163,6 +163,37 @@ npm run test:watch
 npm test ClientService.test.ts
 ```
 
+## Test Database Setup
+
+The integration tests require a real PostgreSQL database connection.
+
+### Option 1: Using Docker (Recommended)
+```bash
+# Start test database, run tests, and clean up
+npm run test:with-db
+
+# Or manually:
+npm run test:db:up    # Start PostgreSQL in Docker
+npm test              # Run tests
+npm run test:db:down  # Stop PostgreSQL
+```
+
+### Option 2: Using Local PostgreSQL
+1. Install and start PostgreSQL locally
+2. Create a test database with credentials:
+   - User: `test_user`
+   - Password: `test_password`
+   - Database: `billable_hours_test`
+3. Run tests: `npm test`
+
+### CI/CD
+Tests automatically run in GitHub Actions with a PostgreSQL service container.
+
+### Environment Variables
+Tests use:
+- `DATABASE_URL=postgresql://test_user:test_password@localhost:5432/billable_hours_test`
+- `NODE_ENV=test`
+
 ## Recommended Next Steps
 
 ### 🔥 **Immediate (High Priority)**
