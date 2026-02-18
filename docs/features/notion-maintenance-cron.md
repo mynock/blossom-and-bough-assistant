@@ -28,7 +28,7 @@ This document describes the automated system that creates Notion maintenance ent
 
 #### New Files
 - `server/src/services/CronService.ts` - Main cron job service
-- `NOTION_MAINTENANCE_CRON_SETUP.md` - This documentation
+- `docs/features/notion-maintenance-cron.md` - This documentation
 
 #### Modified Files
 - `server/package.json` - Added `node-cron` and `@types/node-cron` dependencies
