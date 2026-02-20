@@ -99,6 +99,80 @@ export class NotionService {
     }
   }
 
+  async appendTodoItems(pageId: string, todoTexts: string[]): Promise<{ success: boolean; count: number; pageUrl: string }> {
+    try {
+      debugLog.info(`Appending ${todoTexts.length} todo items to page: ${pageId}`);
+
+      // Get all blocks on the page
+      const response = await notion.blocks.children.list({
+        block_id: pageId,
+        page_size: 100,
+      });
+
+      // Find the Tasks heading section and the last to_do block within it
+      let tasksHeadingIndex = -1;
+      let lastTodoBlockId: string | null = null;
+      let inTasksSection = false;
+
+      for (const block of response.results) {
+        if (!('type' in block)) continue;
+
+        // Look for Tasks heading
+        if (block.type === 'heading_2' && 'heading_2' in block) {
+          const headingText = (block.heading_2 as any).rich_text?.[0]?.text?.content?.toLowerCase() || '';
+          if (headingText.includes('task')) {
+            inTasksSection = true;
+            tasksHeadingIndex = response.results.indexOf(block);
+            continue;
+          } else if (inTasksSection) {
+            // Hit the next heading, stop looking
+            break;
+          }
+        }
+
+        // Track the last to_do block in the Tasks section
+        if (inTasksSection && block.type === 'to_do') {
+          lastTodoBlockId = block.id;
+        }
+      }
+
+      // Build the new to-do blocks
+      const newTodoBlocks = todoTexts.map(text => ({
+        object: 'block' as const,
+        type: 'to_do' as const,
+        to_do: {
+          rich_text: [{ text: { content: text } }],
+          checked: false,
+        },
+      }));
+
+      // Append the blocks - use `after` parameter if we found a position
+      if (lastTodoBlockId) {
+        await notion.blocks.children.append({
+          block_id: pageId,
+          children: newTodoBlocks,
+          after: lastTodoBlockId,
+        });
+      } else {
+        // Fallback: append at end of page
+        await notion.blocks.children.append({
+          block_id: pageId,
+          children: newTodoBlocks,
+        });
+      }
+
+      // Get the page URL
+      const page = await notion.pages.retrieve({ page_id: pageId });
+      const pageUrl = (page as any).url || `https://notion.so/${pageId.replace(/-/g, '')}`;
+
+      debugLog.info(`Successfully appended ${todoTexts.length} todo items to page ${pageId}`);
+      return { success: true, count: todoTexts.length, pageUrl };
+    } catch (error) {
+      debugLog.error('Error appending todo items:', error);
+      throw error;
+    }
+  }
+
   async ensureClientExistsInDatabase(clientName: string) {
     try {
       debugLog.info(`Checking if client exists in Notion database: ${clientName}`);
