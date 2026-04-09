@@ -37,18 +37,22 @@ export interface WorkNotesParseResult {
 }
 
 export class AnthropicService {
-  private client: Anthropic | null = null;
+  private _client: Anthropic | null = null;
   private schedulingService: any = null; // Will be injected to avoid circular dependency
 
   constructor() {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (apiKey) {
-      this.client = new Anthropic({ apiKey });
+      this._client = new Anthropic({ apiKey });
       console.log('🤖 AnthropicService initialized with API key');
     } else {
       console.error('❌ AnthropicService: No API key found in environment variables');
       console.error('💡 Please set ANTHROPIC_API_KEY in your .env file');
     }
+  }
+
+  get client(): Anthropic | null {
+    return this._client;
   }
 
   // Inject scheduling service to avoid circular dependency
@@ -87,7 +91,7 @@ export class AnthropicService {
     console.log(`  - Business metrics: ${contextSizes.businessMetrics.toLocaleString()} chars`);
     console.log(`  - Total context: ${contextSizes.total.toLocaleString()} chars`);
 
-    if (!this.client) {
+    if (!this._client) {
       const error = new Error('Anthropic API client not initialized. Please check your ANTHROPIC_API_KEY environment variable.');
       console.error('❌ API client not available:', error.message);
       throw error;
@@ -106,7 +110,7 @@ export class AnthropicService {
         { role: 'user' as const, content: query }
       ];
       
-      let currentMessage = await this.client.messages.create({
+      let currentMessage = await this._client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         temperature: 0.3,
@@ -163,7 +167,7 @@ export class AnthropicService {
         messages.push({ role: 'user' as const, content: toolResults });
         
         // Continue conversation - no conversation trimming
-        currentMessage = await this.client.messages.create({
+        currentMessage = await this._client.messages.create({
           model: ANTHROPIC_MODEL,
           max_tokens: 4000,
           temperature: 0.3,
@@ -756,7 +760,7 @@ Use clear formatting: **bold names**, time ranges like "8:00 AM - 2:00 PM", and 
    * Process structured Notion data and fill in missing fields (new approach)
    */
   async processStructuredNotionData(notionData: any): Promise<WorkNotesParseResult> {
-    if (!this.client) {
+    if (!this._client) {
       throw new Error('Anthropic client not initialized');
     }
 
@@ -830,7 +834,7 @@ Return the processed data as a JSON object with this exact structure:
       console.log('🎯 Method: processStructuredNotionData');
       console.log('📝 Input data keys:', Object.keys(notionData));
 
-      const response = await this.client.messages.create({
+      const response = await this._client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         messages: [
@@ -880,7 +884,7 @@ Return the processed data as a JSON object with this exact structure:
    * It will be removed in a future cleanup.
    */
   async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
-    if (!this.client) {
+    if (!this._client) {
       throw new Error('Anthropic client not initialized');
     }
 
@@ -988,7 +992,7 @@ Return the data as a JSON object with this exact structure:
       console.log('🎯 Method: parseWorkNotes (for Notion sync)');
       console.log('📝 Input length:', workNotesText.length, 'characters');
 
-      const response = await this.client.messages.create({
+      const response = await this._client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 8000,
         messages: [
@@ -1037,7 +1041,7 @@ Return the data as a JSON object with this exact structure:
       onProgress?: (message: string) => void;
     }
   ): Promise<ParsedWorkActivity[]> {
-    if (!this.client) {
+    if (!this._client) {
       throw new Error('Anthropic API client not initialized');
     }
 
@@ -1230,7 +1234,7 @@ Return the data as a JSON object with this exact structure:
     batchNumber?: number,
     totalBatches?: number
   ): Promise<ParsedWorkActivity[]> {
-    if (!this.client) {
+    if (!this._client) {
       throw new Error('Anthropic API client not initialized');
     }
     
@@ -1289,7 +1293,7 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
 
     console.log(`🤖 Calling Claude Sonnet 4 for batch ${batchNumber}...`);
     
-    const response = await this.client.messages.create({
+    const response = await this._client.messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: 8000, // Smaller batches = less tokens needed
       temperature: 0.1,
@@ -1423,7 +1427,7 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
     clientName: string,
     basicLineItems: any[]
   ): Promise<any[]> {
-    if (!this.client) {
+    if (!this._client) {
       throw new Error('Anthropic API client not initialized');
     }
 
@@ -1476,7 +1480,7 @@ CRITICAL:
 - Transform ALL provided work activities into detailed line items`;
 
     try {
-      const response = await this.client.messages.create({
+      const response = await this._client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 4000,
         temperature: 0.3,

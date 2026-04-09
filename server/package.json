@@ -29,7 +29,8 @@
     "db:studio": "drizzle-kit studio",
     "import": "tsx scripts/import-data.ts",
     "import:historical": "tsx scripts/import-historical-data.ts",
-    "clear-db": "tsx scripts/clear-work-activities.ts"
+    "clear-db": "tsx scripts/clear-work-activities.ts",
+    "test:voice-classify": "tsx src/scripts/testVoiceClassification.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.54.0",
