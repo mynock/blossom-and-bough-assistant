@@ -8,6 +8,23 @@ const notion = new Client({
 const DATABASE_ID = process.env.NOTION_DATABASE_ID!;
 const TEMPLATE_ID = process.env.NOTION_TEMPLATE_ID;
 
+// Recursively strip null values from objects. The Notion API rejects null
+// for optional fields (e.g. paragraph.icon) — they must be omitted instead.
+function stripNullValues(obj: any): any {
+  if (obj === null || obj === undefined) return undefined;
+  if (Array.isArray(obj)) return obj.map(stripNullValues);
+  if (typeof obj === 'object') {
+    const result: any = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value !== null) {
+        result[key] = stripNullValues(value);
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
 export interface NotionWorkEntry {
   id: string;
   url: string;
@@ -345,9 +362,12 @@ export class NotionService {
             }
           }
           
-          // Filter out any null blocks (failed to process)
-          const validBlocks = processedBlocks.filter(block => block !== null);
-          
+          // Filter out any null blocks and strip null values from properties
+          // (Notion API rejects null for optional fields like paragraph.icon)
+          const validBlocks = processedBlocks
+            .filter(block => block !== null)
+            .map(stripNullValues);
+
           if (validBlocks.length > 0) {
             debugLog.info(`Appending ${validBlocks.length} processed blocks to new page`);
             await notion.blocks.children.append({
