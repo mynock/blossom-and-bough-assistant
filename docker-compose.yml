@@ -4,7 +4,7 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: blossom-postgres
+
     environment:
       POSTGRES_DB: blossom_and_bough
       POSTGRES_USER: blossom_user
@@ -27,7 +27,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: blossom-backend
+
     env_file:
       - .env
     environment:
@@ -55,7 +55,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: blossom-frontend
+
     environment:
       PORT: 3000
       # REACT_APP_API_URL: http://localhost:3000

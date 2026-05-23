@@ -30,6 +30,8 @@ import { GoogleCalendarService } from './GoogleCalendarService';
 import { AnthropicService } from './AnthropicService';
 import { TravelTimeService } from './TravelTimeService';
 import { SchedulingService } from './SchedulingService';
+import { ClickUpService } from './ClickUpService';
+import { VoiceTodoService } from './VoiceTodoService';
 import { ProductionPullService } from './ProductionPullService';
 
 class ServiceContainer {
@@ -63,6 +65,10 @@ class ServiceContainer {
   // Time allocation services
   private _breakTimeAllocationService?: BreakTimeAllocationService;
   private _travelTimeAllocationService?: TravelTimeAllocationService;
+
+  // Voice todo services
+  private _clickUpService?: ClickUpService;
+  private _voiceTodoService?: VoiceTodoService;
 
   // Migration service
   private _dataMigrationService?: DataMigrationService;
@@ -155,6 +161,20 @@ class ServiceContainer {
 
   get travelTimeAllocationService(): TravelTimeAllocationService {
     return this._travelTimeAllocationService ??= new TravelTimeAllocationService();
+  }
+
+  // Voice todo services
+  get clickUpService(): ClickUpService {
+    return this._clickUpService ??= new ClickUpService();
+  }
+
+  get voiceTodoService(): VoiceTodoService {
+    return this._voiceTodoService ??= new VoiceTodoService(
+      this.anthropicService,
+      this.notionService,
+      this.clickUpService,
+      this.clientService
+    );
   }
 
   // Migration service
