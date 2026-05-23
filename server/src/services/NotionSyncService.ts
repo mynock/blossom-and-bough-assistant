@@ -4,7 +4,7 @@ import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
 import { debugLog } from '../utils/logger';
-import { NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
+import { Employee, NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 const notion = new Client({
@@ -12,6 +12,12 @@ const notion = new Client({
 });
 
 const DATABASE_ID = process.env.NOTION_DATABASE_ID!;
+
+// Split a name into lowercase tokens on whitespace and hyphens, dropping blanks.
+// Used for whole-token name matching (see findEmployeeMatch).
+function tokenize(name: string): string[] {
+  return name.toLowerCase().split(/[\s-]+/).filter(Boolean);
+}
 
 export interface NotionWorkActivityData {
   notionPageId: string;
@@ -706,13 +712,23 @@ export class NotionSyncService {
   }
 
   /**
-   * Find an employee by name. Matches exact full name (case-insensitive) or
-   * a substring containment in either direction (so "Anne" matches "Anne McGary"
-   * and vice versa). Does NOT do nickname/variant matching - "Andy" will not
-   * match "Andrea", since they are usually different people.
+   * Find an employee by name. Matches in this order:
+   *   1. Exact full name (case-insensitive).
+   *   2. Whole-token match: every token of the shorter name appears as a complete
+   *      token of the longer name. So "Anne" matches "Anne McGary" (because "anne"
+   *      is a token of "Anne McGary"), but "An" does NOT match "Anne McGary"
+   *      (because "an" is not a token of "Anne McGary"), and "Andy" does NOT
+   *      match "Andrea Wilson" (no shared tokens).
+   *
+   * If more than one candidate matches at the token level the result is treated
+   * as ambiguous: returns null so the caller auto-creates with a visible warning
+   * rather than silently picking the wrong person.
+   *
+   * Does NOT do nickname/variant matching - "Andy" will not match "Andrea".
    */
-  private findEmployeeMatch(searchName: string, employees: any[]): any | null {
+  private findEmployeeMatch(searchName: string, employees: Employee[]): Employee | null {
     const search = searchName.toLowerCase().trim();
+    if (!search) return null;
 
     const exact = employees.find(emp => emp.name.toLowerCase().trim() === search);
     if (exact) {
@@ -720,13 +736,29 @@ export class NotionSyncService {
       return exact;
     }
 
-    const contains = employees.find(emp => {
-      const name = emp.name.toLowerCase().trim();
-      return name.includes(search) || search.includes(name);
+    const searchTokens = tokenize(search);
+    if (searchTokens.length === 0) return null;
+
+    const tokenMatches = employees.filter(emp => {
+      const empTokens = tokenize(emp.name);
+      if (empTokens.length === 0) return false;
+      const [shorter, longer] =
+        searchTokens.length <= empTokens.length
+          ? [searchTokens, empTokens]
+          : [empTokens, searchTokens];
+      return shorter.every(t => longer.includes(t));
     });
-    if (contains) {
-      debugLog.info(`   📍 Found contains match: "${searchName}" ~ "${contains.name}"`);
-      return contains;
+
+    if (tokenMatches.length === 1) {
+      const match = tokenMatches[0];
+      debugLog.info(`   📍 Found token match: "${searchName}" ~ "${match.name}"`);
+      return match;
+    }
+
+    if (tokenMatches.length > 1) {
+      const names = tokenMatches.map(e => e.name).join(', ');
+      debugLog.warn(`   ⚠️ Ambiguous match for "${searchName}" - candidates: ${names}. Treating as unmatched.`);
+      return null;
     }
 
     debugLog.info(`   ❌ No match found for "${searchName}"`);
@@ -1177,7 +1209,7 @@ export class NotionSyncService {
       }
 
       const created = await this.employeeService.createEmployee({
-        employeeId: `notion-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        employeeId: `notion-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         name,
         regularWorkdays: '',
         homeAddress: '',

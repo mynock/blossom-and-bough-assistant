@@ -147,4 +147,70 @@ describe('NotionSyncService.resolveTeamMembers', () => {
     expect(result.employeeIds).toEqual([100, 2, 101]);
     expect(result.employeeIds).toHaveLength(3);
   });
+
+  it('rejects arbitrary substring matches that are not whole tokens (e.g., "An" is not "Anne McGary")', async () => {
+    getAllEmployees.mockResolvedValue([
+      makeEmployee({ id: 1, name: 'Anne McGary' }),
+      makeEmployee({ id: 2, name: 'Andrea Wilson' })
+    ]);
+
+    const result = await resolveTeamMembers(['An']);
+
+    expect(result.employeeIds).toEqual([100]);
+    expect(result.warnings).toEqual([
+      'Auto-created employee "An" from Notion - please review their details'
+    ]);
+  });
+
+  it('auto-creates when a first name is ambiguous across multiple employees', async () => {
+    getAllEmployees.mockResolvedValue([
+      makeEmployee({ id: 1, name: 'Anne McGary' }),
+      makeEmployee({ id: 2, name: 'Anne Patterson' })
+    ]);
+
+    const result = await resolveTeamMembers(['Anne']);
+
+    // Two valid candidates → ambiguous → auto-create rather than silently pick one
+    expect(result.employeeIds).toEqual([100]);
+    expect(result.warnings).toEqual([
+      'Auto-created employee "Anne" from Notion - please review their details'
+    ]);
+  });
+
+  it('matches a multi-token Notion name against a single-token DB record (e.g., "Anne McGary" → "Anne")', async () => {
+    getAllEmployees.mockResolvedValue([
+      makeEmployee({ id: 2, name: 'Anne' })
+    ]);
+
+    const result = await resolveTeamMembers(['Anne McGary']);
+
+    expect(result.employeeIds).toEqual([2]);
+    expect(result.warnings).toEqual([]);
+    expect(createEmployee).not.toHaveBeenCalled();
+  });
+
+  it('matches across hyphenated last names (e.g., "Smith" → "Anna Smith-Jones")', async () => {
+    getAllEmployees.mockResolvedValue([
+      makeEmployee({ id: 5, name: 'Anna Smith-Jones' })
+    ]);
+
+    const result = await resolveTeamMembers(['Smith']);
+
+    expect(result.employeeIds).toEqual([5]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('prefers an exact match over a token match when both exist', async () => {
+    getAllEmployees.mockResolvedValue([
+      makeEmployee({ id: 1, name: 'Anne McGary' }),
+      makeEmployee({ id: 2, name: 'Anne' })
+    ]);
+
+    const result = await resolveTeamMembers(['Anne']);
+
+    // Exact match wins; ambiguity check never fires
+    expect(result.employeeIds).toEqual([2]);
+    expect(result.warnings).toEqual([]);
+    expect(createEmployee).not.toHaveBeenCalled();
+  });
 });
