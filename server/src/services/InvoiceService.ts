@@ -13,13 +13,18 @@ import {
 } from '../db';
 import { eq, and, inArray } from 'drizzle-orm';
 
-export interface CreateInvoiceRequest {
+export interface PreviewInvoiceRequest {
   clientId: number;
   workActivityIds: number[];
   includeOtherCharges?: boolean;
+  useAIGeneration?: boolean;
+}
+
+export interface CreateInvoiceFromLineItemsRequest {
+  clientId: number;
+  lineItems: InvoiceLineItemData[];
   dueDate?: string;
   memo?: string;
-  useAIGeneration?: boolean;
 }
 
 export interface InvoiceLineItemData {
@@ -30,6 +35,12 @@ export interface InvoiceLineItemData {
   quantity: number;
   rate: number;
   amount: number;
+}
+
+export interface InvoicePreviewResult {
+  client: any;
+  lineItems: InvoiceLineItemData[];
+  totalAmount: number;
 }
 
 export class InvoiceService extends DatabaseService {
@@ -108,80 +119,109 @@ export class InvoiceService extends DatabaseService {
   }
 
   /**
-   * Create invoice from work activities
+   * Build a preview of the invoice line items the server would send to QBO.
+   * Runs the same builder and AI enhancement that creation uses, so the user
+   * sees and edits the exact lines that will be submitted.
    */
-  async createInvoiceFromWorkActivities(request: CreateInvoiceRequest): Promise<any> {
-    try {
-      console.log('Starting invoice creation process...');
-      
-      // 0. Ensure QuickBooks service is properly initialized
-      await this.ensureQBServiceInitialized();
-      console.log('QuickBooks service initialized');
+  async previewInvoice(request: PreviewInvoiceRequest): Promise<InvoicePreviewResult> {
+    const client = await this.clientService.getClientById(request.clientId);
+    if (!client) {
+      throw new Error('Client not found');
+    }
 
-      // 1. Get client data and ensure QBO customer exists
+    const workActivitiesData = await this.validateWorkActivitiesForInvoicing(request.workActivityIds);
+
+    let lineItems = await this.buildInvoiceLineItems(workActivitiesData, request.includeOtherCharges);
+
+    if (lineItems.length === 0) {
+      throw new Error('No line items could be generated for the invoice. Please check if QBO items are properly synced.');
+    }
+
+    if (request.useAIGeneration) {
+      try {
+        const enhancedLineItems = await this.anthropicService.generateInvoiceLineItems(
+          workActivitiesData,
+          client.name,
+          lineItems
+        );
+
+        if (enhancedLineItems && enhancedLineItems.length > 0) {
+          lineItems = enhancedLineItems;
+        }
+      } catch (aiError) {
+        console.error('AI generation failed during preview, falling back to basic line items:', aiError);
+      }
+    }
+
+    const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+    return { client, lineItems, totalAmount };
+  }
+
+  /**
+   * Create an invoice from line items already reviewed and edited by the user.
+   * The submitted lines are sent to QBO verbatim — no rebuilding here.
+   */
+  async createInvoiceFromLineItems(request: CreateInvoiceFromLineItemsRequest): Promise<any> {
+    try {
+      await this.ensureQBServiceInitialized();
+
       const client = await this.clientService.getClientById(request.clientId);
       if (!client) {
         throw new Error('Client not found');
       }
-      console.log(`Creating invoice for client: ${client.name}`);
 
-      // 2. Find or create QBO customer
+      if (!request.lineItems || request.lineItems.length === 0) {
+        throw new Error('At least one line item is required');
+      }
+
+      const normalizedLineItems: InvoiceLineItemData[] = request.lineItems.map((line, index) => {
+        if (!line.qboItemId) {
+          throw new Error(`Line ${index + 1} is missing qboItemId`);
+        }
+        if (typeof line.quantity !== 'number' || line.quantity <= 0) {
+          throw new Error(`Line ${index + 1} must have quantity > 0`);
+        }
+        if (typeof line.rate !== 'number' || line.rate < 0) {
+          throw new Error(`Line ${index + 1} must have rate >= 0`);
+        }
+
+        return {
+          workActivityId: line.workActivityId,
+          otherChargeId: line.otherChargeId,
+          qboItemId: line.qboItemId,
+          description: line.description ?? '',
+          quantity: line.quantity,
+          rate: line.rate,
+          amount: line.quantity * line.rate
+        };
+      });
+
       const qboCustomer = await this.ensureQBOCustomer(client);
 
-      // 3. Get work activities and validate they're ready for invoicing
-      const workActivitiesData = await this.validateWorkActivitiesForInvoicing(request.workActivityIds);
-      console.log(`Validated ${workActivitiesData.length} work activities for invoicing`);
+      const qboInvoiceData = this.buildQBOInvoiceData(qboCustomer, normalizedLineItems, {
+        dueDate: request.dueDate,
+        memo: request.memo
+      });
 
-      // 4. Build invoice line items from work activities
-      let lineItems = await this.buildInvoiceLineItems(workActivitiesData, request.includeOtherCharges);
-      console.log(`Built ${lineItems.length} line items for invoice`);
-      
-      if (lineItems.length === 0) {
-        console.error('ERROR: No line items generated! This will cause invoice creation to fail.');
-        throw new Error('No line items could be generated for the invoice. Please check if QBO items are properly synced.');
-      }
-
-      // 4.5. Enhance line items with AI if requested
-      if (request.useAIGeneration) {
-        try {
-          console.log('🤖 Generating AI-enhanced invoice line items...');
-          const enhancedLineItems = await this.anthropicService.generateInvoiceLineItems(
-            workActivitiesData,
-            client.name,
-            lineItems
-          );
-          
-          if (enhancedLineItems && enhancedLineItems.length > 0) {
-            lineItems = enhancedLineItems;
-            console.log(`✅ Successfully generated ${enhancedLineItems.length} AI-enhanced line items`);
-          } else {
-            console.log('⚠️ AI generation returned no results, using basic line items');
-          }
-        } catch (aiError) {
-          console.error('❌ AI generation failed, falling back to basic line items:', aiError);
-          // Continue with basic line items instead of failing
-        }
-      }
-
-      // 5. Create invoice data for QBO
-      const qboInvoiceData = this.buildQBOInvoiceData(qboCustomer, lineItems, request);
-      console.log('Built QuickBooks invoice data:', JSON.stringify(qboInvoiceData, null, 2));
-
-      // 6. Create invoice in QuickBooks
       const qboInvoice = await this.qbService.createInvoice(qboInvoiceData);
-      console.log(`Created invoice in QuickBooks with ID: ${qboInvoice.Id}`);
 
-      // 7. Save invoice to local database
-      const localInvoice = await this.saveInvoiceToLocal(qboInvoice, client.id, lineItems);
+      const localInvoice = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems);
 
-      // 8. Update work activities status to 'invoiced'
-      await this.updateWorkActivitiesStatus(request.workActivityIds, 'invoiced');
-      console.log('Updated work activities status to invoiced');
+      const invoicedWorkActivityIds = Array.from(new Set(
+        normalizedLineItems
+          .map(line => line.workActivityId)
+          .filter((id): id is number => typeof id === 'number')
+      ));
+
+      if (invoicedWorkActivityIds.length > 0) {
+        await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced');
+      }
 
       return {
         invoice: localInvoice,
         qboInvoice: qboInvoice,
-        lineItems: lineItems.length
+        lineItems: normalizedLineItems.length
       };
 
     } catch (error) {
@@ -488,7 +528,7 @@ export class InvoiceService extends DatabaseService {
     return workType.charAt(0).toUpperCase() + workType.slice(1).replace(/([A-Z])/g, ' $1');
   }
 
-  private buildQBOInvoiceData(qboCustomer: any, lineItems: InvoiceLineItemData[], request: CreateInvoiceRequest): any {
+  private buildQBOInvoiceData(qboCustomer: any, lineItems: InvoiceLineItemData[], request: { dueDate?: string; memo?: string }): any {
     const lines = lineItems.map((item, index) => ({
       LineNum: index + 1,
       Amount: item.amount,

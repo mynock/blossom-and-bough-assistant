@@ -30,6 +30,12 @@ import {
   Snackbar,
   ToggleButton,
   ToggleButtonGroup,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  IconButton,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -147,6 +153,16 @@ interface NewClientNote {
   date?: string;
 }
 
+interface InvoiceLineItem {
+  workActivityId?: number;
+  otherChargeId?: number;
+  qboItemId: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
 interface UpcomingScheduleData {
   upcomingEvents: CalendarEvent[];
   client: {
@@ -203,8 +219,11 @@ const ClientDetail: React.FC = () => {
 
   const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<number[]>([]);
   const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [useAIGeneration, setUseAIGeneration] = useState(false);
+  const [dialogStep, setDialogStep] = useState<'select' | 'edit'>('select');
+  const [previewLineItems, setPreviewLineItems] = useState<InvoiceLineItem[]>([]);
   const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date' | 'notes'>('table');
 
   useEffect(() => {
@@ -488,35 +507,84 @@ const ClientDetail: React.FC = () => {
 
   // Removed unused invoice functions - now using new dialog implementation
 
-  const handleCreateInvoiceConfirm = async () => {
+  const handlePreviewInvoice = async () => {
     if (!client || selectedActivitiesForInvoice.length === 0) return;
+
+    setPreviewLoading(true);
+    try {
+      const response = await fetch('/api/qbo/invoices/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: client.id,
+          workActivityIds: selectedActivitiesForInvoice,
+          includeOtherCharges: true,
+          useAIGeneration,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Failed to preview invoice');
+      }
+
+      const result = await response.json();
+      setPreviewLineItems(result.lineItems || []);
+      setDialogStep('edit');
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Failed to preview invoice',
+        severity: 'error'
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const updatePreviewLineItem = (index: number, patch: Partial<InvoiceLineItem>) => {
+    setPreviewLineItems(prev => prev.map((line, i) => {
+      if (i !== index) return line;
+      const next = { ...line, ...patch };
+      next.amount = next.quantity * next.rate;
+      return next;
+    }));
+  };
+
+  const removePreviewLineItem = (index: number) => {
+    setPreviewLineItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const closeInvoiceDialog = () => {
+    setShowInvoiceDialog(false);
+    setDialogStep('select');
+    setPreviewLineItems([]);
+  };
+
+  const handleSendInvoice = async () => {
+    if (!client || previewLineItems.length === 0) return;
 
     setInvoiceCreationLoading(true);
     try {
       const response = await secureFetch('/api/qbo/invoices', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: client.id,
-          workActivityIds: selectedActivitiesForInvoice,
-          includeOtherCharges: true,
-          useAIGeneration: useAIGeneration,
+          lineItems: previewLineItems,
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        setSnackbar({ 
-          open: true, 
-          message: `Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`, 
-          severity: 'success' 
+        setSnackbar({
+          open: true,
+          message: `Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`,
+          severity: 'success'
         });
-        setShowInvoiceDialog(false);
+        closeInvoiceDialog();
         setSelectedActivitiesForInvoice([]);
-        
-        // Refresh work activities to update status
+
         if (id) {
           const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
           if (activitiesResponse.ok) {
@@ -527,13 +595,13 @@ const ClientDetail: React.FC = () => {
         }
       } else {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create invoice');
+        throw new Error(error.details || error.error || 'Failed to create invoice');
       }
     } catch (error) {
-      setSnackbar({ 
-        open: true, 
-        message: error instanceof Error ? error.message : 'Failed to create invoice', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Failed to create invoice',
+        severity: 'error'
       });
     } finally {
       setInvoiceCreationLoading(false);
@@ -1031,18 +1099,21 @@ const ClientDetail: React.FC = () => {
 
 
         {/* Invoice Creation Dialog */}
-        <Dialog open={showInvoiceDialog} onClose={() => setShowInvoiceDialog(false)} maxWidth="lg" fullWidth>
+        <Dialog open={showInvoiceDialog} onClose={closeInvoiceDialog} maxWidth="lg" fullWidth>
           <DialogTitle sx={{ pb: 1 }}>
             <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
-              Create Invoice
+              {dialogStep === 'select' ? 'Create Invoice' : 'Review & Edit Invoice'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Select work activities and customize invoice generation
+              {dialogStep === 'select'
+                ? 'Select work activities and customize invoice generation'
+                : 'Edit each line below. Removed lines stay marked as completed (not invoiced).'}
             </Typography>
           </DialogTitle>
           <DialogContent sx={{ px: 3, py: 2 }}>
+            {dialogStep === 'select' ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              
+
               {/* AI Enhancement Option */}
               <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
@@ -1210,21 +1281,123 @@ const ClientDetail: React.FC = () => {
                 </Paper>
               )}
             </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: '50%' }}>Description</TableCell>
+                      <TableCell align="right" sx={{ width: 100 }}>Hours/Qty</TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
+                      <TableCell align="center" sx={{ width: 60 }}>Remove</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {previewLineItems.map((line, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <TextField
+                            value={line.description}
+                            onChange={e => updatePreviewLineItem(index, { description: e.target.value })}
+                            multiline
+                            fullWidth
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            value={line.quantity}
+                            onChange={e => {
+                              const v = parseFloat(e.target.value);
+                              updatePreviewLineItem(index, { quantity: Number.isFinite(v) ? v : 0 });
+                            }}
+                            type="number"
+                            size="small"
+                            inputProps={{ step: 0.25, min: 0, style: { textAlign: 'right' } }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <TextField
+                            value={line.rate}
+                            onChange={e => {
+                              const v = parseFloat(e.target.value);
+                              updatePreviewLineItem(index, { rate: Number.isFinite(v) ? v : 0 });
+                            }}
+                            type="number"
+                            size="small"
+                            inputProps={{ step: 0.01, min: 0, style: { textAlign: 'right' } }}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">${line.amount.toFixed(2)}</Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => removePreviewLineItem(index)}
+                            aria-label="Remove line"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {previewLineItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                            All lines removed. Add some back by going Back, or cancel.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    <TableRow>
+                      <TableCell colSpan={3} align="right" sx={{ fontWeight: 600, borderTop: '2px solid', borderColor: 'grey.300' }}>
+                        Total
+                      </TableCell>
+                      <TableCell align="right" sx={{ fontWeight: 700, borderTop: '2px solid', borderColor: 'grey.300' }}>
+                        ${previewLineItems.reduce((sum, line) => sum + line.amount, 0).toFixed(2)}
+                      </TableCell>
+                      <TableCell sx={{ borderTop: '2px solid', borderColor: 'grey.300' }} />
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
           </DialogContent>
           <DialogActions>
-            <Button 
-              variant="outlined" 
-              onClick={() => setShowInvoiceDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleCreateInvoiceConfirm}
-              variant="contained"
-              disabled={selectedActivitiesForInvoice.length === 0 || invoiceCreationLoading}
-            >
-              {invoiceCreationLoading ? 'Creating Invoice...' : 'Create Invoice'}
-            </Button>
+            {dialogStep === 'select' ? (
+              <>
+                <Button variant="outlined" onClick={closeInvoiceDialog}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handlePreviewInvoice}
+                  variant="contained"
+                  disabled={selectedActivitiesForInvoice.length === 0 || previewLoading}
+                >
+                  {previewLoading ? 'Loading Preview…' : 'Preview'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outlined" onClick={() => setDialogStep('select')} disabled={invoiceCreationLoading}>
+                  Back
+                </Button>
+                <Button variant="outlined" onClick={closeInvoiceDialog} disabled={invoiceCreationLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendInvoice}
+                  variant="contained"
+                  disabled={previewLineItems.length === 0 || invoiceCreationLoading}
+                >
+                  {invoiceCreationLoading ? 'Sending…' : 'Send to QuickBooks'}
+                </Button>
+              </>
+            )}
           </DialogActions>
         </Dialog>
       </Grid>
