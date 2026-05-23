@@ -31,6 +31,7 @@ import { AnthropicService } from './AnthropicService';
 import { TravelTimeService } from './TravelTimeService';
 import { SchedulingService } from './SchedulingService';
 import { ProductionPullService } from './ProductionPullService';
+import { NotificationService } from './NotificationService';
 
 class ServiceContainer {
   // Core business services
@@ -69,6 +70,9 @@ class ServiceContainer {
 
   // Production pull service
   private _productionPullService?: ProductionPullService;
+
+  // Notifications
+  private _notificationService?: NotificationService;
 
   // Core business services
   get clientService(): ClientService {
@@ -165,6 +169,11 @@ class ServiceContainer {
   // Production pull service
   get productionPullService(): ProductionPullService {
     return this._productionPullService ??= new ProductionPullService();
+  }
+
+  // Notifications
+  get notificationService(): NotificationService {
+    return this._notificationService ??= new NotificationService();
   }
 }
 

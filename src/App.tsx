@@ -4,6 +4,7 @@ import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { AuthProvider, ProtectedRoute } from './contexts/AuthContext';
+import { NotificationsProvider } from './contexts/NotificationsContext';
 import Dashboard from './components/Dashboard';
 import Chat from './components/Chat';
 import Schedule from './components/Schedule';
@@ -26,6 +27,7 @@ import Invoices from './components/Invoices';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import NaturalLanguageSQL from './components/NaturalLanguageSQL';
+import Notifications from './components/Notifications';
 
 const theme = createTheme({
   palette: {
@@ -58,40 +60,43 @@ function App() {
       <CssBaseline />
       <LocalizationProvider dateAdapter={AdapterDateFns}>
         <AuthProvider>
-          <Router>
-            <div className="App">
-              <Routes>
-                <Route path="/login" element={<Login />} />
-                <Route path="/notion-embed" element={<NotionEmbedPage />} />
-                <Route path="/*" element={
-                  <ProtectedRoute>
-                    <Navigation />
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/review" element={<WorkActivityReviewFlow />} />
-                      <Route path="/chat" element={<Chat />} />
-                      <Route path="/schedule" element={<Schedule />} />
-                      <Route path="/clients" element={<ClientManagement />} />
-                      <Route path="/clients/:id" element={<ClientDetail />} />
-                      <Route path="/employees" element={<EmployeeManagement />} />
-                      <Route path="/employees/:id" element={<EmployeeDetail />} />
-                      <Route path="/projects" element={<ProjectManagement />} />
-                      <Route path="/work-activities" element={<WorkActivityManagement />} />
-                      <Route path="/work-activities/:id" element={<WorkActivityDetail />} />
-                      <Route path="/notion-sync" element={<NotionSync />} />
-                      <Route path="/quickbooks" element={<QuickBooksIntegration />} />
-                      <Route path="/invoices" element={<Invoices />} />
-                      <Route path="/reports" element={<Reports />} />
-                      <Route path="/ask-data" element={<NaturalLanguageSQL />} />
-                      <Route path="/debug" element={<Debug />} />
-                      <Route path="/settings" element={<Settings />} />
-                      <Route path="/admin" element={<Admin />} />
-                    </Routes>
-                  </ProtectedRoute>
-                } />
-              </Routes>
-            </div>
-          </Router>
+          <NotificationsProvider>
+            <Router>
+              <div className="App">
+                <Routes>
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/notion-embed" element={<NotionEmbedPage />} />
+                  <Route path="/*" element={
+                    <ProtectedRoute>
+                      <Navigation />
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/review" element={<WorkActivityReviewFlow />} />
+                        <Route path="/chat" element={<Chat />} />
+                        <Route path="/schedule" element={<Schedule />} />
+                        <Route path="/clients" element={<ClientManagement />} />
+                        <Route path="/clients/:id" element={<ClientDetail />} />
+                        <Route path="/employees" element={<EmployeeManagement />} />
+                        <Route path="/employees/:id" element={<EmployeeDetail />} />
+                        <Route path="/projects" element={<ProjectManagement />} />
+                        <Route path="/work-activities" element={<WorkActivityManagement />} />
+                        <Route path="/work-activities/:id" element={<WorkActivityDetail />} />
+                        <Route path="/notion-sync" element={<NotionSync />} />
+                        <Route path="/notifications" element={<Notifications />} />
+                        <Route path="/quickbooks" element={<QuickBooksIntegration />} />
+                        <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/reports" element={<Reports />} />
+                        <Route path="/ask-data" element={<NaturalLanguageSQL />} />
+                        <Route path="/debug" element={<Debug />} />
+                        <Route path="/settings" element={<Settings />} />
+                        <Route path="/admin" element={<Admin />} />
+                      </Routes>
+                    </ProtectedRoute>
+                  } />
+                </Routes>
+              </div>
+            </Router>
+          </NotificationsProvider>
         </AuthProvider>
       </LocalizationProvider>
     </ThemeProvider>

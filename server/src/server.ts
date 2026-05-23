@@ -37,6 +37,7 @@ import reportsRouter from './routes/reports';
 // after a read-only role, SQL parser allowlist, statement timeout, and audit log are in place.
 // import naturalLanguageSQLRouter from './routes/naturalLanguageSQL';
 import dataExportRouter from './routes/dataExport';
+import notificationsRouter from './routes/notifications';
 import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
@@ -202,6 +203,7 @@ app.use('/api/qbo', quickbooksRouter); // QuickBooks Online routes
 app.use('/api/natural-language-sql', (_req, res) =>
   res.status(503).json({ error: 'Natural language SQL endpoint is disabled pending security review.' })
 );
+app.use('/api/notifications', requireAuth, notificationsRouter);
 
 // Get all helpers
 app.get('/api/helpers', requireAuth, async (req, res) => {

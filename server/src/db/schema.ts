@@ -1,4 +1,4 @@
-import { pgTable, text, integer, real, boolean, timestamp, serial } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, boolean, timestamp, serial, jsonb, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // Clients table
@@ -182,6 +182,25 @@ export const settings = pgTable('settings', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// Notifications table - persistent record of events the user should review
+export const notifications = pgTable('notifications', {
+  id: serial('id').primaryKey(),
+  type: text('type').notNull(), // e.g. 'employee_auto_created', 'employee_ambiguous_match', 'client_auto_created', 'cron_failed', 'hours_unparsed'
+  severity: text('severity').notNull().default('info'), // 'info' | 'warn' | 'error'
+  title: text('title').notNull(),
+  body: text('body'),
+  link: text('link'), // in-app route, e.g. '/employees/123'
+  sourceUrl: text('source_url'), // external link, e.g. Notion page URL
+  entityType: text('entity_type'), // 'employee' | 'client' | 'work_activity' | 'cron_run'
+  entityId: integer('entity_id'),
+  metadata: jsonb('metadata'),
+  readAt: timestamp('read_at'),
+  dismissedAt: timestamp('dismissed_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+}, (table) => ({
+  activeIdx: index('notifications_active_idx').on(table.dismissedAt, table.createdAt)
+}));
+
 // Export types for use in the application
 export type Client = typeof clients.$inferSelect;
 export type NewClient = typeof clients.$inferInsert;
@@ -217,4 +236,7 @@ export type InvoiceLineItem = typeof invoiceLineItems.$inferSelect;
 export type NewInvoiceLineItem = typeof invoiceLineItems.$inferInsert;
 
 export type Setting = typeof settings.$inferSelect;
-export type NewSetting = typeof settings.$inferInsert; 
+export type NewSetting = typeof settings.$inferInsert;
+
+export type Notification = typeof notifications.$inferSelect;
+export type NewNotification = typeof notifications.$inferInsert;

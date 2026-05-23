@@ -3,6 +3,7 @@ import { WorkActivityService, CreateWorkActivityData } from './WorkActivityServi
 import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
+import { NotificationService } from './NotificationService';
 import { debugLog } from '../utils/logger';
 import { Employee, NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
 import { eq } from 'drizzle-orm';
@@ -39,12 +40,14 @@ export class NotionSyncService {
   private clientService: ClientService;
   private employeeService: EmployeeService;
   private anthropicService: AnthropicService;
+  private notificationService: NotificationService;
 
   constructor(anthropicService?: AnthropicService) {
     this.workActivityService = new WorkActivityService();
     this.clientService = new ClientService();
     this.employeeService = new EmployeeService();
-    
+    this.notificationService = new NotificationService();
+
     // Use injected service or create new one
     this.anthropicService = anthropicService || new AnthropicService();
 
@@ -310,7 +313,7 @@ export class NotionSyncService {
 
       if (existingActivity) {
         // We already know we should sync (checked above)
-        const updateResult = await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId, page.properties);
+        const updateResult = await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId, page.properties, page.url);
         debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
@@ -331,7 +334,7 @@ export class NotionSyncService {
           onProgress(message);
         } : undefined;
 
-        const createResult = await this.createWorkActivityFromParsedData(activityWithNotionId, page.properties, clientProgressCallback);
+        const createResult = await this.createWorkActivityFromParsedData(activityWithNotionId, page.properties, clientProgressCallback, page.url);
         debugLog.info(`Created new work activity from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
@@ -726,18 +729,21 @@ export class NotionSyncService {
    *
    * Does NOT do nickname/variant matching - "Andy" will not match "Andrea".
    */
-  private findEmployeeMatch(searchName: string, employees: Employee[]): Employee | null {
+  private findEmployeeMatch(
+    searchName: string,
+    employees: Employee[]
+  ): { match: Employee | null; ambiguousCandidates?: Employee[] } {
     const search = searchName.toLowerCase().trim();
-    if (!search) return null;
+    if (!search) return { match: null };
 
     const exact = employees.find(emp => emp.name.toLowerCase().trim() === search);
     if (exact) {
       debugLog.info(`   📍 Found exact match: "${searchName}" = "${exact.name}"`);
-      return exact;
+      return { match: exact };
     }
 
     const searchTokens = tokenize(search);
-    if (searchTokens.length === 0) return null;
+    if (searchTokens.length === 0) return { match: null };
 
     const tokenMatches = employees.filter(emp => {
       const empTokens = tokenize(emp.name);
@@ -752,17 +758,17 @@ export class NotionSyncService {
     if (tokenMatches.length === 1) {
       const match = tokenMatches[0];
       debugLog.info(`   📍 Found token match: "${searchName}" ~ "${match.name}"`);
-      return match;
+      return { match };
     }
 
     if (tokenMatches.length > 1) {
       const names = tokenMatches.map(e => e.name).join(', ');
       debugLog.warn(`   ⚠️ Ambiguous match for "${searchName}" - candidates: ${names}. Treating as unmatched.`);
-      return null;
+      return { match: null, ambiguousCandidates: tokenMatches };
     }
 
     debugLog.info(`   ❌ No match found for "${searchName}"`);
-    return null;
+    return { match: null };
   }
 
   /**
@@ -822,9 +828,9 @@ export class NotionSyncService {
         throw new Error('Client name is required but not found in Notion page');
       }
       
-      await this.ensureClientExists(clientName);
+      await this.ensureClientExists(clientName, page.url);
       const allClients = await this.clientService.getAllClients();
-      const clientRecord = allClients.find(client => 
+      const clientRecord = allClients.find(client =>
         client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
       );
 
@@ -834,7 +840,7 @@ export class NotionSyncService {
 
       // Match team members → employees (auto-creates unmatched names)
       debugLog.info(`🔍 Resolving team members for ${clientName}: ${JSON.stringify(teamMembers)}`);
-      const { employeeIds } = await this.resolveTeamMembers(teamMembers);
+      const { employeeIds } = await this.resolveTeamMembers(teamMembers, page.url);
       debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')}`);
 
       if (employeeIds.length === 0) {
@@ -920,7 +926,8 @@ export class NotionSyncService {
   private async createWorkActivityFromParsedData(
     parsedActivity: any,
     notionPageProperties?: any,
-    onProgress?: (message: string) => void
+    onProgress?: (message: string) => void,
+    notionPageUrl?: string
   ): Promise<{ warnings: string[] }> {
     const warnings: string[] = [];
     try {
@@ -966,7 +973,7 @@ export class NotionSyncService {
       }
 
       // Ensure the client exists before validation
-      await this.ensureClientExists(parsedActivity.clientName);
+      await this.ensureClientExists(parsedActivity.clientName, notionPageUrl);
 
       // Get the client ID after ensuring it exists (using the potentially updated client name)
       const updatedClients = await this.clientService.getAllClients();
@@ -981,7 +988,8 @@ export class NotionSyncService {
       // Resolve team members → employees (auto-creates unmatched names)
       debugLog.info(`🔍 Resolving team members for ${parsedActivity.clientName}: ${JSON.stringify(parsedActivity.employees)}`);
       const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
-        parsedActivity.employees || []
+        parsedActivity.employees || [],
+        notionPageUrl
       );
       warnings.push(...employeeWarnings);
       debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);
@@ -1137,7 +1145,7 @@ export class NotionSyncService {
   /**
    * Ensure a client exists, creating it if necessary with improved matching
    */
-  private async ensureClientExists(clientName: string): Promise<void> {
+  private async ensureClientExists(clientName: string, notionPageUrl?: string): Promise<void> {
     if (!clientName || clientName.trim() === '') {
       throw new Error('Client name is required');
     }
@@ -1145,9 +1153,9 @@ export class NotionSyncService {
     try {
       // Check if client already exists (case-insensitive search)
       const existingClients = await this.clientService.getAllClients();
-      
+
       // First try exact match
-      const existingClient = existingClients.find(client => 
+      const existingClient = existingClients.find(client =>
         client.name.toLowerCase().trim() === clientName.toLowerCase().trim()
       );
 
@@ -1175,6 +1183,12 @@ export class NotionSyncService {
       });
 
       debugLog.info(`✨ Auto-created client "${clientName}" (ID: ${newClient.id}) from Notion import`);
+
+      try {
+        await this.notificationService.notifyClientAutoCreated(newClient, notionPageUrl);
+      } catch (err) {
+        debugLog.warn(`Failed to write notification for auto-created client "${clientName}": ${err instanceof Error ? err.message : err}`);
+      }
     } catch (error) {
       debugLog.error(`Error ensuring client "${clientName}" exists:`, error);
       throw new Error(`Failed to create client "${clientName}": ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1191,7 +1205,8 @@ export class NotionSyncService {
    * duration × team_member_count.
    */
   private async resolveTeamMembers(
-    memberNames: string[]
+    memberNames: string[],
+    notionPageUrl?: string
   ): Promise<{ employeeIds: number[]; warnings: string[] }> {
     const warnings: string[] = [];
     const employeeIds: number[] = [];
@@ -1201,10 +1216,10 @@ export class NotionSyncService {
       const name = (rawName || '').trim();
       if (!name) continue;
 
-      const matched = this.findEmployeeMatch(name, allEmployees);
-      if (matched) {
-        employeeIds.push(matched.id);
-        debugLog.info(`   ✅ Matched "${name}" to "${matched.name}" (ID: ${matched.id})`);
+      const { match, ambiguousCandidates } = this.findEmployeeMatch(name, allEmployees);
+      if (match) {
+        employeeIds.push(match.id);
+        debugLog.info(`   ✅ Matched "${name}" to "${match.name}" (ID: ${match.id})`);
         continue;
       }
 
@@ -1224,6 +1239,20 @@ export class NotionSyncService {
       const warning = `Auto-created employee "${name}" from Notion - please review their details`;
       warnings.push(warning);
       debugLog.warn(`✨ ${warning} (ID: ${created.id})`);
+
+      try {
+        if (ambiguousCandidates && ambiguousCandidates.length > 1) {
+          await this.notificationService.notifyEmployeeAmbiguousMatch(
+            name,
+            ambiguousCandidates.map(e => e.id),
+            notionPageUrl
+          );
+        } else {
+          await this.notificationService.notifyEmployeeAutoCreated(created, notionPageUrl);
+        }
+      } catch (err) {
+        debugLog.warn(`Failed to write notification for auto-created employee "${name}": ${err instanceof Error ? err.message : err}`);
+      }
     }
 
     return { employeeIds, warnings };
@@ -1232,7 +1261,7 @@ export class NotionSyncService {
   /**
    * Update an existing work activity from AI-parsed data
    */
-  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any, notionPageProperties?: any): Promise<{ warnings: string[] }> {
+  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any, notionPageProperties?: any, notionPageUrl?: string): Promise<{ warnings: string[] }> {
     const warnings: string[] = [];
     try {
       // Parse travel time and break time directly from Notion properties if available
@@ -1345,7 +1374,8 @@ export class NotionSyncService {
 
         debugLog.info(`🔍 Resolving team members for update ${workActivityId}: ${JSON.stringify(parsedActivity.employees)}`);
         const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
-          parsedActivity.employees
+          parsedActivity.employees,
+          notionPageUrl
         );
         warnings.push(...employeeWarnings);
         debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);

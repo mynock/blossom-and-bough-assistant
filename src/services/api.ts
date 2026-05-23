@@ -81,6 +81,9 @@ export const API_ENDPOINTS = {
 
   // Debug
   DEBUG_SYSTEM_PROMPT: '/debug/system-prompt',
+
+  // Notifications
+  NOTIFICATIONS: '/notifications',
 } as const;
 
 /**

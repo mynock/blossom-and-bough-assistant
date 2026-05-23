@@ -1,5 +1,6 @@
 import { GoogleCalendarService } from './GoogleCalendarService';
 import { NotionService } from './NotionService';
+import { NotificationService } from './NotificationService';
 import { debugLog } from '../utils/logger';
 
 export interface CronJobInfo {
@@ -16,6 +17,7 @@ export interface CronJobInfo {
 export class CronService {
   private googleCalendarService: GoogleCalendarService;
   private notionService: NotionService;
+  private notificationService: NotificationService;
   private isScheduled = false;
   private processingLocks = new Map<string, Promise<void>>(); // Race condition prevention
   private cronJobs = new Map<string, any>(); // Store cron job instances
@@ -24,9 +26,18 @@ export class CronService {
   constructor() {
     this.googleCalendarService = new GoogleCalendarService();
     this.notionService = new NotionService();
-    
+    this.notificationService = new NotificationService();
+
     // Initialize job status
     this.initializeJobStatus();
+  }
+
+  private async writeCronFailureNotification(jobName: string, error: unknown): Promise<void> {
+    try {
+      await this.notificationService.notifyCronFailed(jobName, error);
+    } catch (err) {
+      debugLog.warn(`Failed to write cron-failure notification for ${jobName}: ${err instanceof Error ? err.message : err}`);
+    }
   }
 
   private initializeJobStatus(): void {
@@ -164,6 +175,7 @@ export class CronService {
           maintenanceJob.status = 'error';
           console.error('❌ Error in maintenance entry cron job:', error);
           debugLog.error('❌ Error in maintenance entry cron job:', error);
+          await this.writeCronFailureNotification('Maintenance Entry Creation', error);
         }
       }, {
         scheduled: true,
@@ -199,6 +211,7 @@ export class CronService {
           notionJob.status = 'error';
           console.error('❌ Error in Notion sync cron job:', error);
           debugLog.error('❌ Error in Notion sync cron job:', error);
+          await this.writeCronFailureNotification('Notion Page Sync', error);
         }
       }, {
         scheduled: true,
