@@ -27,6 +27,10 @@ Technical documentation for the Blossom & Bough Scheduling Assistant.
 - [Other Charges](./features/other-charges.md) - Materials, services, and additional billing items
 - [Work Activities Schema](./features/work-activities-schema.md) - Non-billable time and travel time schema updates
 
+## Architectural Plans
+
+- [Remediation Plan Portfolio](./plans/README.md) - Index of 11 themed plans addressing findings from a multi-agent architectural review
+
 ## Design Documents
 
 - [POC PRD](./design/poc-prd.md) - Original proof-of-concept product requirements
