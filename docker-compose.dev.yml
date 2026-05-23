@@ -22,6 +22,29 @@ services:
     networks:
       - blossom-network
 
+  # One-shot DB migration. Runs after postgres is healthy, exits on success.
+  # Backend waits for this to complete before starting.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: blossom-migrate
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://blossom_user:blossom_password@postgres:5432/blossom_and_bough
+    volumes:
+      - ./server:/app/server
+      - ./server/package.json:/app/server/package.json
+      - ./server/package-lock.json:/app/server/package-lock.json
+      - backend_node_modules:/app/server/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - blossom-network
+    restart: "no"
+    command: npm run db:migrate:prod
+
   # Backend API Server
   backend:
     build:
@@ -50,6 +73,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - blossom-network
     # Override command to watch for package.json changes
