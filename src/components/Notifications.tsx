@@ -55,7 +55,7 @@ function groupByDay(items: Notification[]): Array<{ day: string; items: Notifica
 
 const Notifications: React.FC = () => {
   const navigate = useNavigate();
-  const { refresh } = useNotifications();
+  const { refresh, decrementUnread } = useNotifications();
   const [filter, setFilter] = useState<Filter>('all');
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -88,9 +88,11 @@ const Notifications: React.FC = () => {
 
   const handleRowClick = async (n: Notification) => {
     if (!n.readAt) {
+      const wasUnread = !n.dismissedAt;
       try {
         await notificationsApi.markRead(n.id);
         setItems(prev => prev.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item));
+        if (wasUnread) decrementUnread();
         refresh();
       } catch (err) {
         console.error('Failed to mark notification read', err);
@@ -101,9 +103,11 @@ const Notifications: React.FC = () => {
 
   const handleDismiss = async (event: React.MouseEvent, n: Notification) => {
     event.stopPropagation();
+    const wasUnread = !n.readAt && !n.dismissedAt;
     try {
       await notificationsApi.dismiss(n.id);
       setItems(prev => prev.filter(item => item.id !== n.id));
+      if (wasUnread) decrementUnread();
       refresh();
     } catch (err) {
       console.error('Failed to dismiss notification', err);
@@ -112,9 +116,10 @@ const Notifications: React.FC = () => {
 
   const handleMarkAllRead = async () => {
     try {
-      await notificationsApi.markAllRead();
+      const updated = await notificationsApi.markAllRead();
       const now = new Date().toISOString();
       setItems(prev => prev.map(item => item.readAt ? item : { ...item, readAt: now }));
+      decrementUnread(updated);
       refresh();
     } catch (err) {
       console.error('Failed to mark all read', err);

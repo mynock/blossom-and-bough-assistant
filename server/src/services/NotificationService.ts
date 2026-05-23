@@ -82,6 +82,7 @@ export class NotificationService extends BaseCrudService<typeof notifications, N
 
   async notifyEmployeeAmbiguousMatch(
     name: string,
+    createdEmployee: Employee,
     candidateIds: number[],
     sourceUrl?: string
   ): Promise<Notification> {
@@ -90,10 +91,11 @@ export class NotificationService extends BaseCrudService<typeof notifications, N
       severity: 'warn',
       title: `Ambiguous employee name: "${name}"`,
       body: `The name "${name}" matched ${candidateIds.length} existing employees during a Notion sync, so a new employee was auto-created instead. You may want to merge or rename to resolve the ambiguity.`,
-      link: '/employees',
+      link: `/employees/${createdEmployee.id}`,
       sourceUrl,
       entityType: 'employee',
-      metadata: { name, candidateIds }
+      entityId: createdEmployee.id,
+      metadata: { name, candidateIds, createdEmployeeId: createdEmployee.id }
     });
   }
 
@@ -119,18 +121,6 @@ export class NotificationService extends BaseCrudService<typeof notifications, N
       body: message,
       entityType: 'cron_run',
       metadata: { jobName, error: message }
-    });
-  }
-
-  async notifyHoursUnparsed(workActivityId: number, detail: string): Promise<Notification> {
-    return this.create({
-      type: 'hours_unparsed',
-      severity: 'warn',
-      title: `Hours adjustment couldn't be applied`,
-      body: detail,
-      link: `/work-activities/${workActivityId}`,
-      entityType: 'work_activity',
-      entityId: workActivityId
     });
   }
 }

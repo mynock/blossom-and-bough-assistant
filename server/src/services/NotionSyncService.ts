@@ -1244,6 +1244,7 @@ export class NotionSyncService {
         if (ambiguousCandidates && ambiguousCandidates.length > 1) {
           await this.notificationService.notifyEmployeeAmbiguousMatch(
             name,
+            created,
             ambiguousCandidates.map(e => e.id),
             notionPageUrl
           );

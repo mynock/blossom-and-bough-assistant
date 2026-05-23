@@ -51,7 +51,7 @@ function timeAgo(iso: string): string {
 
 const NotificationBell: React.FC = () => {
   const navigate = useNavigate();
-  const { unreadCount, refresh } = useNotifications();
+  const { unreadCount, refresh, decrementUnread } = useNotifications();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(false);
@@ -78,9 +78,11 @@ const NotificationBell: React.FC = () => {
 
   const handleRowClick = async (n: Notification) => {
     if (!n.readAt) {
+      const wasUnread = !n.dismissedAt;
       try {
         await notificationsApi.markRead(n.id);
         setItems(prev => prev.map(item => item.id === n.id ? { ...item, readAt: new Date().toISOString() } : item));
+        if (wasUnread) decrementUnread();
         refresh();
       } catch (err) {
         console.error('Failed to mark notification read', err);
@@ -94,9 +96,11 @@ const NotificationBell: React.FC = () => {
 
   const handleDismiss = async (event: React.MouseEvent, n: Notification) => {
     event.stopPropagation();
+    const wasUnread = !n.readAt && !n.dismissedAt;
     try {
       await notificationsApi.dismiss(n.id);
       setItems(prev => prev.filter(item => item.id !== n.id));
+      if (wasUnread) decrementUnread();
       refresh();
     } catch (err) {
       console.error('Failed to dismiss notification', err);
@@ -105,8 +109,9 @@ const NotificationBell: React.FC = () => {
 
   const handleMarkAllRead = async () => {
     try {
-      await notificationsApi.markAllRead();
+      const updated = await notificationsApi.markAllRead();
       setItems(prev => prev.map(item => item.readAt ? item : { ...item, readAt: new Date().toISOString() }));
+      decrementUnread(updated);
       refresh();
     } catch (err) {
       console.error('Failed to mark all read', err);
@@ -121,7 +126,11 @@ const NotificationBell: React.FC = () => {
   return (
     <>
       <Tooltip title="Notifications">
-        <IconButton color="inherit" onClick={handleOpen} aria-label={`Notifications (${unreadCount} unread)`}>
+        <IconButton
+          color="inherit"
+          onClick={handleOpen}
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+        >
           <Badge badgeContent={unreadCount} color="error" max={99}>
             {unreadCount > 0 ? <NotificationsIcon /> : <NotificationsNone />}
           </Badge>
