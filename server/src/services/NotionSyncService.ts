@@ -4,7 +4,7 @@ import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
 import { AnthropicService } from './AnthropicService';
 import { debugLog } from '../utils/logger';
-import { NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
+import { Employee, NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 const notion = new Client({
@@ -12,6 +12,12 @@ const notion = new Client({
 });
 
 const DATABASE_ID = process.env.NOTION_DATABASE_ID!;
+
+// Split a name into lowercase tokens on whitespace and hyphens, dropping blanks.
+// Used for whole-token name matching (see findEmployeeMatch).
+function tokenize(name: string): string[] {
+  return name.toLowerCase().split(/[\s-]+/).filter(Boolean);
+}
 
 export interface NotionWorkActivityData {
   notionPageId: string;
@@ -304,35 +310,41 @@ export class NotionSyncService {
 
       if (existingActivity) {
         // We already know we should sync (checked above)
-        await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId, page.properties);
+        const updateResult = await this.updateWorkActivityFromParsedData(existingActivity.id, activityWithNotionId, page.properties);
         debugLog.info(`Updated work activity ${existingActivity.id} from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✅ Updated: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
         }
-        
+
+        // Surface employee auto-creation warnings with a page reference
+        warnings.push(...updateResult.warnings.map(w => `${this.createPageReference(page, existingActivity.id)}: ${w}`));
+
         // Log any AI warnings
         if (aiResult.warnings && aiResult.warnings.length > 0) {
           warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page, existingActivity.id)}: ${w}`));
         }
-        
+
         return { action: 'updated', warnings: warnings.length > 0 ? warnings : undefined };
       } else {
         // Create new work activity using the validated workflow
         const clientProgressCallback = onProgress ? (message: string) => {
           onProgress(message);
         } : undefined;
-        
-        await this.createWorkActivityFromParsedData(activityWithNotionId, page.properties, clientProgressCallback);
+
+        const createResult = await this.createWorkActivityFromParsedData(activityWithNotionId, page.properties, clientProgressCallback);
         debugLog.info(`Created new work activity from Notion page ${page.id}`);
         if (onProgress) {
           onProgress(`✨ Created: ${activityWithNotionId.clientName} (${activityWithNotionId.date})`);
         }
-        
+
+        // Surface employee auto-creation warnings with a page reference
+        warnings.push(...createResult.warnings.map(w => `${this.createPageReference(page)}: ${w}`));
+
         // Log any AI warnings
         if (aiResult.warnings && aiResult.warnings.length > 0) {
           warnings.push(...aiResult.warnings.map(w => `${this.createPageReference(page)}: ${w}`));
         }
-        
+
         return { action: 'created', warnings: warnings.length > 0 ? warnings : undefined };
       }
 
@@ -700,68 +712,56 @@ export class NotionSyncService {
   }
 
   /**
-   * Find employee match with flexible name matching
+   * Find an employee by name. Matches in this order:
+   *   1. Exact full name (case-insensitive).
+   *   2. Whole-token match: every token of the shorter name appears as a complete
+   *      token of the longer name. So "Anne" matches "Anne McGary" (because "anne"
+   *      is a token of "Anne McGary"), but "An" does NOT match "Anne McGary"
+   *      (because "an" is not a token of "Anne McGary"), and "Andy" does NOT
+   *      match "Andrea Wilson" (no shared tokens).
+   *
+   * If more than one candidate matches at the token level the result is treated
+   * as ambiguous: returns null so the caller auto-creates with a visible warning
+   * rather than silently picking the wrong person.
+   *
+   * Does NOT do nickname/variant matching - "Andy" will not match "Andrea".
    */
-  private findEmployeeMatch(searchName: string, employees: any[]): any | null {
+  private findEmployeeMatch(searchName: string, employees: Employee[]): Employee | null {
     const search = searchName.toLowerCase().trim();
-    
-    // Define name mappings for AI-generated names to common first names
-    const nameVariants: Record<string, string[]> = {
-      'andrea': ['andrea', 'andy'],
-      'virginia': ['virginia', 'ginny', 'ginger'],
-      'rebecca': ['rebecca', 'becca', 'becky'],
-      'anne': ['anne', 'anna', 'annie'],
-      'megan': ['megan', 'meg', 'meghan'],
-      'jessica': ['jessica', 'jess', 'jessie'],
-      'sarah': ['sarah', 'sara'],
-      'michael': ['michael', 'mike', 'mick'],
-      'carlos': ['carlos', 'carl'],
-    };
-    
-    // Strategy 1: Exact match
-    let match = employees.find(emp => emp.name.toLowerCase() === search);
-    if (match) {
-      debugLog.info(`   📍 Found exact match: "${searchName}" = "${match.name}"`);
-      return match;
+    if (!search) return null;
+
+    const exact = employees.find(emp => emp.name.toLowerCase().trim() === search);
+    if (exact) {
+      debugLog.info(`   📍 Found exact match: "${searchName}" = "${exact.name}"`);
+      return exact;
     }
-    
-    // Strategy 2: Contains match (original logic)
-    match = employees.find(emp => 
-      emp.name.toLowerCase().includes(search) ||
-      search.includes(emp.name.toLowerCase())
-    );
-    if (match) {
-      debugLog.info(`   📍 Found contains match: "${searchName}" ~ "${match.name}"`);
-      return match;
-    }
-    
-    // Strategy 3: First name matching with variants
-    const searchFirstName = search.split(' ')[0];
-    for (const [baseName, variants] of Object.entries(nameVariants)) {
-      if (variants.includes(searchFirstName)) {
-        // Look for employees whose first name matches any variant of this base name
-        match = employees.find(emp => {
-          const empFirstName = emp.name.toLowerCase().split(' ')[0];
-          return variants.includes(empFirstName) || empFirstName === baseName;
-        });
-        if (match) {
-          debugLog.info(`   📍 Found variant match: "${searchName}" (${searchFirstName}) -> "${match.name}" via ${baseName}`);
-          return match;
-        }
-      }
-    }
-    
-    // Strategy 4: Partial first name match (for common nicknames)
-    match = employees.find(emp => {
-      const empFirstName = emp.name.toLowerCase().split(' ')[0];
-      return empFirstName.startsWith(searchFirstName) || searchFirstName.startsWith(empFirstName);
+
+    const searchTokens = tokenize(search);
+    if (searchTokens.length === 0) return null;
+
+    const tokenMatches = employees.filter(emp => {
+      const empTokens = tokenize(emp.name);
+      if (empTokens.length === 0) return false;
+      const [shorter, longer] =
+        searchTokens.length <= empTokens.length
+          ? [searchTokens, empTokens]
+          : [empTokens, searchTokens];
+      return shorter.every(t => longer.includes(t));
     });
-    if (match) {
-      debugLog.info(`   📍 Found partial first name match: "${searchName}" ~ "${match.name}"`);
+
+    if (tokenMatches.length === 1) {
+      const match = tokenMatches[0];
+      debugLog.info(`   📍 Found token match: "${searchName}" ~ "${match.name}"`);
       return match;
     }
-    
-    debugLog.info(`   ❌ No match found for "${searchName}" using any strategy`);
+
+    if (tokenMatches.length > 1) {
+      const names = tokenMatches.map(e => e.name).join(', ');
+      debugLog.warn(`   ⚠️ Ambiguous match for "${searchName}" - candidates: ${names}. Treating as unmatched.`);
+      return null;
+    }
+
+    debugLog.info(`   ❌ No match found for "${searchName}"`);
     return null;
   }
 
@@ -832,28 +832,13 @@ export class NotionSyncService {
         throw new Error(`Could not find client "${clientName}" after creation`);
       }
 
-      // Match employees
-      const allEmployees = await this.employeeService.getAllEmployees();
-      const employeeIds: number[] = [];
-      
-      debugLog.info(`🔍 Matching employees for ${clientName}:`);
-      debugLog.info(`   Team members from Notion: ${JSON.stringify(teamMembers)}`);
-      debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
-      
-      for (const memberName of teamMembers) {
-        const matchedEmployee = this.findEmployeeMatch(memberName, allEmployees);
-        if (matchedEmployee) {
-          employeeIds.push(matchedEmployee.id);
-          debugLog.info(`   ✅ Matched "${memberName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
-        } else {
-          debugLog.info(`   ❌ No match found for "${memberName}"`);
-        }
-      }
-
+      // Match team members → employees (auto-creates unmatched names)
+      debugLog.info(`🔍 Resolving team members for ${clientName}: ${JSON.stringify(teamMembers)}`);
+      const { employeeIds } = await this.resolveTeamMembers(teamMembers);
       debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')}`);
-      
+
       if (employeeIds.length === 0) {
-        debugLog.warn(`⚠️ No employees matched - work activity will have no employee assignments!`);
+        debugLog.warn(`⚠️ No team members found - work activity will have no employee assignments!`);
       }
 
       // Calculate billable hours
@@ -933,10 +918,11 @@ export class NotionSyncService {
    * Create a new work activity from AI-parsed data (legacy method)
    */
   private async createWorkActivityFromParsedData(
-    parsedActivity: any, 
+    parsedActivity: any,
     notionPageProperties?: any,
     onProgress?: (message: string) => void
-  ): Promise<void> {
+  ): Promise<{ warnings: string[] }> {
+    const warnings: string[] = [];
     try {
       // Parse travel time and break time directly from Notion properties if available
       let travelTime = 0;
@@ -992,34 +978,16 @@ export class NotionSyncService {
         throw new Error(`Could not find client "${parsedActivity.clientName}" after creation`);
       }
 
-      // Get all employees for employee matching
-      const allEmployees = await this.employeeService.getAllEmployees();
-      const employeeIds: number[] = [];
-      
-      // Match employees from parsed activity with improved matching logic
-      debugLog.info(`🔍 Matching employees for ${parsedActivity.clientName}:`);
-      debugLog.info(`   Parsed employees: ${JSON.stringify(parsedActivity.employees)}`);
-      debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
-      
-      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
-        for (const empName of parsedActivity.employees) {
-          debugLog.info(`   Looking for match for: "${empName}"`);
-          const matchedEmployee = this.findEmployeeMatch(empName, allEmployees);
-          if (matchedEmployee) {
-            employeeIds.push(matchedEmployee.id);
-            debugLog.info(`   ✅ Matched "${empName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
-          } else {
-            debugLog.info(`   ❌ No match found for "${empName}"`);
-          }
-        }
-      }
-      
-      debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')}`);
-      debugLog.info(`   Employee count: ${employeeIds.length}`);
-      
-      // If no employees matched, log this as a warning but don't default to anyone
+      // Resolve team members → employees (auto-creates unmatched names)
+      debugLog.info(`🔍 Resolving team members for ${parsedActivity.clientName}: ${JSON.stringify(parsedActivity.employees)}`);
+      const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
+        parsedActivity.employees || []
+      );
+      warnings.push(...employeeWarnings);
+      debugLog.info(`   Final employee IDs: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);
+
       if (employeeIds.length === 0) {
-        debugLog.warn(`⚠️  No employees matched for ${parsedActivity.clientName} - work activity will have no employee assignments!`);
+        debugLog.warn(`⚠️  No team members found for ${parsedActivity.clientName} - work activity will have no employee assignments!`);
       }
 
       // Calculate billable hours - do NOT subtract raw travel time, only adjusted travel time
@@ -1092,6 +1060,7 @@ export class NotionSyncService {
       await this.workActivityService.createWorkActivity(createData);
       debugLog.info(`✅ Created work activity from Notion with correct lastUpdatedBy: 'notion_sync'`);
 
+      return { warnings };
     } catch (error) {
       debugLog.error('Error creating work activity from parsed data:', error);
       throw error;
@@ -1213,9 +1182,58 @@ export class NotionSyncService {
   }
 
   /**
+   * Resolve a list of team member names (from Notion) to employee IDs.
+   * Auto-creates any employee that doesn't match an existing record, and
+   * returns warnings for each auto-created employee so the caller can surface them.
+   *
+   * Ensures the returned employeeIds.length === input names.length (minus blanks),
+   * which prevents per-employee hour inflation when totalHours was computed as
+   * duration × team_member_count.
+   */
+  private async resolveTeamMembers(
+    memberNames: string[]
+  ): Promise<{ employeeIds: number[]; warnings: string[] }> {
+    const warnings: string[] = [];
+    const employeeIds: number[] = [];
+    const allEmployees = await this.employeeService.getAllEmployees();
+
+    for (const rawName of memberNames) {
+      const name = (rawName || '').trim();
+      if (!name) continue;
+
+      const matched = this.findEmployeeMatch(name, allEmployees);
+      if (matched) {
+        employeeIds.push(matched.id);
+        debugLog.info(`   ✅ Matched "${name}" to "${matched.name}" (ID: ${matched.id})`);
+        continue;
+      }
+
+      const created = await this.employeeService.createEmployee({
+        employeeId: `notion-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+        name,
+        regularWorkdays: '',
+        homeAddress: '',
+        minHoursPerDay: 0,
+        maxHoursPerDay: 8,
+        capabilityLevel: 1,
+        notes: 'Auto-created from Notion sync - please review and update',
+        activeStatus: 'active'
+      });
+      allEmployees.push(created);
+      employeeIds.push(created.id);
+      const warning = `Auto-created employee "${name}" from Notion - please review their details`;
+      warnings.push(warning);
+      debugLog.warn(`✨ ${warning} (ID: ${created.id})`);
+    }
+
+    return { employeeIds, warnings };
+  }
+
+  /**
    * Update an existing work activity from AI-parsed data
    */
-  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any, notionPageProperties?: any): Promise<void> {
+  private async updateWorkActivityFromParsedData(workActivityId: number, parsedActivity: any, notionPageProperties?: any): Promise<{ warnings: string[] }> {
+    const warnings: string[] = [];
     try {
       // Parse travel time and break time directly from Notion properties if available
       let travelTime = 0;
@@ -1324,30 +1342,14 @@ export class NotionSyncService {
       // Handle employee assignments update - delete existing assignments and recreate them
       if (parsedActivity.employees && parsedActivity.employees.length > 0) {
         debugLog.info(`👥 Updating employee assignments for work activity ${workActivityId}`);
-        
-        // Get all employees for matching
-        const allEmployees = await this.employeeService.getAllEmployees();
-        const employeeIds: number[] = [];
-        
-        // Match employees from parsed activity with improved matching logic
-        debugLog.info(`🔍 Matching employees for update ${workActivityId}:`);
-        debugLog.info(`   Parsed employees: ${JSON.stringify(parsedActivity.employees)}`);
-        debugLog.info(`   Available employees: ${allEmployees.map(emp => `${emp.name} (ID: ${emp.id})`).join(', ')}`);
-        
-        for (const empName of parsedActivity.employees) {
-          debugLog.info(`   Looking for match for: "${empName}"`);
-          const matchedEmployee = this.findEmployeeMatch(empName, allEmployees);
-          if (matchedEmployee) {
-            employeeIds.push(matchedEmployee.id);
-            debugLog.info(`   ✅ Matched "${empName}" to "${matchedEmployee.name}" (ID: ${matchedEmployee.id})`);
-          } else {
-            debugLog.info(`   ❌ No match found for "${empName}"`);
-          }
-        }
-        
-        debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')}`);
-        debugLog.info(`   Employee count: ${employeeIds.length}`);
-        
+
+        debugLog.info(`🔍 Resolving team members for update ${workActivityId}: ${JSON.stringify(parsedActivity.employees)}`);
+        const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
+          parsedActivity.employees
+        );
+        warnings.push(...employeeWarnings);
+        debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);
+
         if (employeeIds.length > 0) {
           // Delete existing employee assignments
           await this.workActivityService.db.delete(workActivityEmployees)
@@ -1378,6 +1380,7 @@ export class NotionSyncService {
       
       debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data, charges, and employee assignments`);
 
+      return { warnings };
     } catch (error) {
       debugLog.error(`Error updating work activity ${workActivityId}:`, error);
       throw error;
