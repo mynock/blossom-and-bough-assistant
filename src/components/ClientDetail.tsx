@@ -36,6 +36,7 @@ import {
   TableRow,
   TableCell,
   IconButton,
+  Checkbox,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -163,6 +164,11 @@ interface InvoiceLineItem {
   amount: number;
 }
 
+interface SuggestedLineItem extends InvoiceLineItem {
+  category: 'plants' | 'materials';
+  sourceWorkActivityId?: number;
+}
+
 interface UpcomingScheduleData {
   upcomingEvents: CalendarEvent[];
   client: {
@@ -224,6 +230,8 @@ const ClientDetail: React.FC = () => {
   const [useAIGeneration, setUseAIGeneration] = useState(false);
   const [dialogStep, setDialogStep] = useState<'select' | 'edit'>('select');
   const [previewLineItems, setPreviewLineItems] = useState<InvoiceLineItem[]>([]);
+  const [suggestedLineItems, setSuggestedLineItems] = useState<SuggestedLineItem[]>([]);
+  const [includedSuggestionIndices, setIncludedSuggestionIndices] = useState<Set<number>>(new Set());
   const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date' | 'notes'>('table');
 
   useEffect(() => {
@@ -530,6 +538,8 @@ const ClientDetail: React.FC = () => {
 
       const result = await response.json();
       setPreviewLineItems(result.lineItems || []);
+      setSuggestedLineItems(result.suggestedLineItems || []);
+      setIncludedSuggestionIndices(new Set());
       setDialogStep('edit');
     } catch (error) {
       setSnackbar({
@@ -559,19 +569,44 @@ const ClientDetail: React.FC = () => {
     setShowInvoiceDialog(false);
     setDialogStep('select');
     setPreviewLineItems([]);
+    setSuggestedLineItems([]);
+    setIncludedSuggestionIndices(new Set());
   };
+
+  const updateSuggestedLineItem = (index: number, patch: Partial<SuggestedLineItem>) => {
+    setSuggestedLineItems(prev => prev.map((line, i) => {
+      if (i !== index) return line;
+      const next = { ...line, ...patch };
+      next.amount = next.quantity * next.rate;
+      return next;
+    }));
+  };
+
+  const toggleSuggestion = (index: number) => {
+    setIncludedSuggestionIndices(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index); else next.add(index);
+      return next;
+    });
+  };
+
+  const includedSuggestions = suggestedLineItems.filter((_, i) => includedSuggestionIndices.has(i));
+  const hasIncludedSuggestionWithoutRate = includedSuggestions.some(line => line.rate <= 0);
+  const grandTotal = previewLineItems.reduce((sum, line) => sum + line.amount, 0)
+    + includedSuggestions.reduce((sum, line) => sum + line.amount, 0);
 
   const handleSendInvoice = async () => {
     if (!client || previewLineItems.length === 0) return;
 
     setInvoiceCreationLoading(true);
     try {
+      const additions = includedSuggestions.map(({ category, sourceWorkActivityId, ...line }) => line);
       const response = await secureFetch('/api/qbo/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: client.id,
-          lineItems: previewLineItems,
+          lineItems: [...previewLineItems, ...additions],
         }),
       });
 
@@ -1126,10 +1161,10 @@ const ClientDetail: React.FC = () => {
                   />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.800', mb: 0.5 }}>
-                      ✨ AI-cleaned descriptions
+                      ✨ AI cleanup + material/plant suggestions
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
-                      Rewrites raw work notes into the house style: terse, comma-separated task list per line, no dates or hours.
+                      Rewrites descriptions in the house style and flags plants/materials mentioned in notes that may need separate billing.
                     </Typography>
                   </Box>
                 </Box>
@@ -1353,17 +1388,97 @@ const ClientDetail: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     )}
-                    <TableRow>
-                      <TableCell colSpan={3} align="right" sx={{ fontWeight: 600, borderTop: '2px solid', borderColor: 'grey.300' }}>
-                        Total
-                      </TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 700, borderTop: '2px solid', borderColor: 'grey.300' }}>
-                        ${previewLineItems.reduce((sum, line) => sum + line.amount, 0).toFixed(2)}
-                      </TableCell>
-                      <TableCell sx={{ borderTop: '2px solid', borderColor: 'grey.300' }} />
-                    </TableRow>
                   </TableBody>
                 </Table>
+
+                {suggestedLineItems.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mt: 1 }}>
+                      Suggested additions
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      These plants/materials were mentioned in the work notes but aren't yet on the invoice. Check any you want to bill separately, then set a rate.
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell padding="checkbox">Include</TableCell>
+                          <TableCell>Description</TableCell>
+                          <TableCell align="center" sx={{ width: 90 }}>Category</TableCell>
+                          <TableCell align="right" sx={{ width: 100 }}>Qty</TableCell>
+                          <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
+                          <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {suggestedLineItems.map((line, index) => {
+                          const included = includedSuggestionIndices.has(index);
+                          const needsRate = included && line.rate <= 0;
+                          return (
+                            <TableRow key={index} sx={{ bgcolor: included ? 'primary.50' : 'transparent' }}>
+                              <TableCell padding="checkbox">
+                                <Checkbox
+                                  checked={included}
+                                  onChange={() => toggleSuggestion(index)}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <TextField
+                                  value={line.description}
+                                  onChange={e => updateSuggestedLineItem(index, { description: e.target.value })}
+                                  fullWidth
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                              <TableCell align="center">
+                                <Typography variant="caption" sx={{ textTransform: 'capitalize' }}>
+                                  {line.category}
+                                </Typography>
+                              </TableCell>
+                              <TableCell align="right">
+                                <TextField
+                                  value={line.quantity}
+                                  onChange={e => {
+                                    const v = parseFloat(e.target.value);
+                                    updateSuggestedLineItem(index, { quantity: Number.isFinite(v) ? v : 0 });
+                                  }}
+                                  type="number"
+                                  size="small"
+                                  inputProps={{ step: 1, min: 0, style: { textAlign: 'right' } }}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <TextField
+                                  value={line.rate}
+                                  onChange={e => {
+                                    const v = parseFloat(e.target.value);
+                                    updateSuggestedLineItem(index, { rate: Number.isFinite(v) ? v : 0 });
+                                  }}
+                                  type="number"
+                                  size="small"
+                                  error={needsRate}
+                                  helperText={needsRate ? 'Set a rate' : undefined}
+                                  inputProps={{ step: 0.01, min: 0, style: { textAlign: 'right' } }}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">${line.amount.toFixed(2)}</Typography>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                )}
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1, borderTop: '2px solid', borderColor: 'grey.300' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Total: ${grandTotal.toFixed(2)}
+                  </Typography>
+                </Box>
               </Box>
             )}
           </DialogContent>
@@ -1392,7 +1507,11 @@ const ClientDetail: React.FC = () => {
                 <Button
                   onClick={handleSendInvoice}
                   variant="contained"
-                  disabled={previewLineItems.length === 0 || invoiceCreationLoading}
+                  disabled={
+                    (previewLineItems.length === 0 && includedSuggestions.length === 0)
+                    || hasIncludedSuggestionWithoutRate
+                    || invoiceCreationLoading
+                  }
                 >
                   {invoiceCreationLoading ? 'Sending…' : 'Send to QuickBooks'}
                 </Button>

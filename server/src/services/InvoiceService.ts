@@ -2,7 +2,7 @@ import { DatabaseService } from './DatabaseService';
 import { QuickBooksService } from './QuickBooksService';
 import { ClientService } from './ClientService';
 import { WorkActivityService } from './WorkActivityService';
-import { AnthropicService } from './AnthropicService';
+import { AnthropicService, SuggestedAddition } from './AnthropicService';
 import { 
   workActivities, 
   invoices, 
@@ -37,9 +37,15 @@ export interface InvoiceLineItemData {
   amount: number;
 }
 
+export interface SuggestedLineItem extends InvoiceLineItemData {
+  category: 'plants' | 'materials';
+  sourceWorkActivityId?: number;
+}
+
 export interface InvoicePreviewResult {
   client: any;
   lineItems: InvoiceLineItemData[];
+  suggestedLineItems: SuggestedLineItem[];
   totalAmount: number;
 }
 
@@ -137,17 +143,21 @@ export class InvoiceService extends DatabaseService {
       throw new Error('No line items could be generated for the invoice. Please check if QBO items are properly synced.');
     }
 
+    let suggestedLineItems: SuggestedLineItem[] = [];
+
     if (request.useAIGeneration) {
       try {
-        const enhancedLineItems = await this.anthropicService.generateInvoiceLineItems(
+        const aiResult = await this.anthropicService.generateInvoiceLineItems(
           workActivitiesData,
           client.name,
           lineItems
         );
 
-        if (enhancedLineItems && enhancedLineItems.length > 0) {
-          lineItems = enhancedLineItems;
+        if (aiResult.lineItems && aiResult.lineItems.length > 0) {
+          lineItems = aiResult.lineItems;
         }
+
+        suggestedLineItems = await this.materializeSuggestedAdditions(aiResult.suggestedAdditions);
       } catch (aiError) {
         console.error('AI generation failed during preview, falling back to basic line items:', aiError);
       }
@@ -155,7 +165,28 @@ export class InvoiceService extends DatabaseService {
 
     const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0);
 
-    return { client, lineItems, totalAmount };
+    return { client, lineItems, suggestedLineItems, totalAmount };
+  }
+
+  private async materializeSuggestedAdditions(suggestions: SuggestedAddition[]): Promise<SuggestedLineItem[]> {
+    const out: SuggestedLineItem[] = [];
+    for (const suggestion of suggestions) {
+      const qboItem = await this.findQBOItemForChargeType(suggestion.category === 'plants' ? 'plant' : 'material');
+      if (!qboItem) {
+        console.warn(`No QBO item found for suggested ${suggestion.category}: ${suggestion.description} — dropping suggestion`);
+        continue;
+      }
+      out.push({
+        qboItemId: qboItem.qboId,
+        description: suggestion.description,
+        quantity: suggestion.quantity,
+        rate: 0,
+        amount: 0,
+        category: suggestion.category,
+        sourceWorkActivityId: suggestion.sourceWorkActivityId
+      });
+    }
+    return out;
   }
 
   /**

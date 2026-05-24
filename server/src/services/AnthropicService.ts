@@ -1422,55 +1422,72 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
     workActivities: any[],
     clientName: string,
     basicLineItems: any[]
-  ): Promise<any[]> {
+  ): Promise<{ lineItems: any[]; suggestedAdditions: SuggestedAddition[] }> {
     if (!this.client) {
       throw new Error('Anthropic API client not initialized');
     }
 
     console.log(`🤖 Generating AI-enhanced invoice line items for ${clientName}...`);
 
-    const systemPrompt = `You rewrite invoice line item descriptions for a landscaping business. The house style is terse and factual: a single sentence, comma-separated list of the work performed, ending with a period. No marketing language.`;
+    const systemPrompt = `You write invoice line item descriptions for a landscaping business AND identify plants/materials mentioned in the work notes that may need separate billing as their own line items.`;
 
-    const userPrompt = `Rewrite the description on each line item below to match the house style.
+    const userPrompt = `Two jobs:
+1. Rewrite the description on each line item to match the house style.
+2. Identify plants/materials/supplies mentioned in the work notes that are NOT already represented in the current line items.
 
-HOUSE STYLE
+HOUSE STYLE FOR DESCRIPTIONS
 - One sentence per description, ending with a period.
 - Comma-separated list of tasks performed. Examples of the target style:
   • "Weeding, deadheading hellebores, pruning (rhododendrons, mahonia, camellia), garden meeting, planting cascara and spirea, general clean up."
   • "Training vines/peas, volunteer tree removal, weeds, clean up, perennial care, sluggo."
-  • "Pruning (barberry, nandina, fringeflower, camellia), weeding, deadheading hellebores, irrigation check and adjustments."
-  • Plants/materials lines: "Cascara tree, mahonia nervosa." or "Horticultural oil, lacewings." or "Pomegranate tree, shrubs for border where fence fell."
-- Capitalize only the first word. Keep subsequent items lowercase except proper nouns (plant names, places, "Sluggo" if it's a brand, etc.).
-- Group related work in parentheses when natural, e.g., "pruning (rhododendrons, mahonia)".
-- Aim for under ~250 characters. Longer is OK only when the work genuinely required it.
+  • Plants/materials lines: "Cascara tree, mahonia nervosa." or "Horticultural oil, lacewings."
+- Capitalize only the first word. Subsequent items lowercase except proper nouns (plant names, places, brand names).
+- Group related work in parentheses when natural.
+- Aim for under ~250 characters.
+- DO NOT include dates, hours, rate, totals, or client name (other columns have those).
+- DO NOT use marketing words ("professional", "comprehensive", "expert", "value", etc.) or first-person "we".
 
-DO NOT INCLUDE
-- Dates, hours, hourly rate, totals, or client name — those appear in their own invoice columns.
-- Adjectives like "professional", "comprehensive", "expert", "detailed", "meticulous".
-- First-person "we" / "our team" / "I".
-- "Value demonstration" framing — just list the work.
+HOW TO IDENTIFY SUGGESTED ADDITIONS
+The labor line covers the work; suggested additions are the things bought/applied. Look in the work activity notes for:
+- Plants installed: "planted X", "planting X", "transplanted X", or specific plant names mentioned (lonicera, mahonia, cascara, hellebore, etc.) → category: "plants"
+- Branded products applied: "sluggo", "roundup", etc. → category: "materials"
+- Treatments and supplies: "horticultural oil", "lacewings", "rose fertilizer", "sluggo on hostas", "compost", "mulch" → category: "materials"
+- Soil, gravel, deliveries (when delivered for the job) → category: "materials"
+
+Skip suggestions when:
+- The current line items already include that material/plant (look at descriptions and qboItemId types).
+- The mention is generic labor without a specific product ("general planting", "transplanting from another bed", "weeding").
+- The item is clearly the client's own (e.g., "moved client's existing rose to new bed").
+
+Suggested descriptions should be short noun phrases in the house style for plants/materials lines (e.g., "Lonicera 'Lemon Beauty'", "Sluggo", "Rose fertilizer", "Horticultural oil"). Don't write sentences.
 
 DATA
 Client: ${clientName}
 
-Work activities (use these for raw task content):
+Work activities (raw notes/tasks live here):
 ${JSON.stringify(workActivities, null, 2)}
 
-Current line items (rewrite each description in place, preserve everything else):
+Current line items (already represented — do not re-suggest these):
 ${JSON.stringify(basicLineItems, null, 2)}
 
 OUTPUT
-Return ONLY a JSON array, one object per current line item in the same order, with this shape (preserve quantity, rate, amount, workActivityId, qboItemId exactly from the input):
-[
-  {
-    "description": "Rewritten description in house style.",
-    "quantity": 11.06,
-    "rate": 55.00,
-    "amount": 608.30,
-    "workActivityId": 123,
-    "qboItemId": "original-qbo-item-id"
-  }
-]`;
+Return ONLY a JSON object (not an array) in this exact shape. Preserve quantity, rate, amount, workActivityId, qboItemId exactly for each lineItems entry. Use an empty array for suggestedAdditions if nothing applies.
+{
+  "lineItems": [
+    {
+      "description": "Rewritten description in house style.",
+      "quantity": 11.06,
+      "rate": 55.00,
+      "amount": 608.30,
+      "workActivityId": 123,
+      "qboItemId": "original-qbo-item-id"
+    }
+  ],
+  "suggestedAdditions": [
+    { "description": "Lonicera 'Lemon Beauty'", "category": "plants", "quantity": 1, "sourceWorkActivityId": 123 },
+    { "description": "Sluggo", "category": "materials", "quantity": 1, "sourceWorkActivityId": 123 }
+  ]
+}`;
 
     try {
       const response = await this.client.messages.create({
@@ -1489,25 +1506,26 @@ Return ONLY a JSON array, one object per current line item in the same order, wi
       const responseText = (textContent as any).text;
       console.log(`📝 Claude AI invoice response: ${responseText.length} characters`);
 
-      // Extract JSON from response
-      let enhancedLineItems: any[] = [];
-      
+      // Extract a JSON object (preferred) — fall back to a bare array for safety if the
+      // model regresses to the older shape.
+      let parsed: any;
       try {
-        // Look for JSON array in the response
-        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          enhancedLineItems = JSON.parse(jsonMatch[0]);
-          console.log(`✅ Successfully generated ${enhancedLineItems.length} enhanced line items`);
+        const objectMatch = responseText.match(/\{[\s\S]*\}/);
+        const arrayMatch = responseText.match(/\[[\s\S]*\]/);
+        const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+
+        if (objectMatch) {
+          parsed = JSON.parse(objectMatch[0]);
+        } else if (codeBlockMatch) {
+          parsed = JSON.parse(codeBlockMatch[1]);
+        } else if (arrayMatch) {
+          parsed = { lineItems: JSON.parse(arrayMatch[0]), suggestedAdditions: [] };
         } else {
-          // Try to extract from code blocks
-          const codeBlockMatch = responseText.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-          if (codeBlockMatch) {
-            enhancedLineItems = JSON.parse(codeBlockMatch[1]);
-            console.log(`✅ Generated ${enhancedLineItems.length} enhanced line items from code block`);
-          } else {
-            console.error(`❌ No JSON found in AI response:`, responseText.substring(0, 500));
-            throw new Error('No JSON array found in AI response');
-          }
+          throw new Error('No JSON object found in AI response');
+        }
+
+        if (Array.isArray(parsed)) {
+          parsed = { lineItems: parsed, suggestedAdditions: [] };
         }
       } catch (parseError) {
         console.error(`❌ Failed to parse AI response JSON:`, parseError);
@@ -1515,49 +1533,51 @@ Return ONLY a JSON array, one object per current line item in the same order, wi
         throw new Error(`Failed to parse AI-enhanced line items`);
       }
 
-      // Validate and normalize the enhanced line items, preserving original numbers
-      enhancedLineItems = enhancedLineItems.map((item: any, index: number) => {
+      const rawLineItems: any[] = Array.isArray(parsed.lineItems) ? parsed.lineItems : [];
+      const rawSuggestions: any[] = Array.isArray(parsed.suggestedAdditions) ? parsed.suggestedAdditions : [];
+      console.log(`✅ Parsed ${rawLineItems.length} line items and ${rawSuggestions.length} suggested additions`);
+
+      // Preserve numbers from the original line items; only the AI's description is trusted.
+      const lineItems = rawLineItems.map((item: any, index: number) => {
         const originalItem = basicLineItems[index];
         if (!originalItem) {
-          console.warn(`AI returned more line items than provided, using basic item`);
-          return basicLineItems[basicLineItems.length - 1];
-        }
-
-        // Validate that AI preserved the numbers correctly
-        const aiQuantity = parseFloat(item.quantity?.toString() || '0');
-        const aiRate = parseFloat(item.rate?.toString() || '0');
-        const aiAmount = parseFloat(item.amount?.toString() || '0');
-
-        const originalQuantity = originalItem.quantity;
-        const originalRate = originalItem.rate;
-        const originalAmount = originalItem.amount;
-
-        // Check if AI changed the numbers (allow small floating point differences)
-        const quantityChanged = Math.abs(aiQuantity - originalQuantity) > 0.01;
-        const rateChanged = Math.abs(aiRate - originalRate) > 0.01;
-        const amountChanged = Math.abs(aiAmount - originalAmount) > 0.01;
-
-        if (quantityChanged || rateChanged || amountChanged) {
-          console.warn(`AI changed numbers for line item ${index + 1}, preserving original values`);
-          console.warn(`Original: qty=${originalQuantity}, rate=${originalRate}, amount=${originalAmount}`);
-          console.warn(`AI: qty=${aiQuantity}, rate=${aiRate}, amount=${aiAmount}`);
+          console.warn(`AI returned more line items than provided, dropping extras`);
+          return null;
         }
 
         return {
           description: item.description || originalItem.description,
-          quantity: originalQuantity, // Always use original quantity
-          rate: originalRate, // Always use original rate
-          amount: originalAmount, // Always use original amount
+          quantity: originalItem.quantity,
+          rate: originalItem.rate,
+          amount: originalItem.amount,
           workActivityId: originalItem.workActivityId,
           qboItemId: originalItem.qboItemId
         };
-      });
+      }).filter((item): item is any => item !== null);
 
-      return enhancedLineItems;
+      const suggestedAdditions: SuggestedAddition[] = [];
+      for (const s of rawSuggestions) {
+        const category = String(s.category || '').toLowerCase();
+        if (category !== 'plants' && category !== 'materials') continue;
+        const description = String(s.description || '').trim();
+        if (!description) continue;
+        const quantity = typeof s.quantity === 'number' && s.quantity > 0 ? s.quantity : 1;
+        const sourceWorkActivityId = typeof s.sourceWorkActivityId === 'number' ? s.sourceWorkActivityId : undefined;
+        suggestedAdditions.push({ description, category, quantity, sourceWorkActivityId });
+      }
+
+      return { lineItems, suggestedAdditions };
 
     } catch (error) {
       console.error('❌ Error generating AI-enhanced invoice line items:', error);
       throw new Error(`Failed to generate AI-enhanced invoice: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+}
+
+export interface SuggestedAddition {
+  description: string;
+  category: 'plants' | 'materials';
+  quantity: number;
+  sourceWorkActivityId?: number;
 }
