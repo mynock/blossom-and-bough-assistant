@@ -36,7 +36,7 @@ import {
   TableRow,
   TableCell,
   IconButton,
-  Checkbox,
+  Autocomplete,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -169,6 +169,14 @@ interface SuggestedLineItem extends InvoiceLineItem {
   sourceWorkActivityId?: number;
   qboItemName?: string;
   qboItemMatchQuality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none';
+  qboItemUserSelected?: boolean;
+}
+
+interface QBOItemOption {
+  qboId: string;
+  name: string;
+  type?: string;
+  unitPrice?: number | null;
 }
 
 interface UpcomingScheduleData {
@@ -233,7 +241,7 @@ const ClientDetail: React.FC = () => {
   const [dialogStep, setDialogStep] = useState<'select' | 'edit'>('select');
   const [previewLineItems, setPreviewLineItems] = useState<InvoiceLineItem[]>([]);
   const [suggestedLineItems, setSuggestedLineItems] = useState<SuggestedLineItem[]>([]);
-  const [includedSuggestionIndices, setIncludedSuggestionIndices] = useState<Set<number>>(new Set());
+  const [availableQBOItems, setAvailableQBOItems] = useState<QBOItemOption[]>([]);
   const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date' | 'notes'>('table');
 
   useEffect(() => {
@@ -541,8 +549,24 @@ const ClientDetail: React.FC = () => {
       const result = await response.json();
       setPreviewLineItems(result.lineItems || []);
       setSuggestedLineItems(result.suggestedLineItems || []);
-      setIncludedSuggestionIndices(new Set());
       setDialogStep('edit');
+
+      if (availableQBOItems.length === 0) {
+        try {
+          const itemsResponse = await fetch('/api/qbo/items');
+          if (itemsResponse.ok) {
+            const items = await itemsResponse.json();
+            setAvailableQBOItems(items.map((i: any) => ({
+              qboId: i.qboId,
+              name: i.name,
+              type: i.type,
+              unitPrice: i.unitPrice
+            })));
+          }
+        } catch (err) {
+          console.error('Failed to fetch QBO items for picker:', err);
+        }
+      }
     } catch (error) {
       setSnackbar({
         open: true,
@@ -572,7 +596,6 @@ const ClientDetail: React.FC = () => {
     setDialogStep('select');
     setPreviewLineItems([]);
     setSuggestedLineItems([]);
-    setIncludedSuggestionIndices(new Set());
   };
 
   const updateSuggestedLineItem = (index: number, patch: Partial<SuggestedLineItem>) => {
@@ -584,26 +607,21 @@ const ClientDetail: React.FC = () => {
     }));
   };
 
-  const toggleSuggestion = (index: number) => {
-    setIncludedSuggestionIndices(prev => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index); else next.add(index);
-      return next;
-    });
+  const removeSuggestedLineItem = (index: number) => {
+    setSuggestedLineItems(prev => prev.filter((_, i) => i !== index));
   };
 
-  const includedSuggestions = suggestedLineItems.filter((_, i) => includedSuggestionIndices.has(i));
-  const hasIncludedSuggestionWithoutRate = includedSuggestions.some(line => line.rate <= 0);
-  const hasIncludedSuggestionWithoutItem = includedSuggestions.some(line => !line.qboItemId);
+  const hasSuggestionWithoutRate = suggestedLineItems.some(line => line.rate <= 0);
+  const hasSuggestionWithoutItem = suggestedLineItems.some(line => !line.qboItemId);
   const grandTotal = previewLineItems.reduce((sum, line) => sum + line.amount, 0)
-    + includedSuggestions.reduce((sum, line) => sum + line.amount, 0);
+    + suggestedLineItems.reduce((sum, line) => sum + line.amount, 0);
 
   const handleSendInvoice = async () => {
     if (!client || previewLineItems.length === 0) return;
 
     setInvoiceCreationLoading(true);
     try {
-      const additions = includedSuggestions.map(({ category, sourceWorkActivityId, ...line }) => line);
+      const additions = suggestedLineItems.map(({ category, sourceWorkActivityId, qboItemName, qboItemMatchQuality, qboItemUserSelected, ...line }) => line);
       const response = await secureFetch('/api/qbo/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1400,43 +1418,39 @@ const ClientDetail: React.FC = () => {
                       Suggested additions
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                      These plants/materials were mentioned in the work notes but aren't yet on the invoice. Check any you want to bill separately, then set a rate.
+                      Plants/materials mentioned in the work notes. Edit, set a rate, or remove any you don't want to bill.
                     </Typography>
                     <Table size="small">
                       <TableHead>
                         <TableRow>
-                          <TableCell padding="checkbox">Include</TableCell>
                           <TableCell>Description</TableCell>
-                          <TableCell sx={{ width: 180 }}>QBO item</TableCell>
+                          <TableCell sx={{ width: 220 }}>QBO item</TableCell>
                           <TableCell align="right" sx={{ width: 100 }}>Qty</TableCell>
                           <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
                           <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
+                          <TableCell align="center" sx={{ width: 60 }}>Remove</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {suggestedLineItems.map((line, index) => {
-                          const included = includedSuggestionIndices.has(index);
-                          const needsRate = included && line.rate <= 0;
+                          const needsRate = line.rate <= 0;
                           const noItem = !line.qboItemId;
+                          const showAutoHint = !line.qboItemUserSelected && !noItem;
                           const itemHelper = noItem
-                            ? 'No QBO item available — add one in QBO and re-sync, or skip.'
-                            : line.qboItemMatchQuality === 'specific'
+                            ? 'Pick a QBO item below'
+                            : showAutoHint && line.qboItemMatchQuality === 'specific'
                               ? 'Matched by name'
-                              : line.qboItemMatchQuality === 'category'
-                                ? null
-                                : line.qboItemMatchQuality === 'fuzzy'
-                                  ? 'Closest category match'
-                                  : 'Generic fallback — verify in QBO';
+                              : showAutoHint && line.qboItemMatchQuality === 'fuzzy'
+                                ? 'Closest category match'
+                                : showAutoHint && line.qboItemMatchQuality === 'fallback'
+                                  ? 'Generic fallback — verify'
+                                  : null;
+                          const selectedOption = availableQBOItems.find(o => o.qboId === line.qboItemId)
+                            ?? (line.qboItemId
+                              ? { qboId: line.qboItemId, name: line.qboItemName ?? line.qboItemId }
+                              : null);
                           return (
-                            <TableRow key={index} sx={{ bgcolor: included ? 'primary.50' : 'transparent' }}>
-                              <TableCell padding="checkbox">
-                                <Checkbox
-                                  checked={included}
-                                  onChange={() => toggleSuggestion(index)}
-                                  size="small"
-                                  disabled={noItem}
-                                />
-                              </TableCell>
+                            <TableRow key={index}>
                               <TableCell>
                                 <TextField
                                   value={line.description}
@@ -1447,12 +1461,46 @@ const ClientDetail: React.FC = () => {
                                 />
                               </TableCell>
                               <TableCell>
-                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                                  {line.qboItemName || <Box component="span" sx={{ color: 'error.main' }}>none</Box>}
-                                </Typography>
-                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
-                                  {line.category}{itemHelper ? ` · ${itemHelper}` : ''}
-                                </Typography>
+                                <Autocomplete
+                                  size="small"
+                                  options={availableQBOItems}
+                                  value={selectedOption}
+                                  getOptionLabel={(option) => option?.name ?? ''}
+                                  isOptionEqualToValue={(option, value) => option.qboId === value?.qboId}
+                                  onChange={(_, value) => {
+                                    if (!value) {
+                                      updateSuggestedLineItem(index, {
+                                        qboItemId: '',
+                                        qboItemName: undefined,
+                                        qboItemUserSelected: true,
+                                      });
+                                      return;
+                                    }
+                                    updateSuggestedLineItem(index, {
+                                      qboItemId: value.qboId,
+                                      qboItemName: value.name,
+                                      qboItemUserSelected: true,
+                                      rate: line.rate > 0 ? line.rate : (value.unitPrice ?? 0),
+                                    });
+                                  }}
+                                  renderOption={(props, option) => (
+                                    <Box component="li" {...props} key={option.qboId} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start !important' }}>
+                                      <Typography variant="body2">{option.name}</Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {option.type ?? '—'}
+                                        {option.unitPrice ? ` · $${option.unitPrice.toFixed(2)}` : ''}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  renderInput={(params) => (
+                                    <TextField
+                                      {...params}
+                                      placeholder={noItem ? 'Pick item…' : ''}
+                                      error={noItem}
+                                      helperText={itemHelper ? <Box component="span" sx={{ textTransform: 'capitalize' }}>{line.category} · {itemHelper}</Box> : line.category}
+                                    />
+                                  )}
+                                />
                               </TableCell>
                               <TableCell align="right">
                                 <TextField
@@ -1482,6 +1530,15 @@ const ClientDetail: React.FC = () => {
                               </TableCell>
                               <TableCell align="right">
                                 <Typography variant="body2">${line.amount.toFixed(2)}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => removeSuggestedLineItem(index)}
+                                  aria-label="Remove suggestion"
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
                               </TableCell>
                             </TableRow>
                           );
@@ -1525,9 +1582,9 @@ const ClientDetail: React.FC = () => {
                   onClick={handleSendInvoice}
                   variant="contained"
                   disabled={
-                    (previewLineItems.length === 0 && includedSuggestions.length === 0)
-                    || hasIncludedSuggestionWithoutRate
-                    || hasIncludedSuggestionWithoutItem
+                    (previewLineItems.length === 0 && suggestedLineItems.length === 0)
+                    || hasSuggestionWithoutRate
+                    || hasSuggestionWithoutItem
                     || invoiceCreationLoading
                   }
                 >
