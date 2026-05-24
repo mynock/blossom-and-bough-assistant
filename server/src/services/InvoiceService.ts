@@ -536,10 +536,7 @@ export class InvoiceService extends DatabaseService {
             continue;
           }
 
-          const quantity = charge.quantity || 1;
-          const rate = charge.unitRate
-            ?? (charge.totalCost != null ? charge.totalCost / quantity : 0);
-          const amount = charge.totalCost ?? quantity * rate;
+          const { quantity, rate, amount } = computeChargeLineMath(charge);
 
           lineItems.push({
             otherChargeId: charge.id,
@@ -896,4 +893,33 @@ export function pickSuggestionRate(
   if (quality !== 'specific') return 0;
   const unit = item?.unitPrice;
   return typeof unit === 'number' && unit > 0 ? unit : 0;
-} 
+}
+
+/**
+ * Reconcile the three pricing fields on an other_charge into a consistent
+ * (quantity, rate, amount) triple for the invoice line. The DB can have any
+ * combination set or null — common patterns:
+ *   - totalCost only ("Lonicera (Tony's): $25 total") → qty=1, rate=25, amount=25
+ *   - unitRate only ("Sluggo $8/unit, qty 0.75")     → qty=0.75, rate=8, amount=6
+ *   - both set                                        → trust unitRate, recompute amount
+ *   - nothing                                         → qty=1, rate=0, amount=0
+ */
+export function computeChargeLineMath(charge: {
+  quantity?: number | null;
+  unitRate?: number | null;
+  totalCost?: number | null;
+}): { quantity: number; rate: number; amount: number } {
+  const quantity = charge.quantity && charge.quantity > 0 ? charge.quantity : 1;
+
+  const rate = typeof charge.unitRate === 'number'
+    ? charge.unitRate
+    : (typeof charge.totalCost === 'number' ? charge.totalCost / quantity : 0);
+
+  // If unitRate is set we always derive amount from qty × rate so the line is
+  // internally consistent; totalCost only fills in when we have no unit info.
+  const amount = typeof charge.unitRate === 'number'
+    ? quantity * rate
+    : (typeof charge.totalCost === 'number' ? charge.totalCost : 0);
+
+  return { quantity, rate, amount };
+}

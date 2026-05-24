@@ -3,6 +3,7 @@ import {
   normalizeInvoiceLineItems,
   resolveInvoicedWorkActivityIds,
   pickSuggestionRate,
+  computeChargeLineMath,
   InvoiceLineItemData
 } from '../services/InvoiceService';
 
@@ -121,5 +122,47 @@ describe('pickSuggestionRate', () => {
     expect(pickSuggestionRate('specific', null)).toBe(0);
     expect(pickSuggestionRate('specific', { unitPrice: 0 })).toBe(0);
     expect(pickSuggestionRate('specific', { unitPrice: null })).toBe(0);
+  });
+});
+
+describe('computeChargeLineMath', () => {
+  it('handles a charge with only totalCost (the "Lonicera (Tony\'s): $25" case)', () => {
+    expect(computeChargeLineMath({ quantity: null, unitRate: null, totalCost: 25 }))
+      .toEqual({ quantity: 1, rate: 25, amount: 25 });
+  });
+
+  it('handles a charge with only unitRate and a specified quantity', () => {
+    expect(computeChargeLineMath({ quantity: 0.75, unitRate: 8, totalCost: null }))
+      .toEqual({ quantity: 0.75, rate: 8, amount: 6 });
+  });
+
+  it('defaults quantity to 1 when missing', () => {
+    expect(computeChargeLineMath({ quantity: null, unitRate: 5, totalCost: null }))
+      .toEqual({ quantity: 1, rate: 5, amount: 5 });
+  });
+
+  it('returns all zeros for a charge with no pricing data (the "Rose fert N/A" case)', () => {
+    expect(computeChargeLineMath({ quantity: null, unitRate: null, totalCost: null }))
+      .toEqual({ quantity: 1, rate: 0, amount: 0 });
+  });
+
+  it('prefers unitRate when both unitRate and totalCost are set, keeping the line internally consistent', () => {
+    // DB has inconsistent state: qty=2, unitRate=5, totalCost=20.
+    // We trust unitRate and recompute amount, so the invoice shows 2 × $5 = $10
+    // rather than displaying "2 × $5 = $20" which QBO would reject as inconsistent.
+    expect(computeChargeLineMath({ quantity: 2, unitRate: 5, totalCost: 20 }))
+      .toEqual({ quantity: 2, rate: 5, amount: 10 });
+  });
+
+  it('treats zero or negative quantity as 1', () => {
+    expect(computeChargeLineMath({ quantity: 0, unitRate: 10, totalCost: null }))
+      .toEqual({ quantity: 1, rate: 10, amount: 10 });
+    expect(computeChargeLineMath({ quantity: -2, unitRate: 10, totalCost: null }))
+      .toEqual({ quantity: 1, rate: 10, amount: 10 });
+  });
+
+  it('accepts a zero unitRate as an explicit free line', () => {
+    expect(computeChargeLineMath({ quantity: 3, unitRate: 0, totalCost: null }))
+      .toEqual({ quantity: 3, rate: 0, amount: 0 });
   });
 });
