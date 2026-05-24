@@ -168,7 +168,7 @@ interface SuggestedLineItem extends InvoiceLineItem {
   category: 'plants' | 'materials';
   sourceWorkActivityId?: number;
   qboItemName?: string;
-  qboItemMatchQuality: 'exact' | 'fuzzy' | 'fallback' | 'none';
+  qboItemMatchQuality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none';
 }
 
 interface UpcomingScheduleData {
@@ -1420,11 +1420,13 @@ const ClientDetail: React.FC = () => {
                           const noItem = !line.qboItemId;
                           const itemHelper = noItem
                             ? 'No QBO item available — add one in QBO and re-sync, or skip.'
-                            : line.qboItemMatchQuality === 'exact'
-                              ? null
-                              : line.qboItemMatchQuality === 'fuzzy'
-                                ? 'Closest match by name'
-                                : 'Generic fallback — verify in QBO';
+                            : line.qboItemMatchQuality === 'specific'
+                              ? 'Matched by name'
+                              : line.qboItemMatchQuality === 'category'
+                                ? null
+                                : line.qboItemMatchQuality === 'fuzzy'
+                                  ? 'Closest category match'
+                                  : 'Generic fallback — verify in QBO';
                           return (
                             <TableRow key={index} sx={{ bgcolor: included ? 'primary.50' : 'transparent' }}>
                               <TableCell padding="checkbox">

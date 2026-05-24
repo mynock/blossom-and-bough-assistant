@@ -41,7 +41,7 @@ export interface SuggestedLineItem extends InvoiceLineItemData {
   category: 'plants' | 'materials';
   sourceWorkActivityId?: number;
   qboItemName?: string;
-  qboItemMatchQuality: 'exact' | 'fuzzy' | 'fallback' | 'none';
+  qboItemMatchQuality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none';
 }
 
 export interface InvoicePreviewResult {
@@ -173,12 +173,14 @@ export class InvoiceService extends DatabaseService {
   private async materializeSuggestedAdditions(suggestions: SuggestedAddition[]): Promise<SuggestedLineItem[]> {
     const out: SuggestedLineItem[] = [];
     for (const suggestion of suggestions) {
-      const { item, quality } = await this.resolveQBOItemForCategory(suggestion.category);
+      const { item, quality } = await this.resolveQBOItemForSuggestion(suggestion.description, suggestion.category);
       out.push({
         qboItemId: item?.qboId ?? '',
         description: suggestion.description,
         quantity: suggestion.quantity,
-        rate: 0,
+        rate: item?.unitPrice && item.unitPrice > 0 && quality !== 'category' && quality !== 'fallback'
+          ? item.unitPrice
+          : 0,
         amount: 0,
         category: suggestion.category,
         sourceWorkActivityId: suggestion.sourceWorkActivityId,
@@ -191,19 +193,37 @@ export class InvoiceService extends DatabaseService {
 
   /**
    * Find a QBO item to attach to a suggested addition. The match is best-effort:
-   * suggestions should still surface even when the catalog doesn't have a perfect
-   * fit, so the user can review them rather than silently lose information.
+   *   1. exact name match against the suggestion description (e.g., "Sluggo" → "Sluggo" item)
+   *   2. case-insensitive partial match against the description
+   *   3. generic category bucket (e.g., "Plants", "Materials")
+   *   4. fuzzy match on category keywords
+   *   5. first active Inventory/NonInventory/Service item
+   * Suggestions still surface when no match is found so the user can review them.
    */
-  private async resolveQBOItemForCategory(
+  private async resolveQBOItemForSuggestion(
+    description: string,
     category: 'plants' | 'materials'
-  ): Promise<{ item: any | null; quality: 'exact' | 'fuzzy' | 'fallback' | 'none' }> {
+  ): Promise<{ item: any | null; quality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none' }> {
+    const trimmed = description.trim();
+    if (trimmed) {
+      const exactByDescription = await this.findQBOItemByName(trimmed);
+      if (exactByDescription) return { item: exactByDescription, quality: 'specific' };
+
+      const partial = await this.db
+        .select()
+        .from(qboItems)
+        .where(and(eq(qboItems.active, true), ilike(qboItems.name, `%${trimmed}%`)))
+        .limit(1);
+      if (partial[0]) return { item: partial[0], quality: 'specific' };
+    }
+
     const exactNames = category === 'plants'
       ? ['Plants', 'Plant']
       : ['Materials', 'Garden Supplies', 'Supplies'];
 
     for (const name of exactNames) {
       const hit = await this.findQBOItemByName(name);
-      if (hit) return { item: hit, quality: 'exact' };
+      if (hit) return { item: hit, quality: 'category' };
     }
 
     const fuzzyKeywords = category === 'plants'
