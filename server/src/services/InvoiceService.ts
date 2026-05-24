@@ -11,7 +11,7 @@ import {
   otherCharges,
   clients 
 } from '../db';
-import { eq, and, inArray, ilike, or } from 'drizzle-orm';
+import { eq, and, inArray, ilike, or, sql } from 'drizzle-orm';
 
 export interface PreviewInvoiceRequest {
   clientId: number;
@@ -249,10 +249,13 @@ export class InvoiceService extends DatabaseService {
   }
 
   private async findActiveQBOItemILike(pattern: string): Promise<any | null> {
+    // Prefer shorter names: a generic "Plants" bucket beats a specialized
+    // "Plant installation" service when both match a fuzzy %plant% query.
     const matches = await this.db
       .select()
       .from(qboItems)
       .where(and(eq(qboItems.active, true), ilike(qboItems.name, pattern)))
+      .orderBy(sql`LENGTH(${qboItems.name})`)
       .limit(1);
     return matches[0] || null;
   }
