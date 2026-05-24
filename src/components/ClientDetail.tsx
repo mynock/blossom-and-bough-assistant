@@ -167,6 +167,8 @@ interface InvoiceLineItem {
 interface SuggestedLineItem extends InvoiceLineItem {
   category: 'plants' | 'materials';
   sourceWorkActivityId?: number;
+  qboItemName?: string;
+  qboItemMatchQuality: 'exact' | 'fuzzy' | 'fallback' | 'none';
 }
 
 interface UpcomingScheduleData {
@@ -592,6 +594,7 @@ const ClientDetail: React.FC = () => {
 
   const includedSuggestions = suggestedLineItems.filter((_, i) => includedSuggestionIndices.has(i));
   const hasIncludedSuggestionWithoutRate = includedSuggestions.some(line => line.rate <= 0);
+  const hasIncludedSuggestionWithoutItem = includedSuggestions.some(line => !line.qboItemId);
   const grandTotal = previewLineItems.reduce((sum, line) => sum + line.amount, 0)
     + includedSuggestions.reduce((sum, line) => sum + line.amount, 0);
 
@@ -1404,7 +1407,7 @@ const ClientDetail: React.FC = () => {
                         <TableRow>
                           <TableCell padding="checkbox">Include</TableCell>
                           <TableCell>Description</TableCell>
-                          <TableCell align="center" sx={{ width: 90 }}>Category</TableCell>
+                          <TableCell sx={{ width: 180 }}>QBO item</TableCell>
                           <TableCell align="right" sx={{ width: 100 }}>Qty</TableCell>
                           <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
                           <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
@@ -1414,6 +1417,14 @@ const ClientDetail: React.FC = () => {
                         {suggestedLineItems.map((line, index) => {
                           const included = includedSuggestionIndices.has(index);
                           const needsRate = included && line.rate <= 0;
+                          const noItem = !line.qboItemId;
+                          const itemHelper = noItem
+                            ? 'No QBO item available — add one in QBO and re-sync, or skip.'
+                            : line.qboItemMatchQuality === 'exact'
+                              ? null
+                              : line.qboItemMatchQuality === 'fuzzy'
+                                ? 'Closest match by name'
+                                : 'Generic fallback — verify in QBO';
                           return (
                             <TableRow key={index} sx={{ bgcolor: included ? 'primary.50' : 'transparent' }}>
                               <TableCell padding="checkbox">
@@ -1421,6 +1432,7 @@ const ClientDetail: React.FC = () => {
                                   checked={included}
                                   onChange={() => toggleSuggestion(index)}
                                   size="small"
+                                  disabled={noItem}
                                 />
                               </TableCell>
                               <TableCell>
@@ -1432,9 +1444,12 @@ const ClientDetail: React.FC = () => {
                                   variant="outlined"
                                 />
                               </TableCell>
-                              <TableCell align="center">
-                                <Typography variant="caption" sx={{ textTransform: 'capitalize' }}>
-                                  {line.category}
+                              <TableCell>
+                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                  {line.qboItemName || <Box component="span" sx={{ color: 'error.main' }}>none</Box>}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', lineHeight: 1.2 }}>
+                                  {line.category}{itemHelper ? ` · ${itemHelper}` : ''}
                                 </Typography>
                               </TableCell>
                               <TableCell align="right">
@@ -1510,6 +1525,7 @@ const ClientDetail: React.FC = () => {
                   disabled={
                     (previewLineItems.length === 0 && includedSuggestions.length === 0)
                     || hasIncludedSuggestionWithoutRate
+                    || hasIncludedSuggestionWithoutItem
                     || invoiceCreationLoading
                   }
                 >

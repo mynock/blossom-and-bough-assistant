@@ -11,7 +11,7 @@ import {
   otherCharges,
   clients 
 } from '../db';
-import { eq, and, inArray } from 'drizzle-orm';
+import { eq, and, inArray, ilike, or } from 'drizzle-orm';
 
 export interface PreviewInvoiceRequest {
   clientId: number;
@@ -40,6 +40,8 @@ export interface InvoiceLineItemData {
 export interface SuggestedLineItem extends InvoiceLineItemData {
   category: 'plants' | 'materials';
   sourceWorkActivityId?: number;
+  qboItemName?: string;
+  qboItemMatchQuality: 'exact' | 'fuzzy' | 'fallback' | 'none';
 }
 
 export interface InvoicePreviewResult {
@@ -171,22 +173,63 @@ export class InvoiceService extends DatabaseService {
   private async materializeSuggestedAdditions(suggestions: SuggestedAddition[]): Promise<SuggestedLineItem[]> {
     const out: SuggestedLineItem[] = [];
     for (const suggestion of suggestions) {
-      const qboItem = await this.findQBOItemForChargeType(suggestion.category === 'plants' ? 'plant' : 'material');
-      if (!qboItem) {
-        console.warn(`No QBO item found for suggested ${suggestion.category}: ${suggestion.description} — dropping suggestion`);
-        continue;
-      }
+      const { item, quality } = await this.resolveQBOItemForCategory(suggestion.category);
       out.push({
-        qboItemId: qboItem.qboId,
+        qboItemId: item?.qboId ?? '',
         description: suggestion.description,
         quantity: suggestion.quantity,
         rate: 0,
         amount: 0,
         category: suggestion.category,
-        sourceWorkActivityId: suggestion.sourceWorkActivityId
+        sourceWorkActivityId: suggestion.sourceWorkActivityId,
+        qboItemName: item?.name,
+        qboItemMatchQuality: quality
       });
     }
     return out;
+  }
+
+  /**
+   * Find a QBO item to attach to a suggested addition. The match is best-effort:
+   * suggestions should still surface even when the catalog doesn't have a perfect
+   * fit, so the user can review them rather than silently lose information.
+   */
+  private async resolveQBOItemForCategory(
+    category: 'plants' | 'materials'
+  ): Promise<{ item: any | null; quality: 'exact' | 'fuzzy' | 'fallback' | 'none' }> {
+    const exactNames = category === 'plants'
+      ? ['Plants', 'Plant']
+      : ['Materials', 'Garden Supplies', 'Supplies'];
+
+    for (const name of exactNames) {
+      const hit = await this.findQBOItemByName(name);
+      if (hit) return { item: hit, quality: 'exact' };
+    }
+
+    const fuzzyKeywords = category === 'plants'
+      ? ['plant', 'flora']
+      : ['material', 'supply', 'supplies'];
+
+    for (const keyword of fuzzyKeywords) {
+      const matches = await this.db
+        .select()
+        .from(qboItems)
+        .where(and(eq(qboItems.active, true), ilike(qboItems.name, `%${keyword}%`)))
+        .limit(1);
+      if (matches[0]) return { item: matches[0], quality: 'fuzzy' };
+    }
+
+    const fallback = await this.db
+      .select()
+      .from(qboItems)
+      .where(and(
+        eq(qboItems.active, true),
+        or(eq(qboItems.type, 'Inventory'), eq(qboItems.type, 'NonInventory'), eq(qboItems.type, 'Service'))
+      ))
+      .limit(1);
+    if (fallback[0]) return { item: fallback[0], quality: 'fallback' };
+
+    return { item: null, quality: 'none' };
   }
 
   /**
