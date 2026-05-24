@@ -15,6 +15,7 @@ import {
   ExpandMore as ExpandMoreIcon,
 } from '@mui/icons-material';
 import { formatDatePacific } from '../utils/dateUtils';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 interface WorkActivity {
   id: number;
@@ -245,7 +246,7 @@ export const ClientNotesList: React.FC<ClientNotesListProps> = ({
                                       lineHeight: 1.6,
                                       fontSize: '0.875rem'
                                     }}
-                                    dangerouslySetInnerHTML={{ __html: activity.notes }}
+                                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(activity.notes) }}
                                   />
                                 </Box>
                               </Box>

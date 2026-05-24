@@ -6,6 +6,8 @@ import dotenv from 'dotenv';
 import path from 'path';
 import session from 'express-session';
 import passport from 'passport';
+import cookieParser from 'cookie-parser';
+import { doubleCsrf } from 'csrf-csrf';
 
 // Explicit type imports to help Railway's TypeScript compiler
 import type { CorsOptions } from 'cors';
@@ -29,12 +31,26 @@ import travelTimeRouter from './routes/travelTime';
 import breakTimeRouter from './routes/breakTime';
 import settingsRouter from './routes/settings';
 import reportsRouter from './routes/reports';
-import naturalLanguageSQLRouter from './routes/naturalLanguageSQL';
+// SECURITY: naturalLanguageSQL route disabled — see docs/plans/01-security-hardening.md §1.1.
+// LLM-generated SQL was executed via db.execute(sql.raw()) with full-privilege Postgres
+// credentials; any authenticated user could craft DROP/UPDATE statements. Re-enable only
+// after a read-only role, SQL parser allowlist, statement timeout, and audit log are in place.
+// import naturalLanguageSQLRouter from './routes/naturalLanguageSQL';
 import dataExportRouter from './routes/dataExport';
 import { requireAuth } from './middleware/auth';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+// SECURITY: fail-closed env validation — see docs/plans/01-security-hardening.md §1.2.
+// In production, missing auth secrets must crash the process, never silently bypass.
+if (process.env.NODE_ENV === 'production') {
+  const requiredAuthEnv = ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'SESSION_SECRET', 'CSRF_SECRET'];
+  const missing = requiredAuthEnv.filter(name => !process.env[name]);
+  if (missing.length > 0) {
+    throw new Error(`Missing required auth env vars in production: ${missing.join(', ')}`);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -55,50 +71,55 @@ app.use(helmet({
       frameAncestors: ["'self'", "https://*.notion.so", "https://notion.so"],
     },
   },
-  // Allow the page to be embedded in iframes from Notion
-  frameguard: false // Disable X-Frame-Options to allow embedding
+  // SECURITY: deny framing by default — see docs/plans/01-security-hardening.md §1.5.
+  // The /notion-embed handler below removes X-Frame-Options on its own paths so Notion can embed.
+  frameguard: { action: 'deny' }
 }));
+// SECURITY: removed the `^https://.*\.notion\.so$` wildcard — see §1.5. With wildcard +
+// credentials:true, any Notion-hosted page could ride a logged-in admin's session.
+// The exact Notion origins below remain for any direct (non-iframe) calls; the embed iframe
+// itself is same-origin (served by our /notion-embed route) and doesn't need CORS at all.
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       'http://localhost:3000',
       'http://localhost:3001',
       process.env.FRONTEND_URL || 'http://localhost:3000',
-      // Production domain
       'https://crm.blossomandbough.com',
-      // Notion domains for embedding
       'https://notion.so',
       'https://www.notion.so',
     ];
-    
-    // Allow any notion.so subdomain
-    if (origin.match(/^https:\/\/.*\.notion\.so$/)) {
-      return callback(null, true);
-    }
-    
+
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    
+
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true
 }));
 
+// SECURITY: respect X-Forwarded-Proto so cookie.secure works behind a load balancer.
+app.set('trust proxy', 1);
+
 // Session configuration
+const sessionSecret = process.env.SESSION_SECRET
+  || (process.env.NODE_ENV !== 'production' ? 'dev-only-session-secret-not-for-production' : undefined);
+if (!sessionSecret) {
+  throw new Error('SESSION_SECRET is required');
+}
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-in-production',
+  secret: sessionSecret,
   resave: false,
-  saveUninitialized: true, // Changed to true for debugging
-  name: 'garden-care-session', // Custom session name
+  saveUninitialized: false,
+  name: 'garden-care-session',
   cookie: {
-    secure: false, // Always false for localhost
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    sameSite: 'lax' // Lax for localhost development
+    sameSite: 'lax'
   }
 }));
 
@@ -108,6 +129,40 @@ app.use(passport.session());
 
 app.use(morgan('combined'));
 app.use(express.json());
+app.use(cookieParser());
+
+// SECURITY: CSRF protection (double-submit cookie via csrf-csrf) — see §1.5.
+// State-changing requests under cookie-authenticated routes require an X-CSRF-Token header.
+// Skipped for: public Notion-embed APIs, OAuth flow, bearer-token endpoints, health check.
+const csrfSecret = process.env.CSRF_SECRET
+  || (process.env.NODE_ENV !== 'production' ? 'dev-only-csrf-secret-not-for-production' : undefined);
+if (!csrfSecret) {
+  throw new Error('CSRF_SECRET is required');
+}
+const { doubleCsrfProtection, generateCsrfToken } = doubleCsrf({
+  getSecret: () => csrfSecret,
+  getSessionIdentifier: (req) => req.sessionID || 'anonymous',
+  cookieName: process.env.NODE_ENV === 'production' ? '__Host-bb.x-csrf-token' : 'bb.x-csrf-token',
+  cookieOptions: {
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    path: '/',
+  },
+  getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'] as string | undefined,
+  skipCsrfProtection: (req) => {
+    const p = req.path;
+    return (
+      p === '/api/health' ||
+      p === '/api/csrf-token' ||
+      p.startsWith('/api/auth/') ||
+      p.startsWith('/api/notion/') ||
+      p.startsWith('/api/cron/') ||
+      p.startsWith('/api/data-export')
+    );
+  },
+});
+app.use(doubleCsrfProtection);
 
 // Initialize services from container
 const schedulingService = services.schedulingService;
@@ -121,6 +176,11 @@ app.use('/api/auth', authRouter);
 // Routes
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// SECURITY: CSRF token endpoint — frontend calls this on load and resends as X-CSRF-Token.
+app.get('/api/csrf-token', (req, res) => {
+  res.json({ csrfToken: generateCsrfToken(req, res) });
 });
 
 // Protected API routes - require authentication
@@ -138,7 +198,10 @@ app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
 app.use('/api/data-export', dataExportRouter); // Uses its own bearer token auth
 app.use('/api/qbo', quickbooksRouter); // QuickBooks Online routes
-app.use('/api/natural-language-sql', naturalLanguageSQLRouter); // Natural language SQL query routes
+// app.use('/api/natural-language-sql', naturalLanguageSQLRouter); // DISABLED — see §1.1 above
+app.use('/api/natural-language-sql', (_req, res) =>
+  res.status(503).json({ error: 'Natural language SQL endpoint is disabled pending security review.' })
+);
 
 // Get all helpers
 app.get('/api/helpers', requireAuth, async (req, res) => {
@@ -577,11 +640,11 @@ app.use('/notion-embed', (req, res, next) => {
   // Remove X-Frame-Options to allow embedding in Notion
   res.removeHeader('X-Frame-Options');
   
-  // Set headers to allow embedding with iOS-specific optimizations
-  res.setHeader('Content-Security-Policy', 
+  // SECURITY: see docs/plans/01-security-hardening.md §1.4 — inline scripts removed from embed CSP.
+  res.setHeader('Content-Security-Policy',
     "default-src 'self'; " +
     "style-src 'self' 'unsafe-inline'; " +
-    "script-src 'self' 'unsafe-inline'; " + // Allow inline scripts for iOS compatibility
+    "script-src 'self'; " +
     "img-src 'self' data: https:; " +
     "connect-src 'self'; " +
     "font-src 'self'; " +
@@ -621,7 +684,15 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+app.use((err: Error & { statusCode?: number; status?: number; code?: string }, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  // SECURITY: forward http-errors (e.g., CSRF 403) instead of masking them as 500 — see §1.5.
+  const status = err.statusCode || err.status;
+  if (status && status >= 400 && status < 500) {
+    return res.status(status).json({
+      error: err.message || 'Request rejected',
+      code: err.code,
+    });
+  }
   console.error('Unhandled error:', err);
   res.status(500).json({ error: 'Internal server error' });
 });

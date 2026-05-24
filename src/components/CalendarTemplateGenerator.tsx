@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { ContentCopy, Event } from '@mui/icons-material';
 import { helpersApi, clientsApi, Helper, Client } from '../services/api';
+import { secureFetch } from '../services/csrf';
 
 /**
  * Calendar Template Generator for Maintenance Events
@@ -143,7 +144,7 @@ const CalendarTemplateGenerator: React.FC = () => {
 
     setLoading(true);
     try {
-      const response = await fetch('/api/calendar/template', {
+      const response = await secureFetch('/api/calendar/template', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

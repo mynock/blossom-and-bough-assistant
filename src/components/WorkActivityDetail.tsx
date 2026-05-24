@@ -52,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import { API_ENDPOINTS } from '../config/api';
 import { formatDateLongPacific, formatDateTimePacific } from '../utils/dateUtils';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 interface WorkActivity {
   id: number;
@@ -518,7 +519,7 @@ const WorkActivityDetail: React.FC = () => {
                   <Paper sx={{ p: 2, bgcolor: 'grey.50', minHeight: 100 }}>
                     <Typography variant="body2">
                       {activity.notes ? (
-                        <div dangerouslySetInnerHTML={{ __html: activity.notes }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(activity.notes) }} />
                       ) : (
                         <span style={{ color: 'text.secondary' }}>No notes available</span>
                       )}
@@ -532,7 +533,7 @@ const WorkActivityDetail: React.FC = () => {
                   <Paper sx={{ p: 2, bgcolor: 'grey.50', minHeight: 100 }}>
                     <Typography variant="body2">
                       {activity.tasks ? (
-                        <div dangerouslySetInnerHTML={{ __html: activity.tasks }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(activity.tasks) }} />
                       ) : (
                         <span style={{ color: 'text.secondary' }}>No tasks specified</span>
                       )}

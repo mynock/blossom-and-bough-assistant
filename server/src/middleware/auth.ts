@@ -28,11 +28,15 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
     return next();
   }
   
-  // Check if OAuth is configured
+  // SECURITY: fail closed — see docs/plans/01-security-hardening.md §1.2.
+  // The previous silent next() on missing OAuth env vars meant one typo during deploy
+  // exposed every protected route.
   if (!process.env.GOOGLE_OAUTH_CLIENT_ID || !process.env.GOOGLE_OAUTH_CLIENT_SECRET) {
-    // If OAuth is not configured, allow access with a warning
-    debugLog.warn('Authentication bypassed - OAuth not configured');
-    return next();
+    debugLog.error('Authentication unavailable - OAuth not configured');
+    return res.status(503).json({
+      error: 'Authentication unavailable',
+      message: 'OAuth is not configured on this server.'
+    });
   }
 
   if (req.isAuthenticated && req.isAuthenticated()) {

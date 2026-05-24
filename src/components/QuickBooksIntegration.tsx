@@ -24,6 +24,7 @@ import {
   Sync,
   Storage,
 } from '@mui/icons-material';
+import { secureFetch } from '../services/csrf';
 
 interface QBOItem {
   id: number;
@@ -130,7 +131,7 @@ const QuickBooksIntegration: React.FC = () => {
     setError(null);
     
     try {
-      const response = await fetch('/api/qbo/auth/refresh', {
+      const response = await secureFetch('/api/qbo/auth/refresh', {
         method: 'POST',
       });
       
@@ -153,7 +154,7 @@ const QuickBooksIntegration: React.FC = () => {
     setError(null);
     
     try {
-      const response = await fetch('/api/qbo/items/sync', {
+      const response = await secureFetch('/api/qbo/items/sync', {
         method: 'POST',
       });
       
@@ -179,7 +180,7 @@ const QuickBooksIntegration: React.FC = () => {
     setError(null);
     
     try {
-      const response = await fetch('/api/qbo/seed', {
+      const response = await secureFetch('/api/qbo/seed', {
         method: 'POST',
       });
       
