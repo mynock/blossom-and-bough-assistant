@@ -174,14 +174,18 @@ export class InvoiceService extends DatabaseService {
     const out: SuggestedLineItem[] = [];
     for (const suggestion of suggestions) {
       const { item, quality } = await this.resolveQBOItemForSuggestion(suggestion.description, suggestion.category);
+      // Only pre-fill the rate when the QBO item is a specific name-level match.
+      // Category/fuzzy/fallback buckets share a unitPrice that probably doesn't apply
+      // to this specific plant or material, so leave the rate at 0 and force input.
+      const rate = quality === 'specific' && item?.unitPrice && item.unitPrice > 0
+        ? item.unitPrice
+        : 0;
       out.push({
         qboItemId: item?.qboId ?? '',
         description: suggestion.description,
         quantity: suggestion.quantity,
-        rate: item?.unitPrice && item.unitPrice > 0 && quality !== 'category' && quality !== 'fallback'
-          ? item.unitPrice
-          : 0,
-        amount: 0,
+        rate,
+        amount: suggestion.quantity * rate,
         category: suggestion.category,
         sourceWorkActivityId: suggestion.sourceWorkActivityId,
         qboItemName: item?.name,
