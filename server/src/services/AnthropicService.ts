@@ -1429,51 +1429,48 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
 
     console.log(`🤖 Generating AI-enhanced invoice line items for ${clientName}...`);
 
-    const systemPrompt = `You are an expert landscaping invoice generator. Your task is to transform basic work activity data into detailed, professional invoice line items that clients will find clear, valuable, and comprehensive.
+    const systemPrompt = `You rewrite invoice line item descriptions for a landscaping business. The house style is terse and factual: a single sentence, comma-separated list of the work performed, ending with a period. No marketing language.`;
 
-Transform basic entries like "Specialized garden care - 31.81 hours" into detailed line items that include:
-- Specific dates and work performed
-- Detailed descriptions of tasks completed
-- Materials used and plants installed
-- Professional presentation that justifies the value
+    const userPrompt = `Rewrite the description on each line item below to match the house style.
 
-Focus on creating line items that demonstrate the expertise, care, and value provided during the work.`;
+HOUSE STYLE
+- One sentence per description, ending with a period.
+- Comma-separated list of tasks performed. Examples of the target style:
+  • "Weeding, deadheading hellebores, pruning (rhododendrons, mahonia, camellia), garden meeting, planting cascara and spirea, general clean up."
+  • "Training vines/peas, volunteer tree removal, weeds, clean up, perennial care, sluggo."
+  • "Pruning (barberry, nandina, fringeflower, camellia), weeding, deadheading hellebores, irrigation check and adjustments."
+  • Plants/materials lines: "Cascara tree, mahonia nervosa." or "Horticultural oil, lacewings." or "Pomegranate tree, shrubs for border where fence fell."
+- Capitalize only the first word. Keep subsequent items lowercase except proper nouns (plant names, places, "Sluggo" if it's a brand, etc.).
+- Group related work in parentheses when natural, e.g., "pruning (rhododendrons, mahonia)".
+- Aim for under ~250 characters. Longer is OK only when the work genuinely required it.
 
-    const userPrompt = `Transform this basic invoice data into detailed professional line items for ${clientName}.
+DO NOT INCLUDE
+- Dates, hours, hourly rate, totals, or client name — those appear in their own invoice columns.
+- Adjectives like "professional", "comprehensive", "expert", "detailed", "meticulous".
+- First-person "we" / "our team" / "I".
+- "Value demonstration" framing — just list the work.
 
-Work Activities Data:
+DATA
+Client: ${clientName}
+
+Work activities (use these for raw task content):
 ${JSON.stringify(workActivities, null, 2)}
 
-Basic Line Items:
+Current line items (rewrite each description in place, preserve everything else):
 ${JSON.stringify(basicLineItems, null, 2)}
 
-Create enhanced line items that include:
-1. Specific dates and detailed work descriptions
-2. Professional task descriptions that show expertise
-3. Materials, plants, and supplies used
-4. Clear value demonstration
-
-CRITICAL REQUIREMENTS:
-- Keep the EXACT same quantity (hours) and rate ($55/hour) from the basic line items
-- ONLY enhance the description - do NOT change quantity, rate, or amount
-- Preserve the hourly billing structure
-
-Return a JSON array of enhanced line items with this structure:
+OUTPUT
+Return ONLY a JSON array, one object per current line item in the same order, with this shape (preserve quantity, rate, amount, workActivityId, qboItemId exactly from the input):
 [
   {
-    "description": "Enhanced professional description with dates and specific work details",
-    "quantity": 11.06,  // KEEP EXACT SAME HOURS from basic line item
-    "rate": 55.00,      // KEEP EXACT SAME HOURLY RATE
-    "amount": 608.30,   // KEEP EXACT SAME TOTAL AMOUNT
+    "description": "Rewritten description in house style.",
+    "quantity": 11.06,
+    "rate": 55.00,
+    "amount": 608.30,
     "workActivityId": 123,
     "qboItemId": "original-qbo-item-id"
   }
-]
-
-CRITICAL: 
-- ONLY enhance descriptions, preserve all numbers exactly
-- Return ONLY a valid JSON array
-- Transform ALL provided work activities into detailed line items`;
+]`;
 
     try {
       const response = await this.client.messages.create({

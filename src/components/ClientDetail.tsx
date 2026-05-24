@@ -1126,10 +1126,10 @@ const ClientDetail: React.FC = () => {
                   />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.800', mb: 0.5 }}>
-                      ✨ AI-Enhanced Professional Descriptions
+                      ✨ AI-cleaned descriptions
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
-                      Transforms basic work notes into detailed, professional invoice line items with specific tasks, dates, and value demonstration
+                      Rewrites raw work notes into the house style: terse, comma-separated task list per line, no dates or hours.
                     </Typography>
                   </Box>
                 </Box>
@@ -1274,7 +1274,7 @@ const ClientDetail: React.FC = () => {
                         </Typography>
                       </Box>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                        Invoice descriptions will be enhanced with detailed task breakdowns, professional language, and value demonstration
+                        Descriptions will be rewritten as terse, comma-separated task lists matching the existing invoice style.
                       </Typography>
                     </Box>
                   )}

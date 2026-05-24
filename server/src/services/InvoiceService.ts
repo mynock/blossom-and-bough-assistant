@@ -420,7 +420,7 @@ export class InvoiceService extends DatabaseService {
       if (qboItem && (activity.billableHours || activity.totalHours) > 0) {
         const hours = activity.billableHours || activity.totalHours || 0;
         const rate = qboItem.unitPrice || 55.00; // Default rate if not set in QBO
-        const description = this.buildServiceDescription(activity.workType, [activity]);
+        const description = this.buildServiceDescription(activity);
         
         lineItems.push({
           workActivityId: activity.id,
@@ -515,13 +515,9 @@ export class InvoiceService extends DatabaseService {
     return null;
   }
 
-  private buildServiceDescription(workType: string, activities: any[]): string {
-    const dates = activities.map(a => new Date(a.date).toLocaleDateString('en-US', {
-      timeZone: 'America/Los_Angeles'
-    })).join(', ');
-    const totalHours = activities.reduce((sum, a) => sum + (a.billableHours || a.totalHours || 0), 0);
-    
-    return `${this.formatWorkType(workType)} - ${totalHours} hours (${dates})`;
+  private buildServiceDescription(activity: any): string {
+    const raw = (activity.notes || activity.tasks || '').trim();
+    return raw || this.formatWorkType(activity.workType);
   }
 
   private formatWorkType(workType: string): string {
