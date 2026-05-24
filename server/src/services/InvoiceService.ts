@@ -23,6 +23,11 @@ export interface PreviewInvoiceRequest {
 export interface CreateInvoiceFromLineItemsRequest {
   clientId: number;
   lineItems: InvoiceLineItemData[];
+  // Work activities the user selected for this invoice. Marked `invoiced`
+  // when the invoice is created, regardless of which labor lines survived
+  // editing — otherwise removing a labor line would leave the activity
+  // stuck as `completed` and keep reappearing in the invoiceable list.
+  workActivityIds?: number[];
   dueDate?: string;
   memo?: string;
 }
@@ -174,12 +179,7 @@ export class InvoiceService extends DatabaseService {
     const out: SuggestedLineItem[] = [];
     for (const suggestion of suggestions) {
       const { item, quality } = await this.resolveQBOItemForSuggestion(suggestion.description, suggestion.category);
-      // Only pre-fill the rate when the QBO item is a specific name-level match.
-      // Category/fuzzy/fallback buckets share a unitPrice that probably doesn't apply
-      // to this specific plant or material, so leave the rate at 0 and force input.
-      const rate = quality === 'specific' && item?.unitPrice && item.unitPrice > 0
-        ? item.unitPrice
-        : 0;
+      const rate = pickSuggestionRate(quality, item);
       out.push({
         qboItemId: item?.qboId ?? '',
         description: suggestion.description,
@@ -277,27 +277,7 @@ export class InvoiceService extends DatabaseService {
         throw new Error('At least one line item is required');
       }
 
-      const normalizedLineItems: InvoiceLineItemData[] = request.lineItems.map((line, index) => {
-        if (!line.qboItemId) {
-          throw new Error(`Line ${index + 1} is missing qboItemId`);
-        }
-        if (typeof line.quantity !== 'number' || line.quantity <= 0) {
-          throw new Error(`Line ${index + 1} must have quantity > 0`);
-        }
-        if (typeof line.rate !== 'number' || line.rate < 0) {
-          throw new Error(`Line ${index + 1} must have rate >= 0`);
-        }
-
-        return {
-          workActivityId: line.workActivityId,
-          otherChargeId: line.otherChargeId,
-          qboItemId: line.qboItemId,
-          description: line.description ?? '',
-          quantity: line.quantity,
-          rate: line.rate,
-          amount: line.quantity * line.rate
-        };
-      });
+      const normalizedLineItems = normalizeInvoiceLineItems(request.lineItems);
 
       const qboCustomer = await this.ensureQBOCustomer(client);
 
@@ -310,11 +290,10 @@ export class InvoiceService extends DatabaseService {
 
       const localInvoice = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems);
 
-      const invoicedWorkActivityIds = Array.from(new Set(
+      const invoicedWorkActivityIds = resolveInvoicedWorkActivityIds(
+        request.workActivityIds,
         normalizedLineItems
-          .map(line => line.workActivityId)
-          .filter((id): id is number => typeof id === 'number')
-      ));
+      );
 
       if (invoicedWorkActivityIds.length > 0) {
         await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced');
@@ -547,18 +526,29 @@ export class InvoiceService extends DatabaseService {
           ));
 
         for (const charge of charges) {
-          const qboItem = await this.findQBOItemForChargeType(charge.chargeType);
-          
-          if (qboItem) {
-            lineItems.push({
-              otherChargeId: charge.id,
-              qboItemId: qboItem.qboId,
-              description: charge.description,
-              quantity: charge.quantity || 1,
-              rate: charge.unitRate || charge.totalCost || 0,
-              amount: charge.totalCost || 0
-            });
+          const qboItem = await this.findQBOItemForChargeType(charge.chargeType, charge.description);
+
+          if (!qboItem) {
+            console.warn(
+              `Skipping billable charge ${charge.id} (chargeType="${charge.chargeType}", description="${charge.description}"): no QBO item matched. ` +
+              `Sync QBO items or add an item named after the chargeType.`
+            );
+            continue;
           }
+
+          const quantity = charge.quantity || 1;
+          const rate = charge.unitRate
+            ?? (charge.totalCost != null ? charge.totalCost / quantity : 0);
+          const amount = charge.totalCost ?? quantity * rate;
+
+          lineItems.push({
+            otherChargeId: charge.id,
+            qboItemId: qboItem.qboId,
+            description: charge.description,
+            quantity,
+            rate,
+            amount
+          });
         }
       }
     }
@@ -598,21 +588,37 @@ export class InvoiceService extends DatabaseService {
     return defaultItem[0] || null;
   }
 
-  private async findQBOItemForChargeType(chargeType: string): Promise<any> {
-    // Map charge types to QBO items
+  /**
+   * Find a QBO item for a structured other_charge.
+   *   1. If the charge description matches a QBO item name (exact CI, then ILIKE), use it.
+   *      Catches per-product items like "Sluggo" or "Lonicera" without needing a chargeType map.
+   *   2. Otherwise try chargeType-mapped canonical names ("Plants", "Materials", etc.) case-insensitively.
+   *   3. Fall back to a fuzzy ILIKE on the chargeType itself.
+   */
+  private async findQBOItemForChargeType(chargeType: string, description?: string): Promise<any> {
+    const trimmedDesc = description?.trim() || '';
+    if (trimmedDesc) {
+      const descExact = await this.findActiveQBOItemILike(trimmedDesc);
+      if (descExact) return descExact;
+      const descPartial = await this.findActiveQBOItemILike(`%${trimmedDesc}%`);
+      if (descPartial) return descPartial;
+    }
+
     const chargeTypeMapping: { [key: string]: string[] } = {
       'debris': ['Debris disposal per yard', 'Debris disposal'],
-      'material': ['Garden Supplies', 'Materials'],
-      'plant': ['Plants', 'Garden Supplies'],
+      'material': ['Materials', 'Garden Supplies', 'Supplies'],
+      'plant': ['Plants', 'Plant', 'Garden Supplies'],
       'delivery': ['Delivery', 'Service']
     };
 
     const possibleNames = chargeTypeMapping[chargeType.toLowerCase()] || [chargeType];
-    
     for (const name of possibleNames) {
-      const item = await this.findQBOItemByName(name);
-      if (item) return item;
+      const hit = await this.findActiveQBOItemILike(name);
+      if (hit) return hit;
     }
+
+    const fuzzy = await this.findActiveQBOItemILike(`%${chargeType}%`);
+    if (fuzzy) return fuzzy;
 
     return null;
   }
@@ -819,4 +825,75 @@ export class InvoiceService extends DatabaseService {
       throw error;
     }
   }
+}
+
+/**
+ * Validate user-submitted line items and recompute `amount` server-side.
+ * Server never trusts the client's `amount` — it's recomputed from
+ * quantity × rate so a bad UI calculation can't push wrong money to QBO.
+ * Throws on the first invalid line so the caller gets a clear error.
+ */
+export function normalizeInvoiceLineItems(lineItems: InvoiceLineItemData[]): InvoiceLineItemData[] {
+  return lineItems.map((line, index) => {
+    if (!line.qboItemId) {
+      throw new Error(`Line ${index + 1} is missing qboItemId`);
+    }
+    if (typeof line.quantity !== 'number' || line.quantity <= 0) {
+      throw new Error(`Line ${index + 1} must have quantity > 0`);
+    }
+    if (typeof line.rate !== 'number' || line.rate < 0) {
+      throw new Error(`Line ${index + 1} must have rate >= 0`);
+    }
+
+    return {
+      workActivityId: line.workActivityId,
+      otherChargeId: line.otherChargeId,
+      qboItemId: line.qboItemId,
+      description: line.description ?? '',
+      quantity: line.quantity,
+      rate: line.rate,
+      amount: line.quantity * line.rate
+    };
+  });
+}
+
+/**
+ * Decide which work activities should be marked `invoiced`.
+ *
+ * Prefer the caller's explicit selection — that's the user's intent at the
+ * time of invoicing, regardless of which labor lines they edited or removed
+ * during the preview step. Without this, removing a labor line would leave
+ * the activity stuck as `completed` and keep re-surfacing in the invoiceable
+ * list. Falls back to whatever survived on the line items so older API
+ * callers continue to mark activities invoiced.
+ */
+export function resolveInvoicedWorkActivityIds(
+  selectedWorkActivityIds: number[] | undefined,
+  lineItems: InvoiceLineItemData[]
+): number[] {
+  const source = selectedWorkActivityIds && selectedWorkActivityIds.length > 0
+    ? selectedWorkActivityIds
+    : lineItems
+        .map(line => line.workActivityId)
+        .filter((id): id is number => typeof id === 'number');
+  return Array.from(new Set(source));
+}
+
+/**
+ * Pick a rate for a suggested addition based on how confident we are in the
+ * QBO item match.
+ *
+ * Only a `specific` (name-level) match gets the QBO item's unitPrice. The
+ * category/fuzzy/fallback buckets share a single unit price that almost
+ * certainly does not apply to this specific plant or material, so the rate
+ * is zeroed out and the user is forced to set one. The submit guard in the
+ * UI catches the zero before any wrong-money invoice can be sent.
+ */
+export function pickSuggestionRate(
+  quality: SuggestedLineItem['qboItemMatchQuality'],
+  item: { unitPrice?: number | null } | null | undefined
+): number {
+  if (quality !== 'specific') return 0;
+  const unit = item?.unitPrice;
+  return typeof unit === 'number' && unit > 0 ? unit : 0;
 } 

@@ -173,7 +173,7 @@ router.get('/items', async (req, res) => {
  */
 router.post('/invoices', async (req, res) => {
   try {
-    const { clientId, lineItems, dueDate, memo } = req.body;
+    const { clientId, lineItems, workActivityIds, dueDate, memo } = req.body;
 
     if (!clientId) {
       return res.status(400).json({ error: 'Client ID is required' });
@@ -186,6 +186,9 @@ router.post('/invoices', async (req, res) => {
     const result = await invoiceService.createInvoiceFromLineItems({
       clientId,
       lineItems,
+      workActivityIds: Array.isArray(workActivityIds)
+        ? workActivityIds.filter((id: unknown): id is number => typeof id === 'number')
+        : undefined,
       dueDate,
       memo
     });

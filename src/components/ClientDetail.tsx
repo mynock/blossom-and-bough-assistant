@@ -63,6 +63,7 @@ import { secureFetch } from '../services/csrf';
 import { ClientTasksList } from './ClientTasksList';
 import { ClientNotesList } from './ClientNotesList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
+import { NumericInputCell } from './NumericInputCell';
 import { formatDatePacific } from '../utils/dateUtils';
 
 interface Client {
@@ -628,6 +629,7 @@ const ClientDetail: React.FC = () => {
         body: JSON.stringify({
           clientId: client.id,
           lineItems: [...previewLineItems, ...additions],
+          workActivityIds: selectedActivitiesForInvoice,
         }),
       });
 
@@ -1363,27 +1365,19 @@ const ClientDetail: React.FC = () => {
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <TextField
+                          <NumericInputCell
                             value={line.quantity}
-                            onChange={e => {
-                              const v = parseFloat(e.target.value);
-                              updatePreviewLineItem(index, { quantity: Number.isFinite(v) ? v : 0 });
-                            }}
-                            type="number"
-                            size="small"
-                            inputProps={{ step: 0.25, min: 0, style: { textAlign: 'right' } }}
+                            onCommit={v => updatePreviewLineItem(index, { quantity: v })}
+                            step={0.25}
+                            min={0}
                           />
                         </TableCell>
                         <TableCell align="right">
-                          <TextField
+                          <NumericInputCell
                             value={line.rate}
-                            onChange={e => {
-                              const v = parseFloat(e.target.value);
-                              updatePreviewLineItem(index, { rate: Number.isFinite(v) ? v : 0 });
-                            }}
-                            type="number"
-                            size="small"
-                            inputProps={{ step: 0.01, min: 0, style: { textAlign: 'right' } }}
+                            onCommit={v => updatePreviewLineItem(index, { rate: v })}
+                            step={0.01}
+                            min={0}
                           />
                         </TableCell>
                         <TableCell align="right">
@@ -1503,29 +1497,21 @@ const ClientDetail: React.FC = () => {
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                <TextField
+                                <NumericInputCell
                                   value={line.quantity}
-                                  onChange={e => {
-                                    const v = parseFloat(e.target.value);
-                                    updateSuggestedLineItem(index, { quantity: Number.isFinite(v) ? v : 0 });
-                                  }}
-                                  type="number"
-                                  size="small"
-                                  inputProps={{ step: 1, min: 0, style: { textAlign: 'right' } }}
+                                  onCommit={v => updateSuggestedLineItem(index, { quantity: v })}
+                                  step={1}
+                                  min={0}
                                 />
                               </TableCell>
                               <TableCell align="right">
-                                <TextField
+                                <NumericInputCell
                                   value={line.rate}
-                                  onChange={e => {
-                                    const v = parseFloat(e.target.value);
-                                    updateSuggestedLineItem(index, { rate: Number.isFinite(v) ? v : 0 });
-                                  }}
-                                  type="number"
-                                  size="small"
+                                  onCommit={v => updateSuggestedLineItem(index, { rate: v })}
+                                  step={0.01}
+                                  min={0}
                                   error={needsRate}
                                   helperText={needsRate ? 'Set a rate' : undefined}
-                                  inputProps={{ step: 0.01, min: 0, style: { textAlign: 'right' } }}
                                 />
                               </TableCell>
                               <TableCell align="right">

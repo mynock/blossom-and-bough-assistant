@@ -1537,34 +1537,8 @@ Return ONLY a JSON object (not an array) in this exact shape. Preserve quantity,
       const rawSuggestions: any[] = Array.isArray(parsed.suggestedAdditions) ? parsed.suggestedAdditions : [];
       console.log(`✅ Parsed ${rawLineItems.length} line items and ${rawSuggestions.length} suggested additions`);
 
-      // Preserve numbers from the original line items; only the AI's description is trusted.
-      const lineItems = rawLineItems.map((item: any, index: number) => {
-        const originalItem = basicLineItems[index];
-        if (!originalItem) {
-          console.warn(`AI returned more line items than provided, dropping extras`);
-          return null;
-        }
-
-        return {
-          description: item.description || originalItem.description,
-          quantity: originalItem.quantity,
-          rate: originalItem.rate,
-          amount: originalItem.amount,
-          workActivityId: originalItem.workActivityId,
-          qboItemId: originalItem.qboItemId
-        };
-      }).filter((item): item is any => item !== null);
-
-      const suggestedAdditions: SuggestedAddition[] = [];
-      for (const s of rawSuggestions) {
-        const category = String(s.category || '').toLowerCase();
-        if (category !== 'plants' && category !== 'materials') continue;
-        const description = String(s.description || '').trim();
-        if (!description) continue;
-        const quantity = typeof s.quantity === 'number' && s.quantity > 0 ? s.quantity : 1;
-        const sourceWorkActivityId = typeof s.sourceWorkActivityId === 'number' ? s.sourceWorkActivityId : undefined;
-        suggestedAdditions.push({ description, category, quantity, sourceWorkActivityId });
-      }
+      const lineItems = rebuildLineItemsFromAIResponse(rawLineItems, basicLineItems);
+      const suggestedAdditions = normalizeSuggestedAdditions(rawSuggestions);
 
       return { lineItems, suggestedAdditions };
 
@@ -1580,4 +1554,58 @@ export interface SuggestedAddition {
   category: 'plants' | 'materials';
   quantity: number;
   sourceWorkActivityId?: number;
+}
+
+/**
+ * Rebuild invoice line items from an AI response while preserving every
+ * non-description field (identity FKs and money values) from the originals.
+ *
+ * Two correctness rules drive this:
+ *   1. The AI is only trusted to rewrite the description. workActivityId,
+ *      otherChargeId, qboItemId, quantity, rate, and amount stay verbatim
+ *      from the original — otherwise the AI checkbox would silently change
+ *      what gets billed or which rows get FK-linked when saved locally.
+ *   2. We iterate the original line items (not the AI response) so a short
+ *      AI reply can never drop a billable row.
+ */
+export function rebuildLineItemsFromAIResponse(rawLineItems: any[], basicLineItems: any[]): any[] {
+  if (rawLineItems.length !== basicLineItems.length) {
+    console.warn(
+      `⚠️ AI returned ${rawLineItems.length} line items for ${basicLineItems.length} provided; ` +
+      `falling back to original descriptions for any missing entries to avoid silently dropping billable lines.`
+    );
+  }
+
+  return basicLineItems.map((originalItem: any, index: number) => {
+    const aiItem = rawLineItems[index];
+    const aiDescription =
+      aiItem && typeof aiItem.description === 'string' && aiItem.description.trim()
+        ? aiItem.description
+        : null;
+    return {
+      ...originalItem,
+      description: aiDescription ?? originalItem.description
+    };
+  });
+}
+
+/**
+ * Filter and normalize suggested additions from raw AI output:
+ *   - drop entries with an unrecognized category
+ *   - drop entries without a description
+ *   - default quantity to 1 if missing or non-positive
+ *   - preserve `sourceWorkActivityId` only when it's actually a number
+ */
+export function normalizeSuggestedAdditions(rawSuggestions: any[]): SuggestedAddition[] {
+  const out: SuggestedAddition[] = [];
+  for (const s of rawSuggestions) {
+    const category = String(s?.category || '').toLowerCase();
+    if (category !== 'plants' && category !== 'materials') continue;
+    const description = String(s?.description || '').trim();
+    if (!description) continue;
+    const quantity = typeof s?.quantity === 'number' && s.quantity > 0 ? s.quantity : 1;
+    const sourceWorkActivityId = typeof s?.sourceWorkActivityId === 'number' ? s.sourceWorkActivityId : undefined;
+    out.push({ description, category, quantity, sourceWorkActivityId });
+  }
+  return out;
 }
