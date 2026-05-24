@@ -206,23 +206,19 @@ export class InvoiceService extends DatabaseService {
   ): Promise<{ item: any | null; quality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none' }> {
     const trimmed = description.trim();
     if (trimmed) {
-      const exactByDescription = await this.findQBOItemByName(trimmed);
-      if (exactByDescription) return { item: exactByDescription, quality: 'specific' };
+      const exactCI = await this.findActiveQBOItemILike(trimmed);
+      if (exactCI) return { item: exactCI, quality: 'specific' };
 
-      const partial = await this.db
-        .select()
-        .from(qboItems)
-        .where(and(eq(qboItems.active, true), ilike(qboItems.name, `%${trimmed}%`)))
-        .limit(1);
-      if (partial[0]) return { item: partial[0], quality: 'specific' };
+      const partial = await this.findActiveQBOItemILike(`%${trimmed}%`);
+      if (partial) return { item: partial, quality: 'specific' };
     }
 
-    const exactNames = category === 'plants'
+    const categoryNames = category === 'plants'
       ? ['Plants', 'Plant']
       : ['Materials', 'Garden Supplies', 'Supplies'];
 
-    for (const name of exactNames) {
-      const hit = await this.findQBOItemByName(name);
+    for (const name of categoryNames) {
+      const hit = await this.findActiveQBOItemILike(name);
       if (hit) return { item: hit, quality: 'category' };
     }
 
@@ -231,12 +227,8 @@ export class InvoiceService extends DatabaseService {
       : ['material', 'supply', 'supplies'];
 
     for (const keyword of fuzzyKeywords) {
-      const matches = await this.db
-        .select()
-        .from(qboItems)
-        .where(and(eq(qboItems.active, true), ilike(qboItems.name, `%${keyword}%`)))
-        .limit(1);
-      if (matches[0]) return { item: matches[0], quality: 'fuzzy' };
+      const hit = await this.findActiveQBOItemILike(`%${keyword}%`);
+      if (hit) return { item: hit, quality: 'fuzzy' };
     }
 
     const fallback = await this.db
@@ -250,6 +242,15 @@ export class InvoiceService extends DatabaseService {
     if (fallback[0]) return { item: fallback[0], quality: 'fallback' };
 
     return { item: null, quality: 'none' };
+  }
+
+  private async findActiveQBOItemILike(pattern: string): Promise<any | null> {
+    const matches = await this.db
+      .select()
+      .from(qboItems)
+      .where(and(eq(qboItems.active, true), ilike(qboItems.name, pattern)))
+      .limit(1);
+    return matches[0] || null;
   }
 
   /**
