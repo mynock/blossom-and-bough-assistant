@@ -33,6 +33,7 @@ import {
   CloudDownload,
   Warning,
 } from '@mui/icons-material';
+import { secureFetch } from '../services/csrf';
 
 interface SystemPromptData {
   meta: {
@@ -124,7 +125,7 @@ const Debug: React.FC = () => {
     setMigrationError(null);
     
     try {
-      const response = await fetch('/api/migration/seed-reset', {
+      const response = await secureFetch('/api/migration/seed-reset', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

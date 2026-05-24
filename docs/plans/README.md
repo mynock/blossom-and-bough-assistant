@@ -10,19 +10,21 @@ Finding #7 ("all authenticated users are admins") is intentionally omitted from 
 
 ## Index
 
-| # | Plan | Findings | Effort | Tier |
-|---|---|---|---|---|
-| 1 | [Security Hardening](./01-security-hardening.md) | #1, #2, #3, #4, #5, #6 | 2–3 days | 🚨 Urgent |
-| 2 | [Data Integrity & Schema](./02-data-integrity.md) | #8, #9, #10, #11, #12 | 1.5 weeks | 🚨 Urgent |
-| 3 | [Background Job Reliability](./03-background-jobs.md) | #13 | 1 week | 📉 Medium |
-| 4 | [Query Performance](./04-query-performance.md) | #14, #15, #19 | 1 week | 📉 Urgent-soon |
-| 5 | [Integration Efficiency](./05-integration-efficiency.md) | #16, #17, #18 | 4–5 days | 📉 Medium |
-| 6 | [Frontend Bundle & Rendering](./06-frontend-bundle.md) | #20 | 1–2 days | 📉 Medium |
-| 7 | [Backend Architecture Cleanup](./07-backend-architecture.md) | #21, #22, #23, #24, #29, #30, #31 | 2 weeks | 🏗️ Debt |
-| 8 | [Frontend Foundation](./08-frontend-foundation.md) | #25, #26 | 1 week | 🏗️ Debt |
-| 9 | [God Class Decomposition](./09-god-class-decomposition.md) | #27 (4 sub-plans) | 2–3 weeks | 🏗️ Debt |
-| 10 | [Test Coverage Foundation](./10-test-coverage.md) | #28 | 1–2 weeks | 🏗️ Enabler |
-| 11 | [Tooling & Hygiene](./11-tooling-hygiene.md) | #32 + repo cleanup | 1 day | 🧹 Cleanup |
+| # | Plan | Findings | Effort | Tier | Status |
+|---|---|---|---|---|---|
+| 1 | [Security Hardening](./01-security-hardening.md) | #1, #2, #3, #4, #5, #6 | 2–3 days | 🚨 Urgent | 🟡 In review ([#54](https://github.com/mynock/blossom-and-bough-assistant/pull/54)) |
+| 2 | [Data Integrity & Schema](./02-data-integrity.md) | #8, #9, #10, #11, #12 | 1.5 weeks | 🚨 Urgent | ⚪ Not started |
+| 3 | [Background Job Reliability](./03-background-jobs.md) | #13 | 1 week | 📉 Medium | ⚪ Not started |
+| 4 | [Query Performance](./04-query-performance.md) | #14, #15, #19 | 1 week | 📉 Urgent-soon | ⚪ Not started |
+| 5 | [Integration Efficiency](./05-integration-efficiency.md) | #16, #17, #18 | 4–5 days | 📉 Medium | ⚪ Not started |
+| 6 | [Frontend Bundle & Rendering](./06-frontend-bundle.md) | #20 | 1–2 days | 📉 Medium | ⚪ Not started |
+| 7 | [Backend Architecture Cleanup](./07-backend-architecture.md) | #21, #22, #23, #24, #29, #30, #31 | 2 weeks | 🏗️ Debt | ⚪ Not started |
+| 8 | [Frontend Foundation](./08-frontend-foundation.md) | #25, #26 | 1 week | 🏗️ Debt | ⚪ Not started |
+| 9 | [God Class Decomposition](./09-god-class-decomposition.md) | #27 (4 sub-plans) | 2–3 weeks | 🏗️ Debt | ⚪ Not started |
+| 10 | [Test Coverage Foundation](./10-test-coverage.md) | #28 | 1–2 weeks | 🏗️ Enabler | ⚪ Not started |
+| 11 | [Tooling & Hygiene](./11-tooling-hygiene.md) | #32 + repo cleanup | 1 day | 🧹 Cleanup | ⚪ Not started |
+
+**Status legend:** ⚪ Not started · 🟡 In review · ✅ Merged · ⏸️ Paused · 🚫 Won't do
 
 ## Cross-Plan Dependency Graph
 

@@ -52,6 +52,7 @@ import {
   StickyNote2 as StickyNote2Icon,
 } from '@mui/icons-material';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
+import { secureFetch } from '../services/csrf';
 import { ClientTasksList } from './ClientTasksList';
 import { ClientNotesList } from './ClientNotesList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
@@ -492,7 +493,7 @@ const ClientDetail: React.FC = () => {
 
     setInvoiceCreationLoading(true);
     try {
-      const response = await fetch('/api/qbo/invoices', {
+      const response = await secureFetch('/api/qbo/invoices', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -35,6 +35,7 @@ import {
   Receipt as ReceiptIcon,
 } from '@mui/icons-material';
 import { formatDateShortPacific, formatTimestampPacific } from '../utils/dateUtils';
+import { sanitizeHtml } from '../utils/sanitizeHtml';
 
 interface WorkActivity {
   id: number;
@@ -518,7 +519,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                                         lineHeight: 1.6,
                                         fontSize: '0.875rem'
                                       }}
-                                      dangerouslySetInnerHTML={{ __html: activity.notes }}
+                                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(activity.notes) }}
                                     />
                                   </Box>
                                 </Box>
@@ -540,7 +541,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                                         lineHeight: 1.6,
                                         fontSize: '0.875rem'
                                       }}
-                                      dangerouslySetInnerHTML={{ __html: activity.tasks }}
+                                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(activity.tasks) }}
                                     />
                                   </Box>
                                 </Box>

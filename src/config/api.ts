@@ -10,6 +10,9 @@
  * - For OAuth login URL, use `getOAuthLoginUrl()` from services/api.ts
  */
 
+// SECURITY: legacy fetch client also attaches the CSRF token — see §1.5.
+import { fetchCsrfToken } from '../services/csrf';
+
 // API Configuration
 // This handles the difference between development and production environments
 
@@ -66,42 +69,53 @@ export const API_ENDPOINTS = {
   MIGRATION_SEED_RESET: createApiUrl('api/migration/seed-reset'),
 } as const;
 
+async function withCsrfHeader(extra: HeadersInit | undefined): Promise<HeadersInit> {
+  try {
+    const token = await fetchCsrfToken();
+    return { ...(extra || {}), 'X-CSRF-Token': token };
+  } catch {
+    // See services/api.ts — graceful degradation for cross-site embed contexts.
+    return { ...(extra || {}) };
+  }
+}
+
 // Fetch wrapper with default options
 export const apiClient = {
-  get: (url: string, options?: RequestInit) => 
-    fetch(url, { 
+  get: (url: string, options?: RequestInit) =>
+    fetch(url, {
       credentials: 'include',
-      ...options 
+      ...options
     }),
-    
-  post: (url: string, data?: any, options?: RequestInit) =>
+
+  post: async (url: string, data?: any, options?: RequestInit) =>
     fetch(url, {
       method: 'POST',
+      credentials: 'include',
+      ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...options?.headers,
+        ...(await withCsrfHeader(options?.headers)),
       },
-      credentials: 'include',
       body: data ? JSON.stringify(data) : undefined,
-      ...options,
     }),
-    
-  put: (url: string, data?: any, options?: RequestInit) =>
+
+  put: async (url: string, data?: any, options?: RequestInit) =>
     fetch(url, {
       method: 'PUT',
+      credentials: 'include',
+      ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...options?.headers,
+        ...(await withCsrfHeader(options?.headers)),
       },
-      credentials: 'include',
       body: data ? JSON.stringify(data) : undefined,
-      ...options,
     }),
-    
-  delete: (url: string, options?: RequestInit) =>
+
+  delete: async (url: string, options?: RequestInit) =>
     fetch(url, {
       method: 'DELETE',
       credentials: 'include',
       ...options,
+      headers: await withCsrfHeader(options?.headers),
     }),
-}; 
+};

@@ -1,4 +1,5 @@
-import axios, { AxiosError } from 'axios';
+import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
+import { fetchCsrfToken, invalidateCsrfToken, CSRF_SAFE_METHODS } from './csrf';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -16,10 +17,35 @@ const apiClient = axios.create({
   withCredentials: true, // Include cookies for session auth
 });
 
-// Add response interceptor for error handling
+// SECURITY: CSRF token plumbing — see docs/plans/01-security-hardening.md §1.5.
+apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  const method = (config.method || 'get').toLowerCase();
+  if (CSRF_SAFE_METHODS.has(method)) return config;
+  try {
+    const token = await fetchCsrfToken();
+    config.headers.set('X-CSRF-Token', token);
+  } catch {
+    // SECURITY: token fetch can legitimately fail in the Notion embed iframe (cross-site
+    // cookies blocked). The server skip list lets /api/notion/* through anyway. Other
+    // protected routes will still reject the request and we'll surface that to the user.
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
+  async (error: AxiosError) => {
+    const status = error.response?.status;
+    const data = error.response?.data as { code?: string } | undefined;
+    const isCsrfFailure = status === 403 && data?.code === 'EBADCSRFTOKEN';
+    const config = error.config as (InternalAxiosRequestConfig & { _csrfRetried?: boolean }) | undefined;
+    if (isCsrfFailure && config && !config._csrfRetried) {
+      invalidateCsrfToken();
+      config._csrfRetried = true;
+      const token = await fetchCsrfToken();
+      config.headers.set('X-CSRF-Token', token);
+      return apiClient.request(config);
+    }
     console.error('API Error:', error.message);
     if (error.response) {
       console.error('Status:', error.response.status);
