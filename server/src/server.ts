@@ -707,11 +707,17 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
-  
-  // Start internal cron scheduling
-  cronService.startScheduledTasks();
-}); 
+// Exported for supertest-based integration tests; tests import `app` without
+// binding a port and without starting cron schedulers.
+export { app };
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+    console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+    console.log(`📁 Reading environment variables from: ${path.resolve(__dirname, '../../.env')}`);
+
+    // Start internal cron scheduling
+    cronService.startScheduledTasks();
+  });
+}
