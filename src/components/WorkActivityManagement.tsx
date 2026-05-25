@@ -18,12 +18,13 @@ import {
   Autocomplete,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Assignment as AssignmentIcon,
-  FilterList as FilterListIcon,
-  Clear as ClearIcon,
-  ExpandMore as ExpandMoreIcon,
-} from '@mui/icons-material';
+  Plus as AddIcon,
+  Filter as FilterListIcon,
+  X as ClearIcon,
+  ChevronDown as ExpandMoreIcon,
+  RefreshCw,
+  Receipt,
+} from '../icons';
 import { Client } from '../services/api';
 import { API_ENDPOINTS, apiClient } from '../config/api';
 import { useSearchParams } from 'react-router-dom';
@@ -342,30 +343,151 @@ const WorkActivityManagement: React.FC = () => {
 
 
 
-  if (loading) return <Typography>Loading work activities...</Typography>;
+  if (loading) return <main className="gc-page-wide"><Typography>Loading work activities…</Typography></main>;
+
+  const tabs: { id: string; label: string; statuses: string[]; dot: string }[] = [
+    { id: 'review', label: 'Needs review', statuses: ['needs_review'], dot: 'var(--honey-600)' },
+    { id: 'active', label: 'Active', statuses: ['in_progress', 'planned'], dot: 'var(--terracotta-600)' },
+    { id: 'done', label: 'Completed', statuses: ['completed', 'invoiced'], dot: 'var(--moss-600)' },
+  ];
+  const tabCounts = tabs.map((t) => ({
+    ...t,
+    count: workActivities.filter((a) => t.statuses.includes(a.status)).length,
+  }));
+  const currentTabId = tabs.find((t) => filters.status && t.statuses.includes(filters.status))?.id || 'all';
+  const completedCount = workActivities.filter((a) => a.status === 'completed').length;
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <AssignmentIcon sx={{ fontSize: 40 }} />
-          <Typography variant="h4">Work Activities</Typography>
-          {getActiveFilterCount() > 0 && (
-            <Chip 
-              label={`${getActiveFilterCount()} filter${getActiveFilterCount() === 1 ? '' : 's'}`} 
-              color="primary" 
-              size="small" 
-            />
-          )}
-        </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleCreate}
+    <main className="gc-page-wide" data-screen-label="Work activities">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <div className="gc-eyebrow">Operations</div>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            Work activities
+            {getActiveFilterCount() > 0 && (
+              <span className="gc-chip green">
+                {getActiveFilterCount()} {getActiveFilterCount() === 1 ? 'filter' : 'filters'}
+              </span>
+            )}
+          </h1>
+          <div className="sub">
+            Entries synced from Notion. Review, adjust hours, and roll up into invoices.
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="gc-btn secondary" onClick={fetchWorkActivities}>
+            <RefreshCw size={15} strokeWidth={1.8} className="ic" />
+            Sync Notion
+          </button>
+          <button type="button" className="gc-btn action" disabled={completedCount === 0}>
+            <Receipt size={15} strokeWidth={1.8} className="ic" />
+            Create invoices ({completedCount})
+          </button>
+          <button type="button" className="gc-btn primary" onClick={handleCreate}>
+            <AddIcon size={15} strokeWidth={1.8} className="ic" />
+            Add work activity
+          </button>
+        </div>
+      </div>
+
+      {/* Status tabs */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 4,
+          marginBottom: 16,
+          padding: 4,
+          background: 'var(--bg-inset)',
+          borderRadius: 10,
+          width: 'fit-content',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => handleFilterChange('status', '')}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '8px 14px',
+            borderRadius: 7,
+            border: 'none',
+            background: currentTabId === 'all' ? 'var(--bg-elevated)' : 'transparent',
+            boxShadow: currentTabId === 'all' ? 'var(--shadow-xs)' : 'none',
+            fontSize: 13,
+            fontWeight: 500,
+            color: 'var(--fg)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
         >
-          Add Work Activity
-        </Button>
-      </Box>
+          All
+          <span
+            style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11.5,
+              color: 'var(--fg-muted)',
+              marginLeft: 2,
+            }}
+          >
+            {workActivities.length}
+          </span>
+        </button>
+        {tabCounts.map((t) => {
+          const active = currentTabId === t.id;
+          return (
+            <button
+              type="button"
+              key={t.id}
+              onClick={() => handleFilterChange('status', t.statuses[0])}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 8,
+                padding: '8px 14px',
+                borderRadius: 7,
+                border: 'none',
+                background: active ? 'var(--bg-elevated)' : 'transparent',
+                boxShadow: active ? 'var(--shadow-xs)' : 'none',
+                fontSize: 13,
+                fontWeight: 500,
+                color: 'var(--fg)',
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  background: t.dot,
+                }}
+              />
+              {t.label}
+              <span
+                style={{
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11.5,
+                  color: 'var(--fg-muted)',
+                  marginLeft: 2,
+                }}
+              >
+                {t.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Filters */}
       <Accordion 
@@ -556,7 +678,7 @@ const WorkActivityManagement: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </main>
   );
 };
 

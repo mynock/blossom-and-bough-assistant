@@ -1348,33 +1348,48 @@ const WorkActivityReviewFlow: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Review Work Activities
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Review and approve work activities synced from Notion
-        </Typography>
-      </Box>
+    <main className="gc-page-wide" data-screen-label="Review">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 14,
+          color: 'var(--fg-muted)',
+          fontSize: 13,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/work-activities')}
+          className="gc-btn ghost sm"
+          style={{ paddingLeft: 6 }}
+        >
+          <NavigateBefore fontSize="small" />
+          Back to queue
+        </button>
+        <span style={{ opacity: 0.5 }}>·</span>
+        <span style={{ fontFamily: 'var(--font-mono)' }}>
+          {currentIndex + 1} of {totalActivities}
+        </span>
+      </div>
 
-      {/* Progress */}
+      <div className="gc-page-header" style={{ marginBottom: 18 }}>
+        <div className="gc-eyebrow">Operations · Review</div>
+        <h1>Review work activities</h1>
+        <div className="sub">
+          {remainingCount === 0
+            ? 'All entries have been reviewed.'
+            : `${remainingCount} ${remainingCount === 1 ? 'entry needs' : 'entries need'} your review · ${Math.round(progress)}% complete`}
+        </div>
+      </div>
+
       <Card sx={{ mb: 4 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              Activity {currentIndex + 1} of {totalActivities}
-            </Typography>
-            <Chip 
-              label={`${remainingCount} remaining`} 
-              color={remainingCount === 0 ? "success" : "warning"} 
-              icon={<PendingActions />} 
-            />
-          </Box>
           <LinearProgress variant="determinate" value={progress} sx={{ mb: 1 }} />
           <Typography variant="body2" color="text.secondary">
-            {Math.round(progress)}% complete ({processedCount} of {totalActivities} approved)
+            {processedCount} of {totalActivities} approved
           </Typography>
         </CardContent>
       </Card>
@@ -2275,7 +2290,7 @@ const WorkActivityReviewFlow: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </main>
   );
 };
 

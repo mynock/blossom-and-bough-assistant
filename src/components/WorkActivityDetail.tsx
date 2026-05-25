@@ -254,38 +254,40 @@ const WorkActivityDetail: React.FC = () => {
   );
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <IconButton onClick={() => navigate('/work-activities')} sx={{ mr: 1 }}>
-            <ArrowBack />
-          </IconButton>
-          <Typography variant="h4" sx={{ flexGrow: 1 }}>
-            Work Activity Details
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<Edit />}
-              onClick={handleEdit}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<Delete />}
-              onClick={handleDelete}
-            >
-              Delete
-            </Button>
-          </Box>
+    <main className="gc-page-wide" data-screen-label="Work activity">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <button
+            type="button"
+            className="gc-btn ghost sm"
+            onClick={() => navigate('/work-activities')}
+            style={{ marginBottom: 6, paddingLeft: 6 }}
+          >
+            <ArrowBack fontSize="small" />
+            Back to work activities
+          </button>
+          <div className="gc-eyebrow">Work activity · #{activity.id}</div>
+          <h1>{activity.clientName || 'Work activity'}</h1>
+          <div className="sub">{formatDateLongPacific(activity.date)} · {activity.workType.replace(/_/g, ' ')}</div>
+        </div>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" startIcon={<Edit />} onClick={handleEdit}>
+            Edit
+          </Button>
+          <Button variant="outlined" color="error" startIcon={<Delete />} onClick={handleDelete}>
+            Delete
+          </Button>
         </Box>
-        <Typography variant="subtitle1" color="text.secondary">
-          Activity #{activity.id} • {formatDateLongPacific(activity.date)}
-        </Typography>
-      </Box>
+      </div>
 
       {/* Status and Basic Info */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -689,7 +691,7 @@ const WorkActivityDetail: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
-    </Container>
+    </main>
   );
 };
 
