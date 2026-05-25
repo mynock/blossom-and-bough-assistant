@@ -1,51 +1,62 @@
-import React, { useState } from 'react';
-import { 
-  AppBar, 
-  Toolbar, 
-  Typography, 
-  Button, 
-  Box, 
-  Avatar, 
-  Menu, 
-  MenuItem, 
-  ListItemIcon, 
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Box,
+  Menu,
+  MenuItem,
+  ListItemIcon,
   ListItemText,
   Divider,
-  IconButton,
   Drawer,
   List,
   ListItem,
   ListItemButton,
   useTheme,
   useMediaQuery,
-  Paper,
-  MenuList,
-  ClickAwayListener
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { 
-  Dashboard,
-  Business,
-  People,
-  Assignment,
-  Schedule,
-  Logout,
-  AccountCircle,
-  Menu as MenuIcon,
-  LocalFlorist,
-  Work,
-  Analytics,
-  Settings,
-  Receipt,
-  AccountBalance,
-  Psychology,
-  KeyboardArrowDown,
+import {
+  LayoutDashboard,
+  CalendarDays,
+  LineChart,
   FolderOpen,
-  Build,
-  Computer
-} from '@mui/icons-material';
+  Wrench,
+  Receipt,
+  Users,
+  UserRound,
+  ClipboardCheck,
+  Hammer,
+  FolderTree,
+  Sparkles,
+  RefreshCw,
+  Settings,
+  Database,
+  Banknote,
+  Menu as MenuIcon,
+  ChevronDown,
+  LogOut,
+} from '../icons';
+import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import NotificationBell from './NotificationBell';
+
+interface NavLeaf {
+  path: string;
+  label: string;
+  Icon: LucideIcon;
+}
+
+interface NavGroup {
+  key: string;
+  label: string;
+  Icon: LucideIcon;
+  items: NavLeaf[];
+}
+
+const TOP_LEVEL: NavLeaf[] = [
+  { path: '/', label: 'Dashboard', Icon: LayoutDashboard },
+  { path: '/schedule', label: 'Schedule', Icon: CalendarDays },
+  { path: '/reports', label: 'Reports', Icon: LineChart },
+];
 
 const Navigation: React.FC = () => {
   const navigate = useNavigate();
@@ -53,390 +64,337 @@ const Navigation: React.FC = () => {
   const { user, logout } = useAuth();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  
+
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [dropdownAnchors, setDropdownAnchors] = useState<{[key: string]: HTMLElement | null}>({
-    resources: null,
-    tools: null,
-    system: null
-  });
+  const [openDrop, setOpenDrop] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement | null>(null);
 
-  const handleUserMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setUserMenuAnchor(event.currentTarget);
-  };
-
-  const handleUserMenuClose = () => {
-    setUserMenuAnchor(null);
-  };
-
-  const handleLogout = async () => {
-    handleUserMenuClose();
-    await logout();
-  };
-
-  const handleMobileDrawerToggle = () => {
-    setMobileDrawerOpen(!mobileDrawerOpen);
-  };
-
-  const handleDropdownToggle = (dropdown: string) => (event: React.MouseEvent<HTMLElement>) => {
-    setDropdownAnchors(prev => {
-      // Close all other dropdowns and toggle this one
-      const newState: {[key: string]: HTMLElement | null} = {
-        resources: null,
-        tools: null,
-        system: null
-      };
-      
-      // Toggle the clicked dropdown
-      newState[dropdown] = prev[dropdown] ? null : event.currentTarget;
-      
-      return newState;
-    });
-  };
-
-  const handleDropdownClose = (dropdown: string) => () => {
-    setDropdownAnchors(prev => ({
-      ...prev,
-      [dropdown]: null
-    }));
-  };
-
-  const handleDropdownItemClick = (path: string, dropdown: string) => () => {
-    navigate(path);
-    handleDropdownClose(dropdown)();
-  };
-
-  const handleTopLevelNavClick = (path: string) => () => {
-    // Close all dropdowns when navigating to top-level items
-    setDropdownAnchors({
-      resources: null,
-      tools: null,
-      system: null
-    });
-    navigate(path);
-  };
-
-  // Top-level navigation items
-  const topLevelNavItems = [
-    { path: '/', label: 'Dashboard', icon: <Dashboard /> },
-    { path: '/schedule', label: 'Schedule', icon: <Schedule /> },
-    { path: '/reports', label: 'Reports', icon: <Analytics /> },
+  const groups: NavGroup[] = [
+    {
+      key: 'resources',
+      label: 'Resources',
+      Icon: FolderOpen,
+      items: [
+        { path: '/review', label: 'Review', Icon: ClipboardCheck },
+        { path: '/work-activities', label: 'Work', Icon: Hammer },
+        { path: '/clients', label: 'Clients', Icon: Users },
+        { path: '/projects', label: 'Projects', Icon: FolderTree },
+        { path: '/employees', label: 'Helpers', Icon: UserRound },
+        { path: '/invoices', label: 'Invoices', Icon: Receipt },
+      ],
+    },
+    {
+      key: 'tools',
+      label: 'Tools',
+      Icon: Wrench,
+      items: [
+        { path: '/ask-data', label: 'Ask the assistant', Icon: Sparkles },
+        { path: '/notion-sync', label: 'Notion sync', Icon: RefreshCw },
+        ...(process.env.NODE_ENV !== 'production'
+          ? [{ path: '/quickbooks', label: 'QuickBooks', Icon: Banknote }]
+          : []),
+      ],
+    },
+    {
+      key: 'system',
+      label: 'System',
+      Icon: Database,
+      items: [
+        { path: '/settings', label: 'Settings', Icon: Settings },
+        { path: '/admin', label: 'Admin', Icon: Settings },
+        { path: '/debug', label: 'Debug', Icon: LineChart },
+      ],
+    },
   ];
 
-  // Dropdown navigation groups
-  const dropdownNavGroups = {
-    resources: {
-      label: 'Resources',
-      icon: <FolderOpen />,
-      items: [
-        { path: '/review', label: 'Review', icon: <Assignment /> },
-        { path: '/work-activities', label: 'Work', icon: <Work /> },
-        { path: '/clients', label: 'Clients', icon: <Business /> },
-        { path: '/projects', label: 'Projects', icon: <Assignment /> },
-        { path: '/employees', label: 'Employees', icon: <People /> },
-        { path: '/invoices', label: 'Invoices', icon: <Receipt /> },
-      ]
-    },
-    tools: {
-      label: 'Tools',
-      icon: <Build />,
-      items: [
-        { path: '/ask-data', label: 'Ask Your Data', icon: <Psychology /> },
-        { path: '/notion-sync', label: 'Notion Sync', icon: <Assignment /> },
-        ...(process.env.NODE_ENV !== 'production' ? [{ path: '/quickbooks', label: 'QuickBooks', icon: <AccountBalance /> }] : []),
-      ]
-    },
-    system: {
-      label: 'System',
-      icon: <Computer />,
-      items: [
-        { path: '/settings', label: 'Settings', icon: <Settings /> },
-        { path: '/admin', label: 'Admin', icon: <Settings /> },
-        { path: '/debug', label: 'Debug', icon: <Analytics /> },
-      ]
-    }
-  };
-
-
+  // Close dropdowns when clicking outside the nav
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setOpenDrop(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const isActiveItem = (path: string) => location.pathname === path;
+  const isGroupActive = (g: NavGroup) => g.items.some((it) => isActiveItem(it.path));
 
-  const isDropdownActive = (groupKey: string) => {
-    return dropdownNavGroups[groupKey as keyof typeof dropdownNavGroups].items.some(item => isActiveItem(item.path));
+  const go = (path: string) => {
+    navigate(path);
+    setOpenDrop(null);
+    setMobileDrawerOpen(false);
   };
-
-  // Desktop Navigation
-  const DesktopNav = () => (
-    <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-      {/* Top-level Navigation Items */}
-      {topLevelNavItems.map((item) => (
-        <Button
-          key={item.path}
-          color="inherit"
-          startIcon={item.icon}
-          onClick={handleTopLevelNavClick(item.path)}
-          sx={{
-            bgcolor: isActiveItem(item.path) ? 'rgba(255,255,255,0.15)' : 'transparent',
-            borderRadius: 2,
-            px: 2,
-            py: 1,
-            '&:hover': {
-              bgcolor: 'rgba(255,255,255,0.1)',
-            },
-          }}
-        >
-          {item.label}
-        </Button>
-      ))}
-
-      {/* Dropdown Navigation Groups */}
-      {Object.entries(dropdownNavGroups).map(([groupKey, group]) => (
-        <Box key={groupKey} sx={{ position: 'relative' }}>
-          <Button
-            color="inherit"
-            startIcon={group.icon}
-            endIcon={<KeyboardArrowDown />}
-            onClick={handleDropdownToggle(groupKey)}
-            sx={{
-              bgcolor: (isDropdownActive(groupKey) || Boolean(dropdownAnchors[groupKey])) ? 'rgba(255,255,255,0.15)' : 'transparent',
-              borderRadius: 2,
-              px: 2,
-              py: 1,
-              '&:hover': {
-                bgcolor: 'rgba(255,255,255,0.1)',
-              },
-            }}
-          >
-            {group.label}
-          </Button>
-          {Boolean(dropdownAnchors[groupKey]) && (
-            <Paper
-              elevation={4}
-              sx={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                mt: 1,
-                minWidth: 180,
-                zIndex: 1300,
-                bgcolor: 'background.paper',
-              }}
-            >
-              <ClickAwayListener onClickAway={handleDropdownClose(groupKey)}>
-                <MenuList dense sx={{ py: 1 }}>
-                  {group.items.map((item) => (
-                    <MenuItem
-                      key={item.path}
-                      onClick={handleDropdownItemClick(item.path, groupKey)}
-                      selected={isActiveItem(item.path)}
-                      sx={{
-                        px: 2,
-                        py: 1,
-                        '&:hover': {
-                          bgcolor: 'action.hover',
-                        },
-                        '&.Mui-selected': {
-                          bgcolor: 'primary.main',
-                          color: 'primary.contrastText',
-                          '&:hover': {
-                            bgcolor: 'primary.dark',
-                          },
-                          '& .MuiListItemIcon-root': {
-                            color: 'inherit',
-                          },
-                        },
-                      }}
-                    >
-                      <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-                      <ListItemText primary={item.label} />
-                    </MenuItem>
-                  ))}
-                </MenuList>
-              </ClickAwayListener>
-            </Paper>
-          )}
-        </Box>
-      ))}
-    </Box>
-  );
-
-  // Mobile Navigation Drawer
-  const MobileNav = () => (
-    <Drawer
-      anchor="left"
-      open={mobileDrawerOpen}
-      onClose={handleMobileDrawerToggle}
-    >
-      <Box sx={{ width: 280, pt: 2 }}>
-        {/* Logo */}
-        <Box sx={{ px: 2, pb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-          <LocalFlorist color="primary" />
-          <Typography variant="h6" color="primary" fontWeight="bold">
-            Garden Care CRM
-          </Typography>
-        </Box>
-        <Divider />
-
-        <List>
-          {/* Top-level Items */}
-          {topLevelNavItems.map((item) => (
-            <ListItem key={item.path} disablePadding>
-              <ListItemButton
-                onClick={() => {
-                  navigate(item.path);
-                  setMobileDrawerOpen(false);
-                }}
-                selected={isActiveItem(item.path)}
-              >
-                <ListItemIcon>{item.icon}</ListItemIcon>
-                <ListItemText primary={item.label} />
-              </ListItemButton>
-            </ListItem>
-          ))}
-
-          <Divider sx={{ my: 1 }} />
-
-          {/* Grouped Items */}
-          {Object.entries(dropdownNavGroups).map(([groupKey, group]) => (
-            <Box key={groupKey}>
-              {/* Group Header */}
-              <ListItem>
-                <ListItemIcon>{group.icon}</ListItemIcon>
-                <ListItemText 
-                  primary={group.label} 
-                  primaryTypographyProps={{ 
-                    variant: 'subtitle2', 
-                    fontWeight: 'bold',
-                    color: 'text.secondary' 
-                  }} 
-                />
-              </ListItem>
-              
-              {/* Group Items */}
-              {group.items.map((item) => (
-                <ListItem key={item.path} disablePadding sx={{ pl: 2 }}>
-                  <ListItemButton
-                    onClick={() => {
-                      navigate(item.path);
-                      setMobileDrawerOpen(false);
-                    }}
-                    selected={isActiveItem(item.path)}
-                  >
-                    <ListItemIcon sx={{ minWidth: 36 }}>{item.icon}</ListItemIcon>
-                    <ListItemText primary={item.label} />
-                  </ListItemButton>
-                </ListItem>
-              ))}
-              
-              {groupKey !== 'system' && <Divider sx={{ my: 1 }} />}
-            </Box>
-          ))}
-        </List>
-      </Box>
-    </Drawer>
-  );
 
   return (
     <>
-      <AppBar position="static" elevation={1}>
-        <Toolbar>
-          {/* Mobile Menu Button */}
-          {isMobile && (
-            <IconButton
-              edge="start"
-              color="inherit"
-              aria-label="menu"
-              onClick={handleMobileDrawerToggle}
-              sx={{ mr: 2 }}
-            >
-              <MenuIcon />
-            </IconButton>
-          )}
+      <header className="gc-appbar">
+        {isMobile && (
+          <button
+            type="button"
+            className="gc-iconbtn"
+            aria-label="Open menu"
+            onClick={() => setMobileDrawerOpen(true)}
+          >
+            <MenuIcon size={18} strokeWidth={1.6} />
+          </button>
+        )}
 
-          {/* Logo */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mr: 3 }}>
-            <LocalFlorist />
-            <Typography variant="h6" component="div" fontWeight="bold">
-              Garden Care CRM
-            </Typography>
-          </Box>
+        <a
+          className="gc-brand"
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            go('/');
+          }}
+        >
+          <span className="mk" aria-hidden="true">
+            🌿
+          </span>
+          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+            <span className="wm">
+              Blossom <span className="amp">&amp;</span> Bough
+            </span>
+            <span className="eye">Garden Care CRM</span>
+          </span>
+        </a>
 
-          {/* Desktop Navigation */}
-          {!isMobile && <DesktopNav />}
+        {!isMobile && (
+          <nav className="gc-nav" ref={navRef}>
+            {TOP_LEVEL.map(({ path, label, Icon }) => {
+              const active = isActiveItem(path);
+              return (
+                <button
+                  key={path}
+                  type="button"
+                  className={['item', active && 'active'].filter(Boolean).join(' ')}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => go(path)}
+                >
+                  <Icon size={16} strokeWidth={1.6} className="ic" />
+                  {label}
+                </button>
+              );
+            })}
 
-          <Box sx={{ flexGrow: 1 }} />
+            {groups.map((g) => {
+              const open = openDrop === g.key;
+              const active = isGroupActive(g) || open;
+              return (
+                <div key={g.key} style={{ position: 'relative' }}>
+                  <button
+                    type="button"
+                    className={['item', active && 'active'].filter(Boolean).join(' ')}
+                    aria-haspopup="menu"
+                    aria-expanded={open}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setOpenDrop(open ? null : g.key);
+                    }}
+                  >
+                    <g.Icon size={16} strokeWidth={1.6} className="ic" />
+                    {g.label}
+                    <ChevronDown size={14} strokeWidth={1.8} className="caret" />
+                  </button>
+                  {open && (
+                    <div
+                      role="menu"
+                      style={{
+                        position: 'absolute',
+                        top: 'calc(100% + 6px)',
+                        left: 0,
+                        minWidth: 200,
+                        padding: 6,
+                        background: 'var(--bg-elevated)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 10,
+                        boxShadow:
+                          '0 2px 4px rgba(58,46,31,0.06), 0 8px 16px rgba(58,46,31,0.08)',
+                        zIndex: 50,
+                      }}
+                    >
+                      {g.items.map(({ path, label, Icon }) => {
+                        const itemActive = isActiveItem(path);
+                        return (
+                          <button
+                            key={path}
+                            type="button"
+                            role="menuitem"
+                            onClick={() => go(path)}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              width: '100%',
+                              padding: '8px 10px',
+                              border: 'none',
+                              background: itemActive ? 'var(--moss-50)' : 'transparent',
+                              color: itemActive ? 'var(--moss-900)' : 'var(--fg)',
+                              textAlign: 'left',
+                              borderRadius: 6,
+                              fontSize: 13,
+                              fontWeight: 500,
+                              cursor: 'pointer',
+                              fontFamily: 'inherit',
+                            }}
+                            onMouseEnter={(e) => {
+                              if (!itemActive)
+                                (e.currentTarget as HTMLButtonElement).style.background =
+                                  'var(--bg-inset)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!itemActive)
+                                (e.currentTarget as HTMLButtonElement).style.background =
+                                  'transparent';
+                            }}
+                          >
+                            <Icon
+                              size={15}
+                              strokeWidth={1.6}
+                              className="ic"
+                            />
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        )}
 
+        <div className="gc-right">
           <NotificationBell />
-
-          {/* User Menu */}
-          <Button
-            color="inherit"
-            onClick={handleUserMenuOpen}
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 1,
-              textTransform: 'none',
-              borderRadius: 2,
-              px: 2,
-              py: 1,
-              '&:hover': {
-                bgcolor: 'rgba(255,255,255,0.1)',
-              },
-            }}
+          <button
+            type="button"
+            className="gc-iconbtn"
+            style={{ width: 'auto', padding: '0 6px', gap: 6, height: 36 }}
+            onClick={(e) => setUserMenuAnchor(e.currentTarget)}
+            aria-label="Account menu"
           >
-            <Avatar
-              src={user?.picture}
-              alt={user?.name}
-              sx={{ width: 32, height: 32 }}
-            >
-              {user?.name?.charAt(0).toUpperCase()}
-            </Avatar>
+            <span className="gc-avatar">
+              {(user?.name?.charAt(0) || '?').toUpperCase()}
+            </span>
             {!isMobile && (
-              <Typography variant="body2">
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 500,
+                  color: 'var(--fg)',
+                  paddingRight: 4,
+                }}
+              >
                 {user?.name?.split(' ')[0]}
-              </Typography>
+              </span>
             )}
-          </Button>
-          
-          <Menu
-            anchorEl={userMenuAnchor}
-            open={Boolean(userMenuAnchor)}
-            onClose={handleUserMenuClose}
-            anchorOrigin={{
-              vertical: 'bottom',
-              horizontal: 'right',
-            }}
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-          >
-            <MenuItem disabled>
-              <ListItemIcon>
-                <AccountCircle />
-              </ListItemIcon>
-              <ListItemText 
-                primary={user?.name}
-                secondary={user?.email}
-              />
-            </MenuItem>
-            <Divider />
-            <MenuItem onClick={handleLogout}>
-              <ListItemIcon>
-                <Logout />
-              </ListItemIcon>
-              <ListItemText primary="Sign Out" />
-            </MenuItem>
-          </Menu>
-        </Toolbar>
-      </AppBar>
+          </button>
+        </div>
+      </header>
 
-      {/* Mobile Navigation Drawer */}
-      {isMobile && <MobileNav />}
+      <Menu
+        anchorEl={userMenuAnchor}
+        open={Boolean(userMenuAnchor)}
+        onClose={() => setUserMenuAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+      >
+        <MenuItem disabled>
+          <ListItemText primary={user?.name} secondary={user?.email} />
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={async () => {
+            setUserMenuAnchor(null);
+            await logout();
+          }}
+        >
+          <ListItemIcon>
+            <LogOut size={16} />
+          </ListItemIcon>
+          <ListItemText primary="Sign out" />
+        </MenuItem>
+      </Menu>
+
+      {isMobile && (
+        <Drawer
+          anchor="left"
+          open={mobileDrawerOpen}
+          onClose={() => setMobileDrawerOpen(false)}
+        >
+          <Box sx={{ width: 280, py: 2 }}>
+            <Box
+              sx={{
+                px: 2,
+                pb: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              <span style={{ fontSize: 22 }} aria-hidden="true">
+                🌿
+              </span>
+              <span style={{ fontWeight: 600, fontSize: 15 }}>
+                Blossom <span style={{ color: 'var(--fg-muted)' }}>&amp;</span> Bough
+              </span>
+            </Box>
+            <Divider />
+            <List>
+              {TOP_LEVEL.map(({ path, label, Icon }) => (
+                <ListItem key={path} disablePadding>
+                  <ListItemButton
+                    onClick={() => go(path)}
+                    selected={isActiveItem(path)}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      <Icon size={18} strokeWidth={1.6} />
+                    </ListItemIcon>
+                    <ListItemText primary={label} />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+              <Divider sx={{ my: 1 }} />
+              {groups.map((g, gi) => (
+                <Box key={g.key}>
+                  <ListItem>
+                    <ListItemIcon sx={{ minWidth: 36 }}>
+                      <g.Icon size={18} strokeWidth={1.6} />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={g.label}
+                      primaryTypographyProps={{
+                        variant: 'overline',
+                        sx: { color: 'text.secondary' },
+                      }}
+                    />
+                  </ListItem>
+                  {g.items.map(({ path, label, Icon }) => (
+                    <ListItem key={path} disablePadding sx={{ pl: 2 }}>
+                      <ListItemButton
+                        onClick={() => go(path)}
+                        selected={isActiveItem(path)}
+                      >
+                        <ListItemIcon sx={{ minWidth: 36 }}>
+                          <Icon size={16} strokeWidth={1.6} />
+                        </ListItemIcon>
+                        <ListItemText primary={label} />
+                      </ListItemButton>
+                    </ListItem>
+                  ))}
+                  {gi < groups.length - 1 && <Divider sx={{ my: 1 }} />}
+                </Box>
+              ))}
+            </List>
+          </Box>
+        </Drawer>
+      )}
     </>
   );
 };
 
-export default Navigation; 
+export default Navigation;

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   IconButton,
-  Badge,
   Popover,
   Box,
   Typography,
@@ -15,14 +14,13 @@ import {
   Tooltip
 } from '@mui/material';
 import {
-  Notifications as NotificationsIcon,
-  NotificationsNone,
+  Bell,
   Info as InfoIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Close as CloseIcon,
-  OpenInNew
-} from '@mui/icons-material';
+  AlertTriangle as WarningIcon,
+  AlertCircle as ErrorIcon,
+  X as CloseIcon,
+  ExternalLink as OpenInNew
+} from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { notificationsApi, type Notification, type NotificationSeverity } from '../services/notifications';
 import { useNotifications } from '../contexts/NotificationsContext';
@@ -31,9 +29,9 @@ const PANEL_LIMIT = 10;
 
 function severityIcon(severity: NotificationSeverity) {
   switch (severity) {
-    case 'error': return <ErrorIcon fontSize="small" color="error" />;
-    case 'warn': return <WarningIcon fontSize="small" color="warning" />;
-    default: return <InfoIcon fontSize="small" color="info" />;
+    case 'error': return <ErrorIcon size={16} color="var(--bloom-600)" />;
+    case 'warn': return <WarningIcon size={16} color="var(--honey-600)" />;
+    default: return <InfoIcon size={16} color="var(--sky-600)" />;
   }
 }
 
@@ -126,15 +124,15 @@ const NotificationBell: React.FC = () => {
   return (
     <>
       <Tooltip title="Notifications">
-        <IconButton
-          color="inherit"
+        <button
+          type="button"
+          className="gc-iconbtn"
           onClick={handleOpen}
           aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
         >
-          <Badge badgeContent={unreadCount} color="error" max={99}>
-            {unreadCount > 0 ? <NotificationsIcon /> : <NotificationsNone />}
-          </Badge>
-        </IconButton>
+          <Bell size={18} strokeWidth={1.6} />
+          {unreadCount > 0 && <span className="dot" />}
+        </button>
       </Tooltip>
 
       <Popover
@@ -175,7 +173,7 @@ const NotificationBell: React.FC = () => {
                 }}
                 secondaryAction={
                   <IconButton edge="end" size="small" onClick={(e) => handleDismiss(e, n)} aria-label="dismiss">
-                    <CloseIcon fontSize="small" />
+                    <CloseIcon size={14} />
                   </IconButton>
                 }
               >
@@ -207,7 +205,7 @@ const NotificationBell: React.FC = () => {
                               onClick={(e) => e.stopPropagation()}
                               style={{ color: 'inherit', textDecoration: 'underline' }}
                             >
-                              source <OpenInNew sx={{ fontSize: 10, verticalAlign: 'middle' }} />
+                              source <OpenInNew size={10} style={{ verticalAlign: 'middle' }} />
                             </a>
                           </>
                         )}
