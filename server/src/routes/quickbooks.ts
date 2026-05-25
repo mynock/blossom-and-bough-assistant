@@ -21,7 +21,13 @@ const invoiceService = services.invoiceService;
 const POPUP_LANDING_PATH = '/quickbooks';
 
 function popupLandingUrl(req: any, params: Record<string, string>): string {
-  const base = `${req.protocol}://${req.get('host')}${POPUP_LANDING_PATH}`;
+  // In dev the React app runs on a different port than the API (3000 vs 3001),
+  // so we cannot use req.get('host'). FRONTEND_URL is the canonical source of
+  // truth; fall back to the request host only in production where the SPA and
+  // API share an origin.
+  const frontendBase =
+    process.env.FRONTEND_URL || `${req.protocol}://${req.get('host')}`;
+  const base = `${frontendBase.replace(/\/$/, '')}${POPUP_LANDING_PATH}`;
   const query = new URLSearchParams(params).toString();
   return `${base}?${query}`;
 }
@@ -47,8 +53,16 @@ router.get('/callback', async (req, res) => {
   try {
     await qbService.handleOAuthCallback(req.url);
     return res.redirect(302, popupLandingUrl(req, { qbo: 'connected' }));
-  } catch (error) {
-    console.error('OAuth callback error:', error instanceof Error ? error.message : error);
+  } catch (error: any) {
+    // intuit-oauth wraps the failing HTTP response; surface the underlying
+    // body/status so the actual cause (bad redirect_uri, expired code,
+    // sandbox/prod mismatch, etc.) shows up in the server log.
+    console.error('OAuth token exchange failed:', {
+      message: error?.message,
+      originalMessage: error?.originalMessage,
+      intuit_tid: error?.intuit_tid,
+      authResponse: error?.authResponse?.response?.body || error?.authResponse?.body,
+    });
     return res.redirect(302, popupLandingUrl(req, { qbo: 'error', reason: 'token_exchange_failed' }));
   }
 });
