@@ -36,7 +36,6 @@ import {
   ChevronRight as NavigateNext,
   ChevronLeft as NavigateBefore,
   Edit3 as Edit,
-  Clock as PendingActions,
   Clock as AccessTime,
   UserRound as Person,
   X as Close,

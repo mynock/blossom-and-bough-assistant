@@ -325,7 +325,6 @@ const Dashboard: React.FC = () => {
   const firstName = user?.name?.split(' ')[0] || 'there';
   const headerEyebrow = useMemo(() => {
     const now = new Date();
-    const day = dayLabels[now.getDay()];
     const month = monthLabels[now.getMonth()];
     const date = now.getDate();
     const onejan = new Date(now.getFullYear(), 0, 1).getTime();
