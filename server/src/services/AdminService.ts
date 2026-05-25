@@ -7,7 +7,7 @@ import { DatabaseService } from './DatabaseService';
 import { GoogleSheetsHistoricalDataService } from './GoogleSheetsHistoricalDataService';
 import { AnthropicService } from './AnthropicService';
 import { WorkActivityService } from './WorkActivityService';
-import { workActivities, workActivityEmployees, otherCharges, projects, clientNotes, clients, employees } from '../db/index';
+import { workActivities, workActivityEmployees, otherCharges, plantList, projects, clientNotes, clients, employees } from '../db/index';
 import { like } from 'drizzle-orm';
 
 const execAsync = promisify(exec);
@@ -108,11 +108,14 @@ export class AdminService {
     
     try {
       debugLog.info('Admin: Starting work activities clear');
-      
-      // Delete in correct order to respect foreign key constraints
-      await this.dbService.db.delete(otherCharges);
-      await this.dbService.db.delete(workActivityEmployees);
-      await this.dbService.db.delete(workActivities);
+
+      await this.dbService.db.transaction(async (tx) => {
+        // Delete in correct order to respect foreign key constraints
+        await tx.delete(otherCharges);
+        await tx.delete(plantList);
+        await tx.delete(workActivityEmployees);
+        await tx.delete(workActivities);
+      });
 
       const duration = Date.now() - startTime;
       debugLog.info('Admin: Work activities cleared successfully', { duration });
@@ -143,13 +146,16 @@ export class AdminService {
     
     try {
       debugLog.info('Admin: Starting projects and work data clear');
-      
-      // Delete in correct order to respect foreign key constraints
-      await this.dbService.db.delete(otherCharges);
-      await this.dbService.db.delete(workActivityEmployees);
-      await this.dbService.db.delete(workActivities);
-      await this.dbService.db.delete(clientNotes);
-      await this.dbService.db.delete(projects);
+
+      await this.dbService.db.transaction(async (tx) => {
+        // Delete in correct order to respect foreign key constraints
+        await tx.delete(otherCharges);
+        await tx.delete(plantList);
+        await tx.delete(workActivityEmployees);
+        await tx.delete(workActivities);
+        await tx.delete(clientNotes);
+        await tx.delete(projects);
+      });
 
       const duration = Date.now() - startTime;
       debugLog.info('Admin: Projects and work data cleared successfully', { duration });

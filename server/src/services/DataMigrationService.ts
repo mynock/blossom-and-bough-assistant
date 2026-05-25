@@ -2,8 +2,8 @@ import { DatabaseService } from './DatabaseService';
 import { GoogleSheetsService } from './GoogleSheetsService';
 import { ClientService } from './ClientService';
 import { EmployeeService } from './EmployeeService';
-import { 
-  type NewClient, 
+import {
+  type NewClient,
   type NewEmployee,
   clients,
   employees,
@@ -11,6 +11,7 @@ import {
   workActivities,
   workActivityEmployees,
   otherCharges,
+  plantList,
   clientNotes
 } from '../db';
 import { type Helper, type Client } from '../types';
@@ -193,20 +194,25 @@ export class DataMigrationService extends DatabaseService {
   }
 
   /**
-   * Clear all data from the database (for fresh migration)
+   * Clear all data from the database (for fresh migration). Runs inside a
+   * single transaction so a mid-flight failure leaves the DB in its prior
+   * consistent state (rather than half-wiped with dangling references).
    */
   async clearAllData(): Promise<void> {
     console.log('🗑️  Clearing all data from database...');
-    
-    // Delete in order to respect foreign key constraints
-    await this.db.delete(otherCharges);
-    await this.db.delete(workActivityEmployees);
-    await this.db.delete(workActivities);
-    await this.db.delete(clientNotes);
-    await this.db.delete(projects);
-    await this.db.delete(clients);
-    await this.db.delete(employees);
-    
+
+    await this.db.transaction(async (tx) => {
+      // Delete in order to respect foreign key constraints
+      await tx.delete(otherCharges);
+      await tx.delete(plantList);
+      await tx.delete(workActivityEmployees);
+      await tx.delete(workActivities);
+      await tx.delete(clientNotes);
+      await tx.delete(projects);
+      await tx.delete(clients);
+      await tx.delete(employees);
+    });
+
     console.log('✅ Database cleared');
   }
 

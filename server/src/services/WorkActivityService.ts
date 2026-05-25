@@ -1,4 +1,4 @@
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService, type DbOrTx } from './DatabaseService';
 import { SettingsService } from './SettingsService';
 import { debugLog } from '../utils/logger';
 import { 
@@ -237,11 +237,18 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
-   * Create a new work activity with employees and charges
+   * Create a new work activity with employees and charges.
+   *
+   * All inserts (work activity, employees, charges, plants) run inside a single
+   * transaction so a mid-flight failure cannot leave a work activity without
+   * its assignments or charges. If a caller already has a transaction handle
+   * (e.g. NotionSyncService composing multiple writes), it can pass it in via
+   * `tx` and the inserts will join that transaction instead of starting a new
+   * one.
    */
-  async createWorkActivity(data: CreateWorkActivityData): Promise<WorkActivity> {
+  async createWorkActivity(data: CreateWorkActivityData, tx?: DbOrTx): Promise<WorkActivity> {
     let workActivityData = { ...data.workActivity };
-    
+
     // If billable hours is provided directly, apply rounding
     if (workActivityData.billableHours !== undefined && workActivityData.billableHours !== null) {
       try {
@@ -264,7 +271,7 @@ export class WorkActivityService extends DatabaseService {
         workActivityData.nonBillableTimeMinutes || 0,
         workActivityData.adjustedTravelTimeMinutes || 0
       );
-      
+
       // Apply rounding to calculated billable hours
       try {
         const roundedHours = await this.settingsService.roundHours(calculatedBillableHours);
@@ -281,64 +288,64 @@ export class WorkActivityService extends DatabaseService {
         };
       }
     }
-    
-    // Create the work activity
-    const workActivity = await this.db
-      .insert(workActivities)
-      .values(workActivityData)
-      .returning();
 
-    const workActivityId = workActivity[0].id;
+    const run = async (conn: DbOrTx): Promise<WorkActivity> => {
+      const workActivity = await conn
+        .insert(workActivities)
+        .values(workActivityData)
+        .returning();
 
-    // Add employees
-    if (data.employees.length > 0) {
-      const employeeData = data.employees.map(emp => ({
-        workActivityId,
-        employeeId: emp.employeeId,
-        hours: emp.hours,
-      }));
+      const workActivityId = workActivity[0].id;
 
-      await this.db.insert(workActivityEmployees).values(employeeData);
-    }
-
-    // Add charges if provided
-    if (data.charges && data.charges.length > 0) {
-      debugLog.debug(`Processing ${data.charges.length} charges for work activity ${workActivityId}`);
-      
-      const chargeData = data.charges.map((charge, index) => {
-        const processedCharge = {
+      if (data.employees.length > 0) {
+        const employeeData = data.employees.map(emp => ({
           workActivityId,
-          chargeType: charge.chargeType || 'material',
-          description: charge.description || 'Unknown charge',
-          quantity: charge.quantity || null,
-          unitRate: charge.unitRate || null,
-          totalCost: charge.totalCost || null, // Allow null cost for non-billable or informational charges
-          billable: charge.billable !== undefined ? charge.billable : true
-        };
-        
-        debugLog.debug(`Charge ${index + 1}:`, processedCharge);
-        return processedCharge;
-      }).filter(charge => charge.description && charge.description !== 'Unknown charge');
+          employeeId: emp.employeeId,
+          hours: emp.hours,
+        }));
 
-      if (chargeData.length > 0) {
-        debugLog.debug(`Inserting ${chargeData.length} valid charges into database`);
-        await this.db.insert(otherCharges).values(chargeData);
-      } else {
-        debugLog.warn('No valid charges to insert after filtering');
+        await conn.insert(workActivityEmployees).values(employeeData);
       }
-    }
 
-    // Add plants if provided
-    if (data.plants && data.plants.length > 0) {
-      const plantData = data.plants.map(plant => ({
-        ...plant,
-        workActivityId,
-      }));
+      if (data.charges && data.charges.length > 0) {
+        debugLog.debug(`Processing ${data.charges.length} charges for work activity ${workActivityId}`);
 
-      await this.db.insert(plantList).values(plantData);
-    }
+        const chargeData = data.charges.map((charge, index) => {
+          const processedCharge = {
+            workActivityId,
+            chargeType: charge.chargeType || 'material',
+            description: charge.description || 'Unknown charge',
+            quantity: charge.quantity || null,
+            unitRate: charge.unitRate || null,
+            totalCost: charge.totalCost || null, // Allow null cost for non-billable or informational charges
+            billable: charge.billable !== undefined ? charge.billable : true
+          };
 
-    return workActivity[0];
+          debugLog.debug(`Charge ${index + 1}:`, processedCharge);
+          return processedCharge;
+        }).filter(charge => charge.description && charge.description !== 'Unknown charge');
+
+        if (chargeData.length > 0) {
+          debugLog.debug(`Inserting ${chargeData.length} valid charges into database`);
+          await conn.insert(otherCharges).values(chargeData);
+        } else {
+          debugLog.warn('No valid charges to insert after filtering');
+        }
+      }
+
+      if (data.plants && data.plants.length > 0) {
+        const plantData = data.plants.map(plant => ({
+          ...plant,
+          workActivityId,
+        }));
+
+        await conn.insert(plantList).values(plantData);
+      }
+
+      return workActivity[0];
+    };
+
+    return tx ? run(tx) : this.db.transaction(run);
   }
 
   /**
@@ -366,9 +373,11 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
-   * Update a work activity
+   * Update a work activity. Single statement, but accepts an optional `tx`
+   * so callers composing multiple writes (e.g. NotionSyncService) can run
+   * this inside their transaction.
    */
-  async updateWorkActivity(id: number, data: Partial<NewWorkActivity>): Promise<WorkActivity | undefined> {
+  async updateWorkActivity(id: number, data: Partial<NewWorkActivity>, tx?: DbOrTx): Promise<WorkActivity | undefined> {
     let finalUpdateData = { ...data };
     
     // Get current work activity to access current values for recalculation
@@ -448,7 +457,8 @@ export class WorkActivityService extends DatabaseService {
       ...(lastNotionSyncAt instanceof Date && { lastNotionSyncAt })
     };
     
-    const updated = await this.db
+    const conn = tx ?? this.db;
+    const updated = await conn
       .update(workActivities)
       .set(updateData)
       .where(eq(workActivities.id, id))
@@ -458,18 +468,21 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
-   * Delete a work activity and all related data
+   * Delete a work activity and all related data. The 4 deletes (employees,
+   * charges, plants, activity) run inside a single transaction so a failure
+   * mid-way cannot leave orphan rows pointing at a missing parent.
    */
-  async deleteWorkActivity(id: number): Promise<boolean> {
-    // Delete related records first (foreign key constraints)
-    await this.db.delete(workActivityEmployees).where(eq(workActivityEmployees.workActivityId, id));
-    await this.db.delete(otherCharges).where(eq(otherCharges.workActivityId, id));
-    await this.db.delete(plantList).where(eq(plantList.workActivityId, id));
-    
-    // Delete the work activity
-    const result = await this.db.delete(workActivities).where(eq(workActivities.id, id));
-    
-    return (result.rowCount ?? 0) > 0;
+  async deleteWorkActivity(id: number, tx?: DbOrTx): Promise<boolean> {
+    const run = async (conn: DbOrTx): Promise<boolean> => {
+      await conn.delete(workActivityEmployees).where(eq(workActivityEmployees.workActivityId, id));
+      await conn.delete(otherCharges).where(eq(otherCharges.workActivityId, id));
+      await conn.delete(plantList).where(eq(plantList.workActivityId, id));
+
+      const result = await conn.delete(workActivities).where(eq(workActivities.id, id));
+      return (result.rowCount ?? 0) > 0;
+    };
+
+    return tx ? run(tx) : this.db.transaction(run);
   }
 
   /**

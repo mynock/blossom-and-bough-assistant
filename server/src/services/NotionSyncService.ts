@@ -1308,25 +1308,56 @@ export class NotionSyncService {
         lastUpdatedBy: 'notion_sync' as const, // Mark that this update came from Notion sync
       };
 
-      await this.workActivityService.updateWorkActivity(workActivityId, updateData);
-      
-      // Handle charges update - delete existing charges and recreate them
+      // --- Prep work (outside transaction) ---
+      // Resolve team members BEFORE entering the transaction so that newly
+      // created employee rows are not rolled back if the sync of this single
+      // work activity later fails — those employees are still valid and may
+      // already be referenced by other concurrent syncs.
+      let resolvedEmployees: { employeeIds: number[]; workDuration: number } | null = null;
+      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
+        debugLog.info(`👥 Updating employee assignments for work activity ${workActivityId}`);
+        debugLog.info(`🔍 Resolving team members for update ${workActivityId}: ${JSON.stringify(parsedActivity.employees)}`);
+        const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
+          parsedActivity.employees,
+          notionPageUrl
+        );
+        warnings.push(...employeeWarnings);
+        debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);
+
+        if (employeeIds.length > 0) {
+          const workDuration = parsedActivity.totalHours / employeeIds.length;
+          debugLog.info(`📊 Employee assignment calculation for update ${workActivityId}:`);
+          debugLog.info(`   Total hours from AI: ${parsedActivity.totalHours}`);
+          debugLog.info(`   Number of employees: ${employeeIds.length}`);
+          debugLog.info(`   Work duration per employee: ${workDuration}`);
+          resolvedEmployees = { employeeIds, workDuration };
+        } else {
+          debugLog.warn(`⚠️ No employees matched for update ${workActivityId} - employee assignments not updated`);
+        }
+      } else {
+        debugLog.info(`📝 No employees to update for work activity ${workActivityId} (parsedActivity.employees: ${parsedActivity.employees?.length || 'undefined'})`);
+      }
+
+      // Build new charges array (no DB access).
       debugLog.info(`🔍 Parsed activity charges:`, parsedActivity.charges);
+      let chargesToInsert: Array<{
+        workActivityId: number;
+        chargeType: string;
+        description: string;
+        quantity: number | null;
+        unitRate: number | null;
+        totalCost: number | null;
+        billable: boolean;
+      }> = [];
       if (parsedActivity.charges && parsedActivity.charges.length > 0) {
         debugLog.info(`🔄 Updating ${parsedActivity.charges.length} charges for work activity ${workActivityId}`);
-        
-        // Delete existing charges
-        await this.workActivityService.db.delete(otherCharges)
-          .where(eq(otherCharges.workActivityId, workActivityId));
-        
-        // Prepare and insert new charges
-        const charges = parsedActivity.charges.map((charge: any, index: number) => {
+        chargesToInsert = parsedActivity.charges.map((charge: any, index: number) => {
           let description: string;
           let cost: number | null = null;
           let chargeType: string = 'material';
           let quantity: number | null = null;
           let billable: boolean = true;
-          
+
           // Handle case where AI returns a string instead of an object
           if (typeof charge === 'string') {
             description = charge;
@@ -1337,7 +1368,7 @@ export class NotionSyncService {
             quantity = charge.quantity || null;
             billable = charge.billable !== undefined ? charge.billable : true;
           }
-          
+
           const processedCharge = {
             workActivityId,
             chargeType,
@@ -1356,59 +1387,40 @@ export class NotionSyncService {
           }
           return keep;
         });
-        
-        debugLog.info(`🔍 Final charges array (${charges.length} items):`, charges);
-        
-        if (charges.length > 0) {
-          await this.workActivityService.db.insert(otherCharges).values(charges);
-          debugLog.info(`✅ Updated ${charges.length} charges for work activity ${workActivityId}`);
-        } else {
-          debugLog.warn(`⚠️ No valid charges to insert after filtering`);
-        }
+        debugLog.info(`🔍 Final charges array (${chargesToInsert.length} items):`, chargesToInsert);
       } else {
         debugLog.info(`📝 No charges to update for work activity ${workActivityId} (parsedActivity.charges: ${parsedActivity.charges?.length || 'undefined'})`);
       }
-      
-      // Handle employee assignments update - delete existing assignments and recreate them
-      if (parsedActivity.employees && parsedActivity.employees.length > 0) {
-        debugLog.info(`👥 Updating employee assignments for work activity ${workActivityId}`);
 
-        debugLog.info(`🔍 Resolving team members for update ${workActivityId}: ${JSON.stringify(parsedActivity.employees)}`);
-        const { employeeIds, warnings: employeeWarnings } = await this.resolveTeamMembers(
-          parsedActivity.employees,
-          notionPageUrl
-        );
-        warnings.push(...employeeWarnings);
-        debugLog.info(`   Final employee IDs for update: ${employeeIds.join(', ')} (count: ${employeeIds.length})`);
+      // --- Transactional update ---
+      // Update + delete-and-reinsert charges + delete-and-reinsert employees
+      // must all succeed together. Without this, a crash between the charges
+      // delete and the charges insert permanently destroys billing data.
+      await this.workActivityService.withTransaction(async (tx) => {
+        await this.workActivityService.updateWorkActivity(workActivityId, updateData, tx);
 
-        if (employeeIds.length > 0) {
-          // Delete existing employee assignments
-          await this.workActivityService.db.delete(workActivityEmployees)
-            .where(eq(workActivityEmployees.workActivityId, workActivityId));
-          
-          // Calculate work duration per employee
-          const workDuration = parsedActivity.totalHours / employeeIds.length;
-          debugLog.info(`📊 Employee assignment calculation for update ${workActivityId}:`);
-          debugLog.info(`   Total hours from AI: ${parsedActivity.totalHours}`);
-          debugLog.info(`   Number of employees: ${employeeIds.length}`);
-          debugLog.info(`   Work duration per employee: ${workDuration}`);
-          
-          // Create new employee assignments
-          const employeeAssignments = employeeIds.map(employeeId => ({
+        if (parsedActivity.charges && parsedActivity.charges.length > 0) {
+          await tx.delete(otherCharges).where(eq(otherCharges.workActivityId, workActivityId));
+          if (chargesToInsert.length > 0) {
+            await tx.insert(otherCharges).values(chargesToInsert);
+            debugLog.info(`✅ Updated ${chargesToInsert.length} charges for work activity ${workActivityId}`);
+          } else {
+            debugLog.warn(`⚠️ No valid charges to insert after filtering`);
+          }
+        }
+
+        if (resolvedEmployees) {
+          await tx.delete(workActivityEmployees).where(eq(workActivityEmployees.workActivityId, workActivityId));
+          const employeeAssignments = resolvedEmployees.employeeIds.map(employeeId => ({
             workActivityId,
             employeeId,
-            hours: workDuration
+            hours: resolvedEmployees!.workDuration
           }));
-          
-          await this.workActivityService.db.insert(workActivityEmployees).values(employeeAssignments);
+          await tx.insert(workActivityEmployees).values(employeeAssignments);
           debugLog.info(`✅ Updated employee assignments for work activity ${workActivityId}: ${employeeAssignments.map(e => `Employee ${e.employeeId}: ${e.hours}h`).join(', ')}`);
-        } else {
-          debugLog.warn(`⚠️ No employees matched for update ${workActivityId} - employee assignments not updated`);
         }
-      } else {
-        debugLog.info(`📝 No employees to update for work activity ${workActivityId} (parsedActivity.employees: ${parsedActivity.employees?.length || 'undefined'})`);
-      }
-      
+      });
+
       debugLog.info(`Updated work activity ${workActivityId} with AI-parsed data, charges, and employee assignments`);
 
       return { warnings };
