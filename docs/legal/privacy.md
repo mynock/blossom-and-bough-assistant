@@ -68,7 +68,7 @@ The App and its database are hosted on Railway in the United States. Data may be
 
 ## 9. Security
 
-We use commercially reasonable measures to protect information, including encrypted transport (HTTPS), authentication-gated access via Google OAuth with an email allowlist, and access controls on the underlying database. No system is completely secure; we cannot guarantee absolute security.
+We use commercially reasonable measures to protect information, including encrypted transport (HTTPS), authentication-gated access via Google OAuth with an email allowlist, and access controls on the underlying database. OAuth tokens for connected services (such as QuickBooks Online) are encrypted at rest using AES-256-GCM. No system is completely secure; we cannot guarantee absolute security.
 
 ## 10. Intended users
 
