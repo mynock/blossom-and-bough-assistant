@@ -595,7 +595,7 @@ const WorkActivityManagement: React.FC = () => {
                 value={employees.find(e => e.id === filters.employeeId) || null}
                 onChange={(_, newValue) => handleFilterChange('employeeId', newValue?.id)}
                 renderInput={(params) => (
-                  <TextField {...params} label="Employee" fullWidth />
+                  <TextField {...params} label="Helper" fullWidth />
                 )}
               />
             </Grid>

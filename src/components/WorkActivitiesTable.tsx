@@ -292,7 +292,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                   Billable Hours
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ width: '20%' }}>Employees</TableCell>
+              <TableCell sx={{ width: '20%' }}>Helpers</TableCell>
               <TableCell sx={{ width: '15%', textAlign: 'center' }}>Actions</TableCell>
               <TableCell sx={{ width: '8%', textAlign: 'center' }}>Details</TableCell>
             </TableRow>

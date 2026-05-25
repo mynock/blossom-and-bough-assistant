@@ -1754,7 +1754,7 @@ const WorkActivityReviewFlow: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Edit Work Activity
+          Edit work activity
           <IconButton
             onClick={() => setEditDialogOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}

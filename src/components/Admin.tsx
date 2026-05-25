@@ -557,7 +557,7 @@ const Admin: React.FC = () => {
               <Grid item xs={6} md={2}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.50' }}>
                   <Typography variant="h4" color="primary.main">{status.employeesCount}</Typography>
-                  <Typography variant="body2" color="primary.dark">Employees</Typography>
+                  <Typography variant="body2" color="primary.dark">Helpers</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={6} md={2}>

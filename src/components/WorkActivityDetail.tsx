@@ -349,7 +349,7 @@ const WorkActivityDetail: React.FC = () => {
               <Person size={40} style={{ marginBottom: 8 }} />
               <Typography variant="h4">{activity.employeesList.length}</Typography>
               <Typography variant="body2" color="text.secondary">
-                {activity.employeesList.length === 1 ? 'Employee' : 'Employees'}
+                {activity.employeesList.length === 1 ? 'Helper' : 'Helpers'}
               </Typography>
             </CardContent>
           </Card>
@@ -479,7 +479,7 @@ const WorkActivityDetail: React.FC = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Employee</TableCell>
+                      <TableCell>Helper</TableCell>
                       <TableCell align="right">Hours</TableCell>
                       <TableCell align="right">Earnings</TableCell>
                     </TableRow>

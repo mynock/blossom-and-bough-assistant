@@ -366,7 +366,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
     >
       <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="h6">
-          {isCreating ? 'Create New Work Activity' : 'Edit Work Activity'}
+          {isCreating ? 'Create work activity' : 'Edit work activity'}
         </Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon />
@@ -686,7 +686,7 @@ const WorkActivityEditDialog: React.FC<WorkActivityEditDialogProps> = ({
                 disabled={!employeeToAdd}
                 sx={{ height: 56 }}
               >
-                Add Employee
+                Add helper
               </Button>
             </Box>
             

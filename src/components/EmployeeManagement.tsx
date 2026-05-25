@@ -251,14 +251,14 @@ const EmployeeManagement: React.FC = () => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WorkIcon /> Employee Management
+          <WorkIcon /> Helpers
         </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleCreate}
         >
-          Add Employee
+          Add helper
         </Button>
       </Box>
 

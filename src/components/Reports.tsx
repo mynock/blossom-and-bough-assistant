@@ -244,13 +244,13 @@ const Reports: React.FC = () => {
 
           <Grid item xs={12} sm={6} md={2}>
             <FormControl fullWidth size="small">
-              <InputLabel>Employee</InputLabel>
+              <InputLabel>Helper</InputLabel>
               <Select
                 value={filters.employeeId || ''}
                 onChange={(e) => handleFilterChange('employeeId', e.target.value ? Number(e.target.value) : undefined)}
-                label="Employee"
+                label="Helper"
               >
-                <MenuItem value="">All Employees</MenuItem>
+                <MenuItem value="">All helpers</MenuItem>
                 {employees.map((employee) => (
                   <MenuItem key={employee.id} value={employee.id}>
                     {employee.name}
