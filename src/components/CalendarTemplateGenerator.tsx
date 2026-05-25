@@ -17,7 +17,7 @@ import {
   Tooltip,
   Chip,
 } from '@mui/material';
-import { ContentCopy, Event } from '@mui/icons-material';
+import { Copy as ContentCopy, Calendar as Event } from '../icons';
 import { helpersApi, clientsApi, Helper, Client } from '../services/api';
 import { secureFetch } from '../services/csrf';
 
@@ -239,7 +239,7 @@ LOCATION: ${options.location}`;
     <Card>
       <CardContent>
         <Box display="flex" alignItems="center" gap={1} mb={3}>
-          <Event color="primary" />
+          <Event />
           <Typography variant="h6">
             Calendar Event Template Generator
           </Typography>

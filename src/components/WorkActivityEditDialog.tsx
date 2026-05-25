@@ -24,10 +24,10 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import {
-  Add as AddIcon,
-  Remove as RemoveIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+  Plus as AddIcon,
+  Minus as RemoveIcon,
+  X as CloseIcon,
+} from '../icons';
 import { EditorState, ContentState, convertToRaw } from 'draft-js';
 import { Editor } from 'react-draft-wysiwyg';
 import draftToHtml from 'draftjs-to-html';

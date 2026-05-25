@@ -30,12 +30,12 @@ import {
   Checkbox,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Work as WorkIcon,
-  Visibility as VisibilityIcon,
-} from '@mui/icons-material';
+  Edit3 as EditIcon,
+  Trash2 as DeleteIcon,
+  Plus as AddIcon,
+  Hammer as WorkIcon,
+  Eye as VisibilityIcon,
+} from '../icons';
 
 interface Employee {
   id: number;

@@ -37,18 +37,18 @@ import {
 } from '@mui/material';
 import {
   Receipt,
-  Add,
-  FilterList,
-  MoreVert,
-  Sync,
-  Visibility,
-  AttachMoney,
-  Business,
+  Plus as Add,
+  Filter as FilterList,
+  MoreVertical as MoreVert,
+  RefreshCw as Sync,
+  Eye as Visibility,
+  DollarSign as AttachMoney,
+  Building2 as Business,
   TrendingUp,
-  Schedule,
-  OpenInNew,
-  Delete,
-} from '@mui/icons-material';
+  CalendarDays as Schedule,
+  ExternalLink as OpenInNew,
+  Trash2 as Delete,
+} from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
 
@@ -232,15 +232,15 @@ const Invoices: React.FC = () => {
   const getStatusIcon = (status: string) => {
     switch (status.toLowerCase()) {
       case 'paid':
-        return <AttachMoney fontSize="small" />;
+        return <AttachMoney size={16} />;
       case 'sent':
-        return <OpenInNew fontSize="small" />;
+        return <OpenInNew size={16} />;
       case 'overdue':
-        return <Schedule fontSize="small" />;
+        return <Schedule size={16} />;
       case 'draft':
-        return <Receipt fontSize="small" />;
+        return <Receipt size={16} />;
       default:
-        return <Receipt fontSize="small" />;
+        return <Receipt size={16} />;
     }
   };
 
@@ -331,7 +331,7 @@ const Invoices: React.FC = () => {
                       {stats.total}
                     </Typography>
                   </Box>
-                  <Receipt color="primary" sx={{ fontSize: 40 }} />
+                  <Receipt size={40} />
                 </Box>
               </CardContent>
             </Card>
@@ -348,7 +348,7 @@ const Invoices: React.FC = () => {
                       ${stats.totalAmount.toFixed(2)}
                     </Typography>
                   </Box>
-                  <AttachMoney color="success" sx={{ fontSize: 40 }} />
+                  <AttachMoney size={40} />
                 </Box>
               </CardContent>
             </Card>
@@ -365,7 +365,7 @@ const Invoices: React.FC = () => {
                       {stats.paidCount}
                     </Typography>
                   </Box>
-                  <TrendingUp color="success" sx={{ fontSize: 40 }} />
+                  <TrendingUp size={40} />
                 </Box>
               </CardContent>
             </Card>
@@ -382,7 +382,7 @@ const Invoices: React.FC = () => {
                       {stats.overdueCount}
                     </Typography>
                   </Box>
-                  <Schedule color="error" sx={{ fontSize: 40 }} />
+                  <Schedule size={40} />
                 </Box>
               </CardContent>
             </Card>
@@ -567,7 +567,7 @@ const Invoices: React.FC = () => {
               handleMenuClose();
             }}>
               <ListItemIcon>
-                <Visibility fontSize="small" />
+                <Visibility size={16} />
               </ListItemIcon>
               <ListItemText>View Details</ListItemText>
             </MenuItem>
@@ -578,7 +578,7 @@ const Invoices: React.FC = () => {
               handleMenuClose();
             }}>
               <ListItemIcon>
-                <Sync fontSize="small" />
+                <Sync size={16} />
               </ListItemIcon>
               <ListItemText>Sync Status</ListItemText>
             </MenuItem>
@@ -589,7 +589,7 @@ const Invoices: React.FC = () => {
               handleMenuClose();
             }}>
               <ListItemIcon>
-                <Business fontSize="small" />
+                <Business size={16} />
               </ListItemIcon>
               <ListItemText>View Client</ListItemText>
             </MenuItem>
@@ -599,7 +599,7 @@ const Invoices: React.FC = () => {
               sx={{ color: 'error.main' }}
             >
               <ListItemIcon>
-                <Delete fontSize="small" color="error" />
+                <Delete size={16} />
               </ListItemIcon>
               <ListItemText>Delete Invoice</ListItemText>
             </MenuItem>

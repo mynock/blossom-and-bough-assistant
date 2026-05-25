@@ -11,9 +11,9 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  CalendarToday as CalendarIcon,
-  ExpandMore as ExpandMoreIcon,
-} from '@mui/icons-material';
+  Calendar as CalendarIcon,
+  ChevronDown as ExpandMoreIcon,
+} from '../icons';
 import { formatDatePacific } from '../utils/dateUtils';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
@@ -164,7 +164,7 @@ export const ClientNotesList: React.FC<ClientNotesListProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CalendarIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                <CalendarIcon size={20} />
                 <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
                   {formatDatePacific(date)}
                 </Typography>

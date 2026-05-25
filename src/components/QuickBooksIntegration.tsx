@@ -14,16 +14,16 @@ import {
   Divider,
 } from '@mui/material';
 import {
-  CheckCircle,
-  Error,
-  Refresh,
-  OpenInNew,
-  AttachMoney,
-  Description,
+  CheckCircle2 as CheckCircle,
+  AlertCircle as Error,
+  RefreshCw as Refresh,
+  ExternalLink as OpenInNew,
+  DollarSign as AttachMoney,
+  FileText as Description,
   Settings,
-  Sync,
-  Storage,
-} from '@mui/icons-material';
+  RefreshCw as Sync,
+  Database as Storage,
+} from '../icons';
 import { secureFetch } from '../services/csrf';
 
 interface QBOItem {
@@ -277,19 +277,19 @@ const QuickBooksIntegration: React.FC = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   {authStatus?.isValid ? (
                     <>
-                      <CheckCircle sx={{ color: 'success.main' }} />
+                      <CheckCircle />
                       <Typography color="success.main">Connected to QuickBooks</Typography>
                       <Chip label="Active" color="success" size="small" />
                     </>
                   ) : authStatus?.credentialsConfigured === false ? (
                     <>
-                      <Error sx={{ color: 'warning.main' }} />
+                      <Error />
                       <Typography color="warning.main">Credentials not configured</Typography>
                       <Chip label="Setup Required" color="warning" size="small" />
                     </>
                   ) : (
                     <>
-                      <Error sx={{ color: 'error.main' }} />
+                      <Error />
                       <Typography color="error.main">Not connected</Typography>
                       <Chip label="Disconnected" color="error" size="small" />
                     </>
@@ -424,7 +424,7 @@ const QuickBooksIntegration: React.FC = () => {
                     sx={{ height: 80, flexDirection: 'column' }}
                     onClick={() => window.location.href = '/invoices'}
                   >
-                    <Description sx={{ mb: 1 }} />
+                    <Description style={{ marginBottom: 8 }} />
                     <Typography>View Invoices</Typography>
                   </Button>
                 </Grid>
@@ -435,7 +435,7 @@ const QuickBooksIntegration: React.FC = () => {
                     sx={{ height: 80, flexDirection: 'column' }}
                     onClick={() => window.location.href = '/work-activities'}
                   >
-                    <AttachMoney sx={{ mb: 1 }} />
+                    <AttachMoney style={{ marginBottom: 8 }} />
                     <Typography>Create Invoice</Typography>
                   </Button>
                 </Grid>
@@ -448,7 +448,7 @@ const QuickBooksIntegration: React.FC = () => {
                     onClick={seedQuickBooksData}
                     disabled={isLoading || !authStatus?.isValid}
                   >
-                    {isLoading ? <CircularProgress size={24} sx={{ mb: 1 }} /> : <Storage sx={{ mb: 1 }} />}
+                    {isLoading ? <CircularProgress size={24} sx={{ mb: 1 }} /> : <Storage style={{ marginBottom: 8 }} />}
                     <Typography>Seed Sample Data</Typography>
                   </Button>
                 </Grid>

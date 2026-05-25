@@ -25,10 +25,10 @@ import {
   Autocomplete,
 } from '@mui/material';
 import {
-  ExpandMore as ExpandMoreIcon,
-  FilterList as FilterIcon,
-  Clear as ClearIcon,
-} from '@mui/icons-material';
+  ChevronDown as ExpandMoreIcon,
+  Filter as FilterIcon,
+  X as ClearIcon,
+} from '../icons';
 
 export interface FilterConfig {
   key: string;

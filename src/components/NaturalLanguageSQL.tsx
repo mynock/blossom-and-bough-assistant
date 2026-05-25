@@ -36,17 +36,17 @@ import {
 } from '@mui/material';
 import {
   Send,
-  ExpandMore,
-  QuestionMark,
+  ChevronDown as ExpandMore,
+  HelpCircle as QuestionMark,
   Code,
-  BarChart,
-  TableChart,
+  BarChart3 as BarChart,
+  LayoutDashboard as TableChart,
   Info,
-  Schema,
+  Database as Schema,
   Lightbulb,
-  ContentCopy,
-  CheckCircle,
-} from '@mui/icons-material';
+  Copy as ContentCopy,
+  CheckCircle2 as CheckCircle,
+} from '../icons';
 import BreakdownChart from './charts/BreakdownChart';
 import TimeSeriesChart from './charts/TimeSeriesChart';
 
@@ -400,7 +400,7 @@ const NaturalLanguageSQL: React.FC = () => {
                           }}
                         >
                           <ListItemIcon sx={{ minWidth: 32 }}>
-                            <QuestionMark fontSize="small" color="primary" />
+                            <QuestionMark size={16} />
                           </ListItemIcon>
                           <ListItemText 
                             primary={q}
@@ -421,11 +421,11 @@ const NaturalLanguageSQL: React.FC = () => {
             {/* Query Info */}
             <Box sx={{ mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Code color="primary" />
+                <Code />
                 <Typography variant="h6">Generated SQL Query</Typography>
                 <Tooltip title={copiedQuery ? "Copied!" : "Copy query"}>
                   <IconButton size="small" onClick={handleCopyQuery}>
-                    {copiedQuery ? <CheckCircle color="success" /> : <ContentCopy />}
+                    {copiedQuery ? <CheckCircle /> : <ContentCopy />}
                   </IconButton>
                 </Tooltip>
               </Box>
@@ -450,7 +450,7 @@ const NaturalLanguageSQL: React.FC = () => {
             {result.chartConfig && (
               <Box sx={{ mb: 3 }}>
                 <Typography variant="h6" gutterBottom sx={{ color: 'primary.main' }}>
-                  <BarChart sx={{ mr: 1, verticalAlign: 'middle' }} />
+                  <BarChart style={{ marginRight: 8, verticalAlign: 'middle' }} />
                   Visual Analysis
                 </Typography>
                 {renderChart()}
@@ -460,7 +460,7 @@ const NaturalLanguageSQL: React.FC = () => {
             {/* Results Table */}
             <Box>
               <Typography variant="h6" gutterBottom sx={{ color: 'primary.main' }}>
-                <TableChart sx={{ mr: 1, verticalAlign: 'middle' }} />
+                <TableChart style={{ marginRight: 8, verticalAlign: 'middle' }} />
                 Raw Data ({result.rowCount} rows)
               </Typography>
               {renderResultsTable()}
@@ -478,7 +478,7 @@ const NaturalLanguageSQL: React.FC = () => {
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Schema color="primary" />
+            <Schema />
             Database Schema Reference
           </Box>
         </DialogTitle>
@@ -525,7 +525,7 @@ const NaturalLanguageSQL: React.FC = () => {
                 {schema.tips.map((tip: string, index: number) => (
                   <ListItem key={index}>
                     <ListItemIcon>
-                      <Info color="primary" />
+                      <Info />
                     </ListItemIcon>
                     <ListItemText primary={tip} />
                   </ListItem>

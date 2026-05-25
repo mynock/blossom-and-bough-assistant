@@ -8,13 +8,13 @@ import {
   Avatar,
 } from '@mui/material';
 import {
-  AccessTime,
-  Schedule,
-  DriveEta,
-  FreeBreakfast,
-  Assignment,
+  Clock as AccessTime,
+  CalendarDays as Schedule,
+  Car as DriveEta,
+  Coffee as FreeBreakfast,
+  ClipboardCheck as Assignment,
   TrendingUp,
-} from '@mui/icons-material';
+} from '../../icons';
 import { ReportSummary } from '../../services/api';
 
 interface SummaryCardsProps {
