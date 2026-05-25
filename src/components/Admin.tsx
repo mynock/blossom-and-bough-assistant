@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { apiClient as api } from '../services/api';
 import {
   Container,
   Grid,
@@ -62,15 +62,6 @@ import {
 const API_BASE = process.env.NODE_ENV === 'production' 
   ? (process.env.REACT_APP_API_URL || '/api')
   : '/api'; // Use proxy in development
-
-const api = axios.create({
-  baseURL: API_BASE,
-  timeout: 60000,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
 
 interface DatabaseStatus {
   employeesCount: number;
