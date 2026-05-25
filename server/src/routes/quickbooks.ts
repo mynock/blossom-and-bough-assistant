@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import { services } from '../services/container';
 import { requireAuth } from '../middleware/auth';
-import { invoices, invoiceLineItems, workActivities, clients, otherCharges } from '../db';
-import { eq, and, inArray } from 'drizzle-orm';
+import { invoices, invoiceLineItems, workActivities } from '../db';
+import { eq, and } from 'drizzle-orm';
 
 const router = Router();
 const qbService = services.quickBooksService;
@@ -169,44 +169,40 @@ router.get('/items', async (req, res) => {
 });
 
 /**
- * Create invoice from work activities
+ * Create invoice from previously-previewed (and possibly edited) line items.
  */
 router.post('/invoices', async (req, res) => {
   try {
-    const { workActivityIds, clientId, dueDate, memo, includeOtherCharges, useAIGeneration } = req.body;
-    
-    if (!workActivityIds || !Array.isArray(workActivityIds) || workActivityIds.length === 0) {
-      return res.status(400).json({ error: 'Work activity IDs are required' });
-    }
-    
+    const { clientId, lineItems, workActivityIds, dueDate, memo } = req.body;
+
     if (!clientId) {
       return res.status(400).json({ error: 'Client ID is required' });
     }
-    
-    console.log(`Creating invoice for ${workActivityIds.length} work activities for client ${clientId}`);
-    if (useAIGeneration) {
-      console.log('🤖 AI enhancement requested');
+
+    if (!lineItems || !Array.isArray(lineItems) || lineItems.length === 0) {
+      return res.status(400).json({ error: 'lineItems (array) is required' });
     }
-    
-    const result = await invoiceService.createInvoiceFromWorkActivities({
-      workActivityIds,
+
+    const result = await invoiceService.createInvoiceFromLineItems({
       clientId,
+      lineItems,
+      workActivityIds: Array.isArray(workActivityIds)
+        ? workActivityIds.filter((id: unknown): id is number => typeof id === 'number')
+        : undefined,
       dueDate,
-      memo,
-      includeOtherCharges: includeOtherCharges !== false, // Default to true
-      useAIGeneration: useAIGeneration === true // Default to false
+      memo
     });
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       result,
       message: 'Invoice created successfully'
     });
   } catch (error) {
     console.error('Error creating invoice:', error);
-    res.status(500).json({ 
-      error: 'Failed to create invoice', 
-      details: error instanceof Error ? error.message : 'Unknown error' 
+    res.status(500).json({
+      error: 'Failed to create invoice',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 });
@@ -324,109 +320,34 @@ router.get('/clients/:clientId/invoiceable-activities', async (req, res) => {
 });
 
 /**
- * Preview invoice before creating it
+ * Preview the exact invoice line items that would be sent to QBO.
+ * Uses the same builder and AI enhancement as creation so the preview cannot
+ * diverge from what gets created.
  */
 router.post('/invoices/preview', async (req, res) => {
   try {
-    const {
+    const { clientId, workActivityIds, includeOtherCharges, useAIGeneration } = req.body;
+
+    if (!clientId || !workActivityIds || !Array.isArray(workActivityIds) || workActivityIds.length === 0) {
+      return res.status(400).json({
+        error: 'clientId and workActivityIds (array) are required'
+      });
+    }
+
+    const result = await invoiceService.previewInvoice({
       clientId,
       workActivityIds,
-      includeOtherCharges = true
-    } = req.body;
-
-    // Validate required fields
-    if (!clientId || !workActivityIds || !Array.isArray(workActivityIds) || workActivityIds.length === 0) {
-      return res.status(400).json({ 
-        error: 'clientId and workActivityIds (array) are required' 
-      });
-    }
-
-    // Get client info
-    const client = await invoiceService.db
-      .select()
-      .from(clients)
-      .where(eq(clients.id, clientId))
-      .limit(1);
-
-    if (!client[0]) {
-      return res.status(404).json({ error: 'Client not found' });
-    }
-
-    // Get work activities
-    const activities = await invoiceService.db
-      .select()
-      .from(workActivities)
-      .where(inArray(workActivities.id, workActivityIds));
-
-    // Calculate preview data without creating actual invoice
-    let totalAmount = 0;
-    const previewLines = [];
-
-    // Group activities by work type
-    const serviceGroups = new Map();
-    for (const activity of activities) {
-      if (!serviceGroups.has(activity.workType)) {
-        serviceGroups.set(activity.workType, { activities: [], totalHours: 0 });
-      }
-      const group = serviceGroups.get(activity.workType);
-      group.activities.push(activity);
-      group.totalHours += activity.billableHours || activity.totalHours || 0;
-    }
-
-    // Add service lines
-    for (const [workType, group] of serviceGroups) {
-      const rate = 55.00; // Default rate - in production, get from QBO items
-      const amount = group.totalHours * rate;
-      
-      previewLines.push({
-        type: 'service',
-        workType: workType,
-        description: `${workType} - ${group.totalHours} hours`,
-        quantity: group.totalHours,
-        rate: rate,
-        amount: amount
-      });
-      
-      totalAmount += amount;
-    }
-
-    // Add other charges if requested
-    if (includeOtherCharges) {
-      for (const activity of activities) {
-        const charges = await invoiceService.db
-          .select()
-          .from(otherCharges)
-          .where(and(
-            eq(otherCharges.workActivityId, activity.id),
-            eq(otherCharges.billable, true)
-          ));
-
-        for (const charge of charges) {
-          previewLines.push({
-            type: 'charge',
-            chargeType: charge.chargeType,
-            description: charge.description,
-            quantity: charge.quantity || 1,
-            rate: charge.unitRate || charge.totalCost || 0,
-            amount: charge.totalCost || 0
-          });
-          
-          totalAmount += charge.totalCost || 0;
-        }
-      }
-    }
-
-    res.json({
-      client: client[0],
-      activities: activities,
-      previewLines: previewLines,
-      totalAmount: totalAmount,
-      lineCount: previewLines.length
+      includeOtherCharges: includeOtherCharges !== false,
+      useAIGeneration: useAIGeneration === true
     });
 
+    res.json(result);
   } catch (error) {
     console.error('Error generating invoice preview:', error);
-    res.status(500).json({ error: 'Failed to generate invoice preview' });
+    res.status(500).json({
+      error: 'Failed to generate invoice preview',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

@@ -30,6 +30,13 @@ import {
   Snackbar,
   ToggleButton,
   ToggleButtonGroup,
+  Table,
+  TableHead,
+  TableBody,
+  TableRow,
+  TableCell,
+  IconButton,
+  Autocomplete,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -56,6 +63,7 @@ import { secureFetch } from '../services/csrf';
 import { ClientTasksList } from './ClientTasksList';
 import { ClientNotesList } from './ClientNotesList';
 import WorkActivityEditDialog from './WorkActivityEditDialog';
+import { NumericInputCell } from './NumericInputCell';
 import { formatDatePacific } from '../utils/dateUtils';
 
 interface Client {
@@ -147,6 +155,31 @@ interface NewClientNote {
   date?: string;
 }
 
+interface InvoiceLineItem {
+  workActivityId?: number;
+  otherChargeId?: number;
+  qboItemId: string;
+  description: string;
+  quantity: number;
+  rate: number;
+  amount: number;
+}
+
+interface SuggestedLineItem extends InvoiceLineItem {
+  category: 'plants' | 'materials';
+  sourceWorkActivityId?: number;
+  qboItemName?: string;
+  qboItemMatchQuality: 'specific' | 'category' | 'fuzzy' | 'fallback' | 'none';
+  qboItemUserSelected?: boolean;
+}
+
+interface QBOItemOption {
+  qboId: string;
+  name: string;
+  type?: string;
+  unitPrice?: number | null;
+}
+
 interface UpcomingScheduleData {
   upcomingEvents: CalendarEvent[];
   client: {
@@ -203,8 +236,13 @@ const ClientDetail: React.FC = () => {
 
   const [selectedActivitiesForInvoice, setSelectedActivitiesForInvoice] = useState<number[]>([]);
   const [invoiceCreationLoading, setInvoiceCreationLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [useAIGeneration, setUseAIGeneration] = useState(false);
+  const [dialogStep, setDialogStep] = useState<'select' | 'edit'>('select');
+  const [previewLineItems, setPreviewLineItems] = useState<InvoiceLineItem[]>([]);
+  const [suggestedLineItems, setSuggestedLineItems] = useState<SuggestedLineItem[]>([]);
+  const [availableQBOItems, setAvailableQBOItems] = useState<QBOItemOption[]>([]);
   const [workActivitiesView, setWorkActivitiesView] = useState<'table' | 'date' | 'notes'>('table');
 
   useEffect(() => {
@@ -488,35 +526,123 @@ const ClientDetail: React.FC = () => {
 
   // Removed unused invoice functions - now using new dialog implementation
 
-  const handleCreateInvoiceConfirm = async () => {
+  const handlePreviewInvoice = async () => {
     if (!client || selectedActivitiesForInvoice.length === 0) return;
 
-    setInvoiceCreationLoading(true);
+    setPreviewLoading(true);
     try {
-      const response = await secureFetch('/api/qbo/invoices', {
+      const response = await fetch('/api/qbo/invoices/preview', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           clientId: client.id,
           workActivityIds: selectedActivitiesForInvoice,
           includeOtherCharges: true,
-          useAIGeneration: useAIGeneration,
+          useAIGeneration,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Failed to preview invoice');
+      }
+
+      const result = await response.json();
+      setPreviewLineItems(result.lineItems || []);
+      setSuggestedLineItems(result.suggestedLineItems || []);
+      setDialogStep('edit');
+
+      if (availableQBOItems.length === 0) {
+        try {
+          const itemsResponse = await fetch('/api/qbo/items');
+          if (itemsResponse.ok) {
+            const items = await itemsResponse.json();
+            setAvailableQBOItems(items.map((i: any) => ({
+              qboId: i.qboId,
+              name: i.name,
+              type: i.type,
+              unitPrice: i.unitPrice
+            })));
+          }
+        } catch (err) {
+          console.error('Failed to fetch QBO items for picker:', err);
+        }
+      }
+    } catch (error) {
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Failed to preview invoice',
+        severity: 'error'
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const updatePreviewLineItem = (index: number, patch: Partial<InvoiceLineItem>) => {
+    setPreviewLineItems(prev => prev.map((line, i) => {
+      if (i !== index) return line;
+      const next = { ...line, ...patch };
+      next.amount = next.quantity * next.rate;
+      return next;
+    }));
+  };
+
+  const removePreviewLineItem = (index: number) => {
+    setPreviewLineItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const closeInvoiceDialog = () => {
+    setShowInvoiceDialog(false);
+    setDialogStep('select');
+    setPreviewLineItems([]);
+    setSuggestedLineItems([]);
+  };
+
+  const updateSuggestedLineItem = (index: number, patch: Partial<SuggestedLineItem>) => {
+    setSuggestedLineItems(prev => prev.map((line, i) => {
+      if (i !== index) return line;
+      const next = { ...line, ...patch };
+      next.amount = next.quantity * next.rate;
+      return next;
+    }));
+  };
+
+  const removeSuggestedLineItem = (index: number) => {
+    setSuggestedLineItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const hasSuggestionWithoutRate = suggestedLineItems.some(line => line.rate <= 0);
+  const hasSuggestionWithoutItem = suggestedLineItems.some(line => !line.qboItemId);
+  const grandTotal = previewLineItems.reduce((sum, line) => sum + line.amount, 0)
+    + suggestedLineItems.reduce((sum, line) => sum + line.amount, 0);
+
+  const handleSendInvoice = async () => {
+    if (!client || previewLineItems.length === 0) return;
+
+    setInvoiceCreationLoading(true);
+    try {
+      const additions = suggestedLineItems.map(({ category, sourceWorkActivityId, qboItemName, qboItemMatchQuality, qboItemUserSelected, ...line }) => line);
+      const response = await secureFetch('/api/qbo/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          clientId: client.id,
+          lineItems: [...previewLineItems, ...additions],
+          workActivityIds: selectedActivitiesForInvoice,
         }),
       });
 
       if (response.ok) {
         const result = await response.json();
-        setSnackbar({ 
-          open: true, 
-          message: `Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`, 
-          severity: 'success' 
+        setSnackbar({
+          open: true,
+          message: `Invoice created successfully! Invoice #${result.result.invoice.invoiceNumber}`,
+          severity: 'success'
         });
-        setShowInvoiceDialog(false);
+        closeInvoiceDialog();
         setSelectedActivitiesForInvoice([]);
-        
-        // Refresh work activities to update status
+
         if (id) {
           const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
           if (activitiesResponse.ok) {
@@ -527,13 +653,13 @@ const ClientDetail: React.FC = () => {
         }
       } else {
         const error = await response.json();
-        throw new Error(error.error || 'Failed to create invoice');
+        throw new Error(error.details || error.error || 'Failed to create invoice');
       }
     } catch (error) {
-      setSnackbar({ 
-        open: true, 
-        message: error instanceof Error ? error.message : 'Failed to create invoice', 
-        severity: 'error' 
+      setSnackbar({
+        open: true,
+        message: error instanceof Error ? error.message : 'Failed to create invoice',
+        severity: 'error'
       });
     } finally {
       setInvoiceCreationLoading(false);
@@ -1031,18 +1157,21 @@ const ClientDetail: React.FC = () => {
 
 
         {/* Invoice Creation Dialog */}
-        <Dialog open={showInvoiceDialog} onClose={() => setShowInvoiceDialog(false)} maxWidth="lg" fullWidth>
+        <Dialog open={showInvoiceDialog} onClose={closeInvoiceDialog} maxWidth="lg" fullWidth>
           <DialogTitle sx={{ pb: 1 }}>
             <Typography variant="h5" component="h2" sx={{ fontWeight: 600 }}>
-              Create Invoice
+              {dialogStep === 'select' ? 'Create Invoice' : 'Review & Edit Invoice'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Select work activities and customize invoice generation
+              {dialogStep === 'select'
+                ? 'Select work activities and customize invoice generation'
+                : 'Edit each line below. Removed lines stay marked as completed (not invoiced).'}
             </Typography>
           </DialogTitle>
           <DialogContent sx={{ px: 3, py: 2 }}>
+            {dialogStep === 'select' ? (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              
+
               {/* AI Enhancement Option */}
               <Paper sx={{ p: 2, bgcolor: 'primary.50', border: '1px solid', borderColor: 'primary.200' }}>
                 <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
@@ -1055,10 +1184,10 @@ const ClientDetail: React.FC = () => {
                   />
                   <Box sx={{ flex: 1 }}>
                     <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'primary.800', mb: 0.5 }}>
-                      ✨ AI-Enhanced Professional Descriptions
+                      ✨ AI cleanup + material/plant suggestions
                     </Typography>
                     <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
-                      Transforms basic work notes into detailed, professional invoice line items with specific tasks, dates, and value demonstration
+                      Rewrites descriptions in the house style and flags plants/materials mentioned in notes that may need separate billing.
                     </Typography>
                   </Box>
                 </Box>
@@ -1203,28 +1332,252 @@ const ClientDetail: React.FC = () => {
                         </Typography>
                       </Box>
                       <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                        Invoice descriptions will be enhanced with detailed task breakdowns, professional language, and value demonstration
+                        Descriptions will be rewritten as terse, comma-separated task lists matching the existing invoice style.
                       </Typography>
                     </Box>
                   )}
                 </Paper>
               )}
             </Box>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ width: '50%' }}>Description</TableCell>
+                      <TableCell align="right" sx={{ width: 100 }}>Hours/Qty</TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
+                      <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
+                      <TableCell align="center" sx={{ width: 60 }}>Remove</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {previewLineItems.map((line, index) => (
+                      <TableRow key={index}>
+                        <TableCell>
+                          <TextField
+                            value={line.description}
+                            onChange={e => updatePreviewLineItem(index, { description: e.target.value })}
+                            multiline
+                            fullWidth
+                            size="small"
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <NumericInputCell
+                            value={line.quantity}
+                            onCommit={v => updatePreviewLineItem(index, { quantity: v })}
+                            step={0.25}
+                            min={0}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <NumericInputCell
+                            value={line.rate}
+                            onCommit={v => updatePreviewLineItem(index, { rate: v })}
+                            step={0.01}
+                            min={0}
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          <Typography variant="body2">${line.amount.toFixed(2)}</Typography>
+                        </TableCell>
+                        <TableCell align="center">
+                          <IconButton
+                            size="small"
+                            onClick={() => removePreviewLineItem(index)}
+                            aria-label="Remove line"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {previewLineItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                            All lines removed. Add some back by going Back, or cancel.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+
+                {suggestedLineItems.length > 0 && (
+                  <Box>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mt: 1 }}>
+                      Suggested additions
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                      Plants/materials mentioned in the work notes. Edit, set a rate, or remove any you don't want to bill.
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Description</TableCell>
+                          <TableCell sx={{ width: 220 }}>QBO item</TableCell>
+                          <TableCell align="right" sx={{ width: 100 }}>Qty</TableCell>
+                          <TableCell align="right" sx={{ width: 120 }}>Rate</TableCell>
+                          <TableCell align="right" sx={{ width: 120 }}>Amount</TableCell>
+                          <TableCell align="center" sx={{ width: 60 }}>Remove</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {suggestedLineItems.map((line, index) => {
+                          const needsRate = line.rate <= 0;
+                          const noItem = !line.qboItemId;
+                          const showAutoHint = !line.qboItemUserSelected && !noItem;
+                          const itemHelper = noItem
+                            ? 'Pick a QBO item below'
+                            : showAutoHint && line.qboItemMatchQuality === 'specific'
+                              ? 'Matched by name'
+                              : showAutoHint && line.qboItemMatchQuality === 'fuzzy'
+                                ? 'Closest category match'
+                                : showAutoHint && line.qboItemMatchQuality === 'fallback'
+                                  ? 'Generic fallback — verify'
+                                  : null;
+                          const selectedOption = availableQBOItems.find(o => o.qboId === line.qboItemId)
+                            ?? (line.qboItemId
+                              ? { qboId: line.qboItemId, name: line.qboItemName ?? line.qboItemId }
+                              : null);
+                          return (
+                            <TableRow key={index}>
+                              <TableCell>
+                                <TextField
+                                  value={line.description}
+                                  onChange={e => updateSuggestedLineItem(index, { description: e.target.value })}
+                                  fullWidth
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Autocomplete
+                                  size="small"
+                                  options={availableQBOItems}
+                                  value={selectedOption}
+                                  getOptionLabel={(option) => option?.name ?? ''}
+                                  isOptionEqualToValue={(option, value) => option.qboId === value?.qboId}
+                                  onChange={(_, value) => {
+                                    if (!value) {
+                                      updateSuggestedLineItem(index, {
+                                        qboItemId: '',
+                                        qboItemName: undefined,
+                                        qboItemUserSelected: true,
+                                      });
+                                      return;
+                                    }
+                                    updateSuggestedLineItem(index, {
+                                      qboItemId: value.qboId,
+                                      qboItemName: value.name,
+                                      qboItemUserSelected: true,
+                                      rate: line.rate > 0 ? line.rate : (value.unitPrice ?? 0),
+                                    });
+                                  }}
+                                  renderOption={(props, option) => (
+                                    <Box component="li" {...props} key={option.qboId} sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start !important' }}>
+                                      <Typography variant="body2">{option.name}</Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {option.type ?? '—'}
+                                        {option.unitPrice ? ` · $${option.unitPrice.toFixed(2)}` : ''}
+                                      </Typography>
+                                    </Box>
+                                  )}
+                                  renderInput={(params) => (
+                                    <TextField
+                                      {...params}
+                                      placeholder={noItem ? 'Pick item…' : ''}
+                                      error={noItem}
+                                      helperText={itemHelper ? <Box component="span" sx={{ textTransform: 'capitalize' }}>{line.category} · {itemHelper}</Box> : line.category}
+                                    />
+                                  )}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <NumericInputCell
+                                  value={line.quantity}
+                                  onCommit={v => updateSuggestedLineItem(index, { quantity: v })}
+                                  step={1}
+                                  min={0}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <NumericInputCell
+                                  value={line.rate}
+                                  onCommit={v => updateSuggestedLineItem(index, { rate: v })}
+                                  step={0.01}
+                                  min={0}
+                                  error={needsRate}
+                                  helperText={needsRate ? 'Set a rate' : undefined}
+                                />
+                              </TableCell>
+                              <TableCell align="right">
+                                <Typography variant="body2">${line.amount.toFixed(2)}</Typography>
+                              </TableCell>
+                              <TableCell align="center">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => removeSuggestedLineItem(index)}
+                                  aria-label="Remove suggestion"
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </Box>
+                )}
+
+                <Box sx={{ display: 'flex', justifyContent: 'flex-end', pt: 1, borderTop: '2px solid', borderColor: 'grey.300' }}>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    Total: ${grandTotal.toFixed(2)}
+                  </Typography>
+                </Box>
+              </Box>
+            )}
           </DialogContent>
           <DialogActions>
-            <Button 
-              variant="outlined" 
-              onClick={() => setShowInvoiceDialog(false)}
-            >
-              Cancel
-            </Button>
-            <Button 
-              onClick={handleCreateInvoiceConfirm}
-              variant="contained"
-              disabled={selectedActivitiesForInvoice.length === 0 || invoiceCreationLoading}
-            >
-              {invoiceCreationLoading ? 'Creating Invoice...' : 'Create Invoice'}
-            </Button>
+            {dialogStep === 'select' ? (
+              <>
+                <Button variant="outlined" onClick={closeInvoiceDialog}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handlePreviewInvoice}
+                  variant="contained"
+                  disabled={selectedActivitiesForInvoice.length === 0 || previewLoading}
+                >
+                  {previewLoading ? 'Loading Preview…' : 'Preview'}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outlined" onClick={() => setDialogStep('select')} disabled={invoiceCreationLoading}>
+                  Back
+                </Button>
+                <Button variant="outlined" onClick={closeInvoiceDialog} disabled={invoiceCreationLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendInvoice}
+                  variant="contained"
+                  disabled={
+                    (previewLineItems.length === 0 && suggestedLineItems.length === 0)
+                    || hasSuggestionWithoutRate
+                    || hasSuggestionWithoutItem
+                    || invoiceCreationLoading
+                  }
+                >
+                  {invoiceCreationLoading ? 'Sending…' : 'Send to QuickBooks'}
+                </Button>
+              </>
+            )}
           </DialogActions>
         </Dialog>
       </Grid>

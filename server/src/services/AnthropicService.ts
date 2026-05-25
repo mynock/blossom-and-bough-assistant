@@ -1422,58 +1422,72 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
     workActivities: any[],
     clientName: string,
     basicLineItems: any[]
-  ): Promise<any[]> {
+  ): Promise<{ lineItems: any[]; suggestedAdditions: SuggestedAddition[] }> {
     if (!this.client) {
       throw new Error('Anthropic API client not initialized');
     }
 
     console.log(`🤖 Generating AI-enhanced invoice line items for ${clientName}...`);
 
-    const systemPrompt = `You are an expert landscaping invoice generator. Your task is to transform basic work activity data into detailed, professional invoice line items that clients will find clear, valuable, and comprehensive.
+    const systemPrompt = `You write invoice line item descriptions for a landscaping business AND identify plants/materials mentioned in the work notes that may need separate billing as their own line items.`;
 
-Transform basic entries like "Specialized garden care - 31.81 hours" into detailed line items that include:
-- Specific dates and work performed
-- Detailed descriptions of tasks completed
-- Materials used and plants installed
-- Professional presentation that justifies the value
+    const userPrompt = `Two jobs:
+1. Rewrite the description on each line item to match the house style.
+2. Identify plants/materials/supplies mentioned in the work notes that are NOT already represented in the current line items.
 
-Focus on creating line items that demonstrate the expertise, care, and value provided during the work.`;
+HOUSE STYLE FOR DESCRIPTIONS
+- One sentence per description, ending with a period.
+- Comma-separated list of tasks performed. Examples of the target style:
+  • "Weeding, deadheading hellebores, pruning (rhododendrons, mahonia, camellia), garden meeting, planting cascara and spirea, general clean up."
+  • "Training vines/peas, volunteer tree removal, weeds, clean up, perennial care, sluggo."
+  • Plants/materials lines: "Cascara tree, mahonia nervosa." or "Horticultural oil, lacewings."
+- Capitalize only the first word. Subsequent items lowercase except proper nouns (plant names, places, brand names).
+- Group related work in parentheses when natural.
+- Aim for under ~250 characters.
+- DO NOT include dates, hours, rate, totals, or client name (other columns have those).
+- DO NOT use marketing words ("professional", "comprehensive", "expert", "value", etc.) or first-person "we".
 
-    const userPrompt = `Transform this basic invoice data into detailed professional line items for ${clientName}.
+HOW TO IDENTIFY SUGGESTED ADDITIONS
+The labor line covers the work; suggested additions are the things bought/applied. Look in the work activity notes for:
+- Plants installed: "planted X", "planting X", "transplanted X", or specific plant names mentioned (lonicera, mahonia, cascara, hellebore, etc.) → category: "plants"
+- Branded products applied: "sluggo", "roundup", etc. → category: "materials"
+- Treatments and supplies: "horticultural oil", "lacewings", "rose fertilizer", "sluggo on hostas", "compost", "mulch" → category: "materials"
+- Soil, gravel, deliveries (when delivered for the job) → category: "materials"
 
-Work Activities Data:
+Skip suggestions when:
+- The current line items already include that material/plant (look at descriptions and qboItemId types).
+- The mention is generic labor without a specific product ("general planting", "transplanting from another bed", "weeding").
+- The item is clearly the client's own (e.g., "moved client's existing rose to new bed").
+
+Suggested descriptions should be short noun phrases in the house style for plants/materials lines (e.g., "Lonicera 'Lemon Beauty'", "Sluggo", "Rose fertilizer", "Horticultural oil"). Don't write sentences.
+
+DATA
+Client: ${clientName}
+
+Work activities (raw notes/tasks live here):
 ${JSON.stringify(workActivities, null, 2)}
 
-Basic Line Items:
+Current line items (already represented — do not re-suggest these):
 ${JSON.stringify(basicLineItems, null, 2)}
 
-Create enhanced line items that include:
-1. Specific dates and detailed work descriptions
-2. Professional task descriptions that show expertise
-3. Materials, plants, and supplies used
-4. Clear value demonstration
-
-CRITICAL REQUIREMENTS:
-- Keep the EXACT same quantity (hours) and rate ($55/hour) from the basic line items
-- ONLY enhance the description - do NOT change quantity, rate, or amount
-- Preserve the hourly billing structure
-
-Return a JSON array of enhanced line items with this structure:
-[
-  {
-    "description": "Enhanced professional description with dates and specific work details",
-    "quantity": 11.06,  // KEEP EXACT SAME HOURS from basic line item
-    "rate": 55.00,      // KEEP EXACT SAME HOURLY RATE
-    "amount": 608.30,   // KEEP EXACT SAME TOTAL AMOUNT
-    "workActivityId": 123,
-    "qboItemId": "original-qbo-item-id"
-  }
-]
-
-CRITICAL: 
-- ONLY enhance descriptions, preserve all numbers exactly
-- Return ONLY a valid JSON array
-- Transform ALL provided work activities into detailed line items`;
+OUTPUT
+Return ONLY a JSON object (not an array) in this exact shape. Preserve quantity, rate, amount, workActivityId, qboItemId exactly for each lineItems entry. Use an empty array for suggestedAdditions if nothing applies.
+{
+  "lineItems": [
+    {
+      "description": "Rewritten description in house style.",
+      "quantity": 11.06,
+      "rate": 55.00,
+      "amount": 608.30,
+      "workActivityId": 123,
+      "qboItemId": "original-qbo-item-id"
+    }
+  ],
+  "suggestedAdditions": [
+    { "description": "Lonicera 'Lemon Beauty'", "category": "plants", "quantity": 1, "sourceWorkActivityId": 123 },
+    { "description": "Sluggo", "category": "materials", "quantity": 1, "sourceWorkActivityId": 123 }
+  ]
+}`;
 
     try {
       const response = await this.client.messages.create({
@@ -1492,25 +1506,26 @@ CRITICAL:
       const responseText = (textContent as any).text;
       console.log(`📝 Claude AI invoice response: ${responseText.length} characters`);
 
-      // Extract JSON from response
-      let enhancedLineItems: any[] = [];
-      
+      // Extract a JSON object (preferred) — fall back to a bare array for safety if the
+      // model regresses to the older shape.
+      let parsed: any;
       try {
-        // Look for JSON array in the response
-        const jsonMatch = responseText.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          enhancedLineItems = JSON.parse(jsonMatch[0]);
-          console.log(`✅ Successfully generated ${enhancedLineItems.length} enhanced line items`);
+        const objectMatch = responseText.match(/\{[\s\S]*\}/);
+        const arrayMatch = responseText.match(/\[[\s\S]*\]/);
+        const codeBlockMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+
+        if (objectMatch) {
+          parsed = JSON.parse(objectMatch[0]);
+        } else if (codeBlockMatch) {
+          parsed = JSON.parse(codeBlockMatch[1]);
+        } else if (arrayMatch) {
+          parsed = { lineItems: JSON.parse(arrayMatch[0]), suggestedAdditions: [] };
         } else {
-          // Try to extract from code blocks
-          const codeBlockMatch = responseText.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-          if (codeBlockMatch) {
-            enhancedLineItems = JSON.parse(codeBlockMatch[1]);
-            console.log(`✅ Generated ${enhancedLineItems.length} enhanced line items from code block`);
-          } else {
-            console.error(`❌ No JSON found in AI response:`, responseText.substring(0, 500));
-            throw new Error('No JSON array found in AI response');
-          }
+          throw new Error('No JSON object found in AI response');
+        }
+
+        if (Array.isArray(parsed)) {
+          parsed = { lineItems: parsed, suggestedAdditions: [] };
         }
       } catch (parseError) {
         console.error(`❌ Failed to parse AI response JSON:`, parseError);
@@ -1518,49 +1533,79 @@ CRITICAL:
         throw new Error(`Failed to parse AI-enhanced line items`);
       }
 
-      // Validate and normalize the enhanced line items, preserving original numbers
-      enhancedLineItems = enhancedLineItems.map((item: any, index: number) => {
-        const originalItem = basicLineItems[index];
-        if (!originalItem) {
-          console.warn(`AI returned more line items than provided, using basic item`);
-          return basicLineItems[basicLineItems.length - 1];
-        }
+      const rawLineItems: any[] = Array.isArray(parsed.lineItems) ? parsed.lineItems : [];
+      const rawSuggestions: any[] = Array.isArray(parsed.suggestedAdditions) ? parsed.suggestedAdditions : [];
+      console.log(`✅ Parsed ${rawLineItems.length} line items and ${rawSuggestions.length} suggested additions`);
 
-        // Validate that AI preserved the numbers correctly
-        const aiQuantity = parseFloat(item.quantity?.toString() || '0');
-        const aiRate = parseFloat(item.rate?.toString() || '0');
-        const aiAmount = parseFloat(item.amount?.toString() || '0');
+      const lineItems = rebuildLineItemsFromAIResponse(rawLineItems, basicLineItems);
+      const suggestedAdditions = normalizeSuggestedAdditions(rawSuggestions);
 
-        const originalQuantity = originalItem.quantity;
-        const originalRate = originalItem.rate;
-        const originalAmount = originalItem.amount;
-
-        // Check if AI changed the numbers (allow small floating point differences)
-        const quantityChanged = Math.abs(aiQuantity - originalQuantity) > 0.01;
-        const rateChanged = Math.abs(aiRate - originalRate) > 0.01;
-        const amountChanged = Math.abs(aiAmount - originalAmount) > 0.01;
-
-        if (quantityChanged || rateChanged || amountChanged) {
-          console.warn(`AI changed numbers for line item ${index + 1}, preserving original values`);
-          console.warn(`Original: qty=${originalQuantity}, rate=${originalRate}, amount=${originalAmount}`);
-          console.warn(`AI: qty=${aiQuantity}, rate=${aiRate}, amount=${aiAmount}`);
-        }
-
-        return {
-          description: item.description || originalItem.description,
-          quantity: originalQuantity, // Always use original quantity
-          rate: originalRate, // Always use original rate
-          amount: originalAmount, // Always use original amount
-          workActivityId: originalItem.workActivityId,
-          qboItemId: originalItem.qboItemId
-        };
-      });
-
-      return enhancedLineItems;
+      return { lineItems, suggestedAdditions };
 
     } catch (error) {
       console.error('❌ Error generating AI-enhanced invoice line items:', error);
       throw new Error(`Failed to generate AI-enhanced invoice: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+}
+
+export interface SuggestedAddition {
+  description: string;
+  category: 'plants' | 'materials';
+  quantity: number;
+  sourceWorkActivityId?: number;
+}
+
+/**
+ * Rebuild invoice line items from an AI response while preserving every
+ * non-description field (identity FKs and money values) from the originals.
+ *
+ * Two correctness rules drive this:
+ *   1. The AI is only trusted to rewrite the description. workActivityId,
+ *      otherChargeId, qboItemId, quantity, rate, and amount stay verbatim
+ *      from the original — otherwise the AI checkbox would silently change
+ *      what gets billed or which rows get FK-linked when saved locally.
+ *   2. We iterate the original line items (not the AI response) so a short
+ *      AI reply can never drop a billable row.
+ */
+export function rebuildLineItemsFromAIResponse(rawLineItems: any[], basicLineItems: any[]): any[] {
+  if (rawLineItems.length !== basicLineItems.length) {
+    console.warn(
+      `⚠️ AI returned ${rawLineItems.length} line items for ${basicLineItems.length} provided; ` +
+      `falling back to original descriptions for any missing entries to avoid silently dropping billable lines.`
+    );
+  }
+
+  return basicLineItems.map((originalItem: any, index: number) => {
+    const aiItem = rawLineItems[index];
+    const aiDescription =
+      aiItem && typeof aiItem.description === 'string' && aiItem.description.trim()
+        ? aiItem.description
+        : null;
+    return {
+      ...originalItem,
+      description: aiDescription ?? originalItem.description
+    };
+  });
+}
+
+/**
+ * Filter and normalize suggested additions from raw AI output:
+ *   - drop entries with an unrecognized category
+ *   - drop entries without a description
+ *   - default quantity to 1 if missing or non-positive
+ *   - preserve `sourceWorkActivityId` only when it's actually a number
+ */
+export function normalizeSuggestedAdditions(rawSuggestions: any[]): SuggestedAddition[] {
+  const out: SuggestedAddition[] = [];
+  for (const s of rawSuggestions) {
+    const category = String(s?.category || '').toLowerCase();
+    if (category !== 'plants' && category !== 'materials') continue;
+    const description = String(s?.description || '').trim();
+    if (!description) continue;
+    const quantity = typeof s?.quantity === 'number' && s.quantity > 0 ? s.quantity : 1;
+    const sourceWorkActivityId = typeof s?.sourceWorkActivityId === 'number' ? s.sourceWorkActivityId : undefined;
+    out.push({ description, category, quantity, sourceWorkActivityId });
+  }
+  return out;
 }
