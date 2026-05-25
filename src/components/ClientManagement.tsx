@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Typography,
-  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -11,7 +10,6 @@ import {
   TextField,
   FormControlLabel,
   Switch,
-  Chip,
   Alert,
   Snackbar,
   Grid,
@@ -19,15 +17,16 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Button,
+  CircularProgress,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Person as PersonIcon,
-  Visibility as ViewIcon,
-} from '@mui/icons-material';
-import FilterableTable, { FilterConfig, ColumnConfig } from './FilterableTable';
+  Plus,
+  Search,
+  Repeat,
+  Download,
+  ChevronRight,
+} from '../icons';
 
 interface Client {
   id: number;
@@ -54,6 +53,23 @@ interface Client {
   totalBillableHours: number;
 }
 
+type PriorityFilter = 'All' | 'High' | 'Medium' | 'Low';
+
+const priorityChipClass = (p: Client['priorityLevel']) => {
+  if (p === 'High') return 'gc-chip bloom';
+  if (p === 'Medium') return 'gc-chip honey';
+  return 'gc-chip green';
+};
+
+const initials = (name: string) =>
+  name
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
 const ClientManagement: React.FC = () => {
   const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
@@ -61,9 +77,15 @@ const ClientManagement: React.FC = () => {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error',
+  });
 
-  // Form state
+  const [query, setQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('All');
+
   const [formData, setFormData] = useState<Partial<Client>>({
     name: '',
     address: '',
@@ -93,13 +115,6 @@ const ClientManagement: React.FC = () => {
     fetchClients();
   }, [fetchClients]);
 
-  const handleEdit = (client: Client) => {
-    setSelectedClient(client);
-    setFormData(client);
-    setIsCreating(false);
-    setEditDialogOpen(true);
-  };
-
   const handleCreate = () => {
     setSelectedClient(null);
     setFormData({
@@ -118,296 +133,249 @@ const ClientManagement: React.FC = () => {
     try {
       const url = isCreating ? '/api/clients' : `/api/clients/${selectedClient?.id}`;
       const method = isCreating ? 'POST' : 'PUT';
-      
       const response = await fetch(url, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-
       if (response.ok) {
-        showSnackbar(
-          isCreating ? 'Client created successfully' : 'Client updated successfully',
-          'success'
-        );
+        showSnackbar(isCreating ? 'Client created' : 'Client updated', 'success');
         setEditDialogOpen(false);
         fetchClients();
       } else {
-        throw new Error('Failed to save client');
+        throw new Error('Save failed');
       }
-    } catch (error) {
+    } catch {
       showSnackbar('Failed to save client', 'error');
     }
   };
 
-  const handleDelete = async (client: Client) => {
-    if (window.confirm(`Are you sure you want to delete ${client.name}?`)) {
-      try {
-        const response = await fetch(`/api/clients/${client.id}`, {
-          method: 'DELETE',
-        });
-
-        if (response.ok) {
-          showSnackbar('Client deleted successfully', 'success');
-          fetchClients();
-        } else {
-          throw new Error('Failed to delete client');
-        }
-      } catch (error) {
-        showSnackbar('Failed to delete client', 'error');
-      }
-    }
+  const handleInputChange = <K extends keyof Client>(field: K, value: Client[K]) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleInputChange = (field: keyof Client, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return clients.filter((c) => {
+      if (priorityFilter !== 'All' && c.priorityLevel !== priorityFilter) return false;
+      if (!q) return true;
+      return (
+        c.name.toLowerCase().includes(q) ||
+        (c.address && c.address.toLowerCase().includes(q)) ||
+        (c.clientId && c.clientId.toLowerCase().includes(q))
+      );
+    });
+  }, [clients, query, priorityFilter]);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'High': return 'error';
-      case 'Medium': return 'warning';
-      case 'Low': return 'success';
-      default: return 'default';
-    }
-  };
+  const recurringCount = useMemo(
+    () => clients.filter((c) => c.isRecurringMaintenance).length,
+    [clients],
+  );
 
-  // Configure table columns
-  const columns: ColumnConfig<Client>[] = [
-    {
-      key: 'clientId',
-      label: 'Client ID',
-      sortable: true,
-    },
-    {
-      key: 'name',
-      label: 'Name',
-      sortable: true,
-      render: (client) => (
-        <Button 
-          variant="text" 
-          onClick={() => navigate(`/clients/${client.id}`)}
-          sx={{ textAlign: 'left', justifyContent: 'flex-start', textTransform: 'none' }}
-        >
-          {client.name}
-        </Button>
-      ),
-    },
-    {
-      key: 'address',
-      label: 'Address',
-      sortable: true,
-    },
-    {
-      key: 'geoZone',
-      label: 'Zone',
-      sortable: true,
-    },
-    {
-      key: 'priorityLevel',
-      label: 'Priority',
-      sortable: true,
-      render: (client) => (
-        <Chip
-          label={client.priorityLevel}
-          color={getPriorityColor(client.priorityLevel) as any}
-          size="small"
-        />
-      ),
-    },
-    {
-      key: 'isRecurringMaintenance',
-      label: 'Maintenance',
-      render: (client) => (
-        client.isRecurringMaintenance ? (
-          <Chip label="Recurring" color="primary" size="small" />
-        ) : (
-          <Chip label="One-time" color="default" size="small" />
-        )
-      ),
-    },
-    {
-      key: 'activeStatus',
-      label: 'Status',
-      sortable: true,
-      render: (client) => (
-        <Chip
-          label={client.activeStatus}
-          color={client.activeStatus === 'active' ? 'success' : 'default'}
-          size="small"
-        />
-      ),
-    },
-    {
-      key: 'totalWorkActivities',
-      label: 'Entries',
-      sortable: true,
-      render: (client) => (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {client.totalWorkActivities}
+  if (loading) {
+    return (
+      <main className="gc-page-wide" style={{ textAlign: 'center', paddingTop: 48 }}>
+        <CircularProgress size={32} />
+        <Typography variant="body2" sx={{ mt: 2, color: 'text.secondary' }}>
+          Loading clients…
         </Typography>
-      ),
-    },
-    {
-      key: 'totalHours',
-      label: 'Total Hours',
-      sortable: true,
-      render: (client) => (
-        <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {client.totalHours.toFixed(1)}h
-        </Typography>
-      ),
-    },
-    {
-      key: 'totalBillableHours',
-      label: 'Billable Hours',
-      sortable: true,
-      render: (client) => (
-        <Typography variant="body2" sx={{ fontWeight: 600, color: 'primary.main' }}>
-          {client.totalBillableHours.toFixed(1)}h
-        </Typography>
-      ),
-    },
-  ];
-
-  // Configure filters
-  const filters: FilterConfig[] = [
-    {
-      key: 'name',
-      label: 'Client Name',
-      type: 'text',
-    },
-    {
-      key: 'geoZone',
-      label: 'Geographic Zone',
-      type: 'text',
-    },
-    {
-      key: 'priorityLevel',
-      label: 'Priority Level',
-      type: 'multiselect',
-      options: [
-        { value: 'High', label: 'High' },
-        { value: 'Medium', label: 'Medium' },
-        { value: 'Low', label: 'Low' },
-      ],
-    },
-    {
-      key: 'activeStatus',
-      label: 'Status',
-      type: 'select',
-      options: [
-        { value: 'active', label: 'Active' },
-        { value: 'inactive', label: 'Inactive' },
-      ],
-    },
-    {
-      key: 'isRecurringMaintenance',
-      label: 'Maintenance Type',
-      type: 'select',
-      options: [
-        { value: true, label: 'Recurring' },
-        { value: false, label: 'One-time' },
-      ],
-    },
-    {
-      key: 'totalWorkActivities',
-      label: 'Number of Entries',
-      type: 'select',
-      options: [
-        { value: 0, label: 'No entries' },
-        { value: '1-5', label: '1-5 entries' },
-        { value: '6-20', label: '6-20 entries' },
-        { value: '21+', label: '21+ entries' },
-      ],
-    },
-    {
-      key: 'totalHours',
-      label: 'Total Hours Range',
-      type: 'select',
-      options: [
-        { value: 0, label: 'No hours' },
-        { value: '1-10', label: '1-10 hours' },
-        { value: '11-50', label: '11-50 hours' },
-        { value: '51+', label: '51+ hours' },
-      ],
-    },
-  ];
-
-  // Handle table actions
-  const handleRowAction = (action: string, client: Client) => {
-    switch (action) {
-      case 'view':
-        navigate(`/clients/${client.id}`);
-        break;
-      case 'edit':
-        handleEdit(client);
-        break;
-      case 'delete':
-        handleDelete(client);
-        break;
-      default:
-        break;
-    }
-  };
-
-  const tableActions = [
-    {
-      key: 'view',
-      label: 'View',
-      icon: <ViewIcon />,
-      color: 'primary' as const,
-    },
-    {
-      key: 'edit',
-      label: 'Edit',
-      icon: <EditIcon />,
-      color: 'default' as const,
-    },
-    {
-      key: 'delete',
-      label: 'Delete',
-      icon: <DeleteIcon />,
-      color: 'error' as const,
-    },
-  ];
-
-  if (loading) return <Typography>Loading clients...</Typography>;
+      </main>
+    );
+  }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <FilterableTable
-        data={clients}
-        columns={columns}
-        filters={filters}
-        onRowAction={handleRowAction}
-        actions={tableActions}
-        initialSortBy="name"
-        initialSortOrder="asc"
-        rowKeyField="id"
-        emptyMessage="No clients found"
-        title={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PersonIcon /> Client Management
-          </Box>
-        }
-        headerActions={
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleCreate}
-          >
-            Add Client
-          </Button>
-        }
-      />
+    <main className="gc-page-wide" data-screen-label="Clients">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <div className="gc-eyebrow">Roster</div>
+          <h1>Clients</h1>
+          <div className="sub">
+            {clients.length} {clients.length === 1 ? 'client' : 'clients'} · {recurringCount} on recurring maintenance
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="gc-btn secondary">
+            <Download size={15} strokeWidth={1.8} className="ic" />
+            Export CSV
+          </button>
+          <button type="button" className="gc-btn primary" onClick={handleCreate}>
+            <Plus size={15} strokeWidth={1.8} className="ic" />
+            Add client
+          </button>
+        </div>
+      </div>
 
-      {/* Edit/Create Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="md" fullWidth>
+      <div className="gc-card" style={{ overflow: 'hidden' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: 10,
+            padding: 16,
+            borderBottom: '1px solid var(--hairline)',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+          }}
+        >
+          <div style={{ flex: '1 1 260px', maxWidth: 320, position: 'relative' }}>
+            <Search
+              size={14}
+              strokeWidth={1.6}
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: 10,
+                transform: 'translateY(-50%)',
+                color: 'var(--fg-muted)',
+                pointerEvents: 'none',
+              }}
+            />
+            <input
+              className="gc-input"
+              style={{ paddingLeft: 30 }}
+              placeholder="Search clients or addresses…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {(['All', 'High', 'Medium', 'Low'] as PriorityFilter[]).map((p) => (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPriorityFilter(p)}
+                className={`gc-btn sm ${priorityFilter === p ? 'primary' : 'secondary'}`}
+              >
+                {p}
+                {p !== 'All' ? ' priority' : ''}
+              </button>
+            ))}
+          </div>
+          <div style={{ flex: 1 }} />
+          <span
+            style={{
+              fontSize: 12,
+              color: 'var(--fg-muted)',
+              fontFamily: 'var(--font-mono)',
+            }}
+          >
+            {filtered.length} / {clients.length} shown
+          </span>
+        </div>
+
+        <table className="gc-table">
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th>Address</th>
+              <th>Zone</th>
+              <th>Priority</th>
+              <th>Maintenance</th>
+              <th>Status</th>
+              <th style={{ textAlign: 'right' }}>Hours</th>
+              <th style={{ textAlign: 'right' }}>Billable</th>
+              <th aria-label="" />
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((c) => (
+              <tr key={c.id} onClick={() => navigate(`/clients/${c.id}`)}>
+                <td>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span className="gc-avatar sm">{initials(c.name)}</span>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{c.name}</div>
+                      <div
+                        style={{
+                          fontSize: 11.5,
+                          color: 'var(--fg-muted)',
+                          fontFamily: 'var(--font-mono)',
+                        }}
+                      >
+                        {c.clientId}
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td style={{ color: 'var(--fg-muted)' }}>{c.address}</td>
+                <td>
+                  <span className="gc-chip outline">{c.geoZone || '—'}</span>
+                </td>
+                <td>
+                  <span className={priorityChipClass(c.priorityLevel)}>
+                    <span className="dot" />
+                    {c.priorityLevel}
+                  </span>
+                </td>
+                <td>
+                  {c.isRecurringMaintenance ? (
+                    <span className="gc-chip green">
+                      <Repeat size={11} strokeWidth={1.8} />
+                      {c.maintenanceIntervalWeeks ? `every ${c.maintenanceIntervalWeeks}w` : 'Recurring'}
+                    </span>
+                  ) : (
+                    <span className="gc-chip outline">One-time</span>
+                  )}
+                </td>
+                <td>
+                  {c.activeStatus === 'active' ? (
+                    <span className="gc-chip green">
+                      <span className="dot" />
+                      Active
+                    </span>
+                  ) : (
+                    <span className="gc-chip outline">Paused</span>
+                  )}
+                </td>
+                <td
+                  style={{
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                  }}
+                >
+                  {(c.totalHours || 0).toFixed(1)}h
+                </td>
+                <td
+                  style={{
+                    textAlign: 'right',
+                    fontFamily: 'var(--font-mono)',
+                    color: 'var(--moss-700)',
+                    fontWeight: 600,
+                  }}
+                >
+                  {(c.totalBillableHours || 0).toFixed(1)}h
+                </td>
+                <td style={{ width: 40 }}>
+                  <ChevronRight size={16} strokeWidth={1.8} color="var(--fg-subtle)" />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {filtered.length === 0 && (
+          <Box sx={{ p: 4, textAlign: 'center', color: 'var(--fg-muted)' }}>
+            No clients match the current filters.
+          </Box>
+        )}
+      </div>
+
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="md"
+        fullWidth
+      >
         <DialogTitle>
-          {isCreating ? 'Create New Client' : `Edit ${selectedClient?.name}`}
+          {isCreating ? 'Create new client' : `Edit ${selectedClient?.name}`}
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -438,7 +406,7 @@ const ClientManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Geographic Zone"
+                label="Geographic zone"
                 fullWidth
                 value={formData.geoZone || ''}
                 onChange={(e) => handleInputChange('geoZone', e.target.value)}
@@ -446,10 +414,11 @@ const ClientManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Priority Level</InputLabel>
+                <InputLabel>Priority level</InputLabel>
                 <Select
+                  label="Priority level"
                   value={formData.priorityLevel || 'Medium'}
-                  onChange={(e) => handleInputChange('priorityLevel', e.target.value)}
+                  onChange={(e) => handleInputChange('priorityLevel', e.target.value as Client['priorityLevel'])}
                 >
                   <MenuItem value="High">High</MenuItem>
                   <MenuItem value="Medium">Medium</MenuItem>
@@ -461,8 +430,9 @@ const ClientManagement: React.FC = () => {
               <FormControl fullWidth>
                 <InputLabel>Status</InputLabel>
                 <Select
+                  label="Status"
                   value={formData.activeStatus || 'active'}
-                  onChange={(e) => handleInputChange('activeStatus', e.target.value)}
+                  onChange={(e) => handleInputChange('activeStatus', e.target.value as Client['activeStatus'])}
                 >
                   <MenuItem value="active">Active</MenuItem>
                   <MenuItem value="inactive">Inactive</MenuItem>
@@ -474,10 +444,12 @@ const ClientManagement: React.FC = () => {
                 control={
                   <Switch
                     checked={formData.isRecurringMaintenance || false}
-                    onChange={(e) => handleInputChange('isRecurringMaintenance', e.target.checked)}
+                    onChange={(e) =>
+                      handleInputChange('isRecurringMaintenance', e.target.checked)
+                    }
                   />
                 }
-                label="Recurring Maintenance"
+                label="Recurring maintenance"
               />
             </Grid>
             {formData.isRecurringMaintenance && (
@@ -488,20 +460,27 @@ const ClientManagement: React.FC = () => {
                     type="number"
                     fullWidth
                     value={formData.maintenanceIntervalWeeks || ''}
-                    onChange={(e) => handleInputChange('maintenanceIntervalWeeks', parseInt(e.target.value))}
+                    onChange={(e) =>
+                      handleInputChange(
+                        'maintenanceIntervalWeeks',
+                        parseInt(e.target.value, 10),
+                      )
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField
-                    label="Hours per Visit"
+                    label="Hours per visit"
                     fullWidth
                     value={formData.maintenanceHoursPerVisit || ''}
-                    onChange={(e) => handleInputChange('maintenanceHoursPerVisit', e.target.value)}
+                    onChange={(e) =>
+                      handleInputChange('maintenanceHoursPerVisit', e.target.value)
+                    }
                   />
                 </Grid>
                 <Grid item xs={12} sm={4}>
                   <TextField
-                    label="Maintenance Rate"
+                    label="Maintenance rate"
                     fullWidth
                     value={formData.maintenanceRate || ''}
                     onChange={(e) => handleInputChange('maintenanceRate', e.target.value)}
@@ -511,7 +490,7 @@ const ClientManagement: React.FC = () => {
             )}
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Preferred Days"
+                label="Preferred days"
                 fullWidth
                 value={formData.preferredDays || ''}
                 onChange={(e) => handleInputChange('preferredDays', e.target.value)}
@@ -520,7 +499,7 @@ const ClientManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
-                label="Preferred Time"
+                label="Preferred time"
                 fullWidth
                 value={formData.preferredTime || ''}
                 onChange={(e) => handleInputChange('preferredTime', e.target.value)}
@@ -528,7 +507,7 @@ const ClientManagement: React.FC = () => {
             </Grid>
             <Grid item xs={12}>
               <TextField
-                label="Special Notes"
+                label="Notes"
                 fullWidth
                 multiline
                 rows={3}
@@ -546,18 +525,20 @@ const ClientManagement: React.FC = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Snackbar for notifications */}
       <Snackbar
         open={snackbar.open}
         autoHideDuration={6000}
         onClose={() => setSnackbar({ ...snackbar, open: false })}
       >
-        <Alert severity={snackbar.severity} onClose={() => setSnackbar({ ...snackbar, open: false })}>
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </main>
   );
 };
 
-export default ClientManagement; 
+export default ClientManagement;

@@ -21,19 +21,19 @@ import {
   Alert,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Person as PersonIcon,
-  AccessTime as TimeIcon,
-  Update as UpdateIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-  Visibility as VisibilityIcon,
-  Business as BusinessIcon,
-  AttachMoney as AttachMoneyIcon,
-  Timeline as TimelineIcon,
+  Edit3 as EditIcon,
+  Trash2 as DeleteIcon,
+  UserRound as PersonIcon,
+  Clock as TimeIcon,
+  RefreshCw as UpdateIcon,
+  ChevronDown as ExpandMoreIcon,
+  ChevronUp as ExpandLessIcon,
+  Eye as VisibilityIcon,
+  Building2 as BusinessIcon,
+  DollarSign as AttachMoneyIcon,
+  Activity as TimelineIcon,
   Receipt as ReceiptIcon,
-} from '@mui/icons-material';
+} from '../icons';
 import { formatDateShortPacific, formatTimestampPacific } from '../utils/dateUtils';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
 
@@ -292,7 +292,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                   Billable Hours
                 </TableSortLabel>
               </TableCell>
-              <TableCell sx={{ width: '20%' }}>Employees</TableCell>
+              <TableCell sx={{ width: '20%' }}>Helpers</TableCell>
               <TableCell sx={{ width: '15%', textAlign: 'center' }}>Actions</TableCell>
               <TableCell sx={{ width: '8%', textAlign: 'center' }}>Details</TableCell>
             </TableRow>
@@ -357,7 +357,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <TimeIcon sx={{ fontSize: 16, color: 'text.secondary' }} />
+                        <TimeIcon size={16} />
                         <Typography variant="body2" sx={{ fontWeight: 600 }}>
                           {activity.billableHours ? `${activity.billableHours.toFixed(1)}h` : '-'}
                         </Typography>
@@ -375,7 +375,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                             key={index}
                             label={`${emp.employeeName || 'Unknown'} (${emp.hours.toFixed(1)}h)`}
                             size="small"
-                            icon={<PersonIcon sx={{ fontSize: 14 }} />}
+                            icon={<PersonIcon size={14} />}
                             variant="outlined"
                             sx={{ fontSize: '0.75rem', height: '24px' }}
                           />
@@ -395,12 +395,12 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                         </Button>
                         {onEdit && (
                           <IconButton onClick={() => onEdit(activity)} size="small" color="primary">
-                            <EditIcon sx={{ fontSize: 18 }} />
+                            <EditIcon size={18} />
                           </IconButton>
                         )}
                         {onDelete && (
                           <IconButton onClick={() => onDelete(activity)} size="small" color="error">
-                            <DeleteIcon sx={{ fontSize: 18 }} />
+                            <DeleteIcon size={18} />
                           </IconButton>
                         )}
                       </Box>
@@ -424,7 +424,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                             <Grid item xs={12} md={6}>
                               <Box sx={{ mb: 2 }}>
                                 <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                  <BusinessIcon sx={{ fontSize: 16 }} />
+                                  <BusinessIcon size={16} />
                                   Client & Project
                                 </Typography>
                                 <Box sx={{ pl: 2 }}>
@@ -442,7 +442,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                             <Grid item xs={12} md={6}>
                               <Box sx={{ mb: 2 }}>
                                 <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                  <TimelineIcon sx={{ fontSize: 16 }} />
+                                  <TimelineIcon size={16} />
                                   Time Details
                                 </Typography>
                                 <Box sx={{ pl: 2 }}>
@@ -472,7 +472,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                             <Grid item xs={12} md={6}>
                               <Box sx={{ mb: 2 }}>
                                 <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                  <AttachMoneyIcon sx={{ fontSize: 16 }} />
+                                  <AttachMoneyIcon size={16} />
                                   Charges
                                 </Typography>
                                 <Box sx={{ pl: 2 }}>
@@ -487,7 +487,7 @@ export const WorkActivitiesTable: React.FC<WorkActivitiesTableProps> = ({
                             <Grid item xs={12} md={6}>
                               <Box sx={{ mb: 2 }}>
                                 <Typography variant="subtitle2" sx={{ color: 'primary.main', display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                  <UpdateIcon sx={{ fontSize: 16 }} />
+                                  <UpdateIcon size={16} />
                                   Last Updated
                                 </Typography>
                                 <Box sx={{ pl: 2 }}>

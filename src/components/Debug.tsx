@@ -23,16 +23,16 @@ import {
   DialogActions,
 } from '@mui/material';
 import {
-  ExpandMore,
-  Refresh,
-  BugReport,
-  Memory,
-  TextFields,
+  ChevronDown as ExpandMore,
+  RefreshCw as Refresh,
+  Bug as BugReport,
+  Cpu as Memory,
+  Type as TextFields,
   Settings,
-  Storage,
+  Database as Storage,
   CloudDownload,
-  Warning,
-} from '@mui/icons-material';
+  AlertTriangle as Warning,
+} from '../icons';
 import { secureFetch } from '../services/csrf';
 
 interface SystemPromptData {
@@ -168,7 +168,7 @@ const Debug: React.FC = () => {
   return (
     <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-        <BugReport sx={{ mr: 2, color: 'primary.main' }} />
+        <BugReport style={{ marginRight: 16 }} />
         <Typography variant="h4" component="h1">
           System Prompt Debug
         </Typography>
@@ -186,7 +186,7 @@ const Debug: React.FC = () => {
       {/* Controls */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <Settings sx={{ mr: 1, color: 'primary.main' }} />
+          <Settings style={{ marginRight: 8 }} />
           <Typography variant="h6">Debug Controls</Typography>
         </Box>
         
@@ -217,7 +217,7 @@ const Debug: React.FC = () => {
       {/* Database Management */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <Storage sx={{ mr: 1, color: 'primary.main' }} />
+          <Storage style={{ marginRight: 8 }} />
           <Typography variant="h6">Database Management</Typography>
           <Button
             variant="outlined"
@@ -335,7 +335,7 @@ const Debug: React.FC = () => {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Memory sx={{ mr: 1, color: 'primary.main' }} />
+                    <Memory style={{ marginRight: 8 }} />
                     <Typography variant="h6">Token Usage</Typography>
                   </Box>
                   <Typography variant="h4" color="primary">
@@ -352,7 +352,7 @@ const Debug: React.FC = () => {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <TextFields sx={{ mr: 1, color: 'primary.main' }} />
+                    <TextFields style={{ marginRight: 8 }} />
                     <Typography variant="h6">Characters</Typography>
                   </Box>
                   <Typography variant="h4" color="primary">
@@ -369,7 +369,7 @@ const Debug: React.FC = () => {
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <BugReport sx={{ mr: 1, color: 'success.main' }} />
+                    <BugReport style={{ marginRight: 8 }} />
                     <Typography variant="h6">Mode</Typography>
                   </Box>
                   <Typography variant="h4" color="success.main">
@@ -445,7 +445,7 @@ const Debug: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center' }}>
-          <Warning sx={{ mr: 1, color: 'warning.main' }} />
+          <Warning style={{ marginRight: 8 }} />
           {confirmDialog.title}
         </DialogTitle>
         <DialogContent>

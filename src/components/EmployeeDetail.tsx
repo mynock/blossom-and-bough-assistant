@@ -39,15 +39,15 @@ import {
   TablePagination,
 } from '@mui/material';
 import {
-  ArrowBack as ArrowBackIcon,
-  Person as PersonIcon,
-  Work as WorkIcon,
-  Schedule as ScheduleIcon,
-  AttachMoney as MoneyIcon,
-  ExpandMore as ExpandMoreIcon,
-  Edit as EditIcon,
+  ArrowLeft as ArrowBackIcon,
+  UserRound as PersonIcon,
+  Hammer as WorkIcon,
+  CalendarDays as ScheduleIcon,
+  DollarSign as MoneyIcon,
+  ChevronDown as ExpandMoreIcon,
+  Edit3 as EditIcon,
   TrendingUp as TrendingUpIcon,
-} from '@mui/icons-material';
+} from '../icons';
 import { formatDatePacific } from '../utils/dateUtils';
 
 interface Employee {
@@ -345,7 +345,7 @@ const EmployeeDetail: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <Card>
                   <CardContent sx={{ textAlign: 'center' }}>
-                    <WorkIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+                    <WorkIcon size={40} />
                     <Typography variant="h4">{summary?.totalActivities || 0}</Typography>
                     <Typography variant="body2" color="text.secondary">Total Activities</Typography>
                   </CardContent>
@@ -355,7 +355,7 @@ const EmployeeDetail: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <Card>
                   <CardContent sx={{ textAlign: 'center' }}>
-                    <ScheduleIcon sx={{ fontSize: 40, color: 'success.main' }} />
+                    <ScheduleIcon size={40} />
                     <Typography variant="h4">{summary?.totalHours.toFixed(1) || 0}</Typography>
                     <Typography variant="body2" color="text.secondary">Total Hours</Typography>
                   </CardContent>
@@ -365,7 +365,7 @@ const EmployeeDetail: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <Card>
                   <CardContent sx={{ textAlign: 'center' }}>
-                    <MoneyIcon sx={{ fontSize: 40, color: 'warning.main' }} />
+                    <MoneyIcon size={40} />
                     <Typography variant="h4">{formatCurrency(summary?.totalEarnings || 0)}</Typography>
                     <Typography variant="body2" color="text.secondary">Total Earnings</Typography>
                   </CardContent>
@@ -375,7 +375,7 @@ const EmployeeDetail: React.FC = () => {
               <Grid item xs={12} sm={6} md={3}>
                 <Card>
                   <CardContent sx={{ textAlign: 'center' }}>
-                    <TrendingUpIcon sx={{ fontSize: 40, color: 'secondary.main' }} />
+                    <TrendingUpIcon size={40} />
                     <Typography variant="h4">{summary?.completionRate.toFixed(1) || 0}%</Typography>
                     <Typography variant="body2" color="text.secondary">Completion Rate</Typography>
                   </CardContent>

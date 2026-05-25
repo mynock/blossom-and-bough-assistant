@@ -39,25 +39,25 @@ import {
   Autocomplete,
 } from '@mui/material';
 import {
-  ArrowBack as ArrowBackIcon,
-  Person as PersonIcon,
-  Work as WorkIcon,
-  Schedule as ScheduleIcon,
-  ExpandMore as ExpandMoreIcon,
-  Edit as EditIcon,
-  LocationOn as LocationIcon,
-  Flag as PriorityIcon,
-  CalendarToday as CalendarIcon,
-  Note as NoteIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
+  ArrowLeft as ArrowBackIcon,
+  UserRound as PersonIcon,
+  Hammer as WorkIcon,
+  CalendarDays as ScheduleIcon,
+  ChevronDown as ExpandMoreIcon,
+  Edit3 as EditIcon,
+  MapPin as LocationIcon,
+  Pin as PriorityIcon,
+  Calendar as CalendarIcon,
+  FileText as NoteIcon,
+  Plus as AddIcon,
+  Trash2 as DeleteIcon,
   Receipt as ReceiptIcon,
-  AttachMoney as AttachMoneyIcon,
-  CheckCircle as CheckCircleIcon,
-  TableChart as TableChartIcon,
-  ViewList as ViewListIcon,
-  StickyNote2 as StickyNote2Icon,
-} from '@mui/icons-material';
+  DollarSign as AttachMoneyIcon,
+  CheckCircle2 as CheckCircleIcon,
+  LayoutDashboard as TableChartIcon,
+  ListChecks as ViewListIcon,
+  FileText as StickyNote2Icon,
+} from '../icons';
 import { WorkActivitiesTable } from './WorkActivitiesTable';
 import { secureFetch } from '../services/csrf';
 import { ClientTasksList } from './ClientTasksList';
@@ -686,26 +686,41 @@ const ClientDetail: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/clients')} variant="outlined">
-            Back
-          </Button>
-          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PersonIcon /> {client.name}
-          </Typography>
-          <Chip 
-            label={client.activeStatus} 
-            color={client.activeStatus === 'active' ? 'success' : 'default'} 
-            size="small" 
-          />
-        </Box>
+    <main className="gc-page-wide" data-screen-label="Client detail">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <button
+            type="button"
+            className="gc-btn ghost sm"
+            onClick={() => navigate('/clients')}
+            style={{ marginBottom: 6 }}
+          >
+            <ArrowBackIcon size={16} />
+            Back to clients
+          </button>
+          <div className="gc-eyebrow">Client · {client.clientId}</div>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {client.name}
+            <Chip
+              label={client.activeStatus === 'active' ? 'Active' : 'Paused'}
+              color={client.activeStatus === 'active' ? 'success' : 'default'}
+              size="small"
+            />
+          </h1>
+        </div>
         <Button startIcon={<EditIcon />} variant="contained" onClick={handleEdit}>
-          Edit Client
+          Edit client
         </Button>
-      </Box>
+      </div>
 
       {/* Client Information */}
       <Grid container spacing={3}>
@@ -719,25 +734,25 @@ const ClientDetail: React.FC = () => {
             <AccordionDetails>
               <Stack spacing={2}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PersonIcon color="action" />
+                  <PersonIcon />
                   <Typography variant="body2" color="text.secondary">Client ID:</Typography>
                   <Typography variant="body1">{client.clientId}</Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <LocationIcon color="action" />
+                  <LocationIcon />
                   <Typography variant="body2" color="text.secondary">Address:</Typography>
                   <Typography variant="body1">{client.address}</Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <LocationIcon color="action" />
+                  <LocationIcon />
                   <Typography variant="body2" color="text.secondary">Zone:</Typography>
                   <Typography variant="body1">{client.geoZone}</Typography>
                 </Box>
                 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <PriorityIcon color="action" />
+                  <PriorityIcon />
                   <Typography variant="body2" color="text.secondary">Priority:</Typography>
                   <Chip 
                     label={client.priorityLevel} 
@@ -748,7 +763,7 @@ const ClientDetail: React.FC = () => {
                 
                 {client.preferredDays && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CalendarIcon color="action" />
+                    <CalendarIcon />
                     <Typography variant="body2" color="text.secondary">Preferred Days:</Typography>
                     <Typography variant="body1">{client.preferredDays}</Typography>
                   </Box>
@@ -756,7 +771,7 @@ const ClientDetail: React.FC = () => {
                 
                 {client.preferredTime && (
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <ScheduleIcon color="action" />
+                    <ScheduleIcon />
                     <Typography variant="body2" color="text.secondary">Preferred Time:</Typography>
                     <Typography variant="body1">{client.preferredTime}</Typography>
                   </Box>
@@ -785,31 +800,31 @@ const ClientDetail: React.FC = () => {
                 {client.isRecurringMaintenance && (
                   <>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CalendarIcon color="action" />
+                      <CalendarIcon />
                       <Typography variant="body2" color="text.secondary">Interval:</Typography>
                       <Typography variant="body1">{client.maintenanceIntervalWeeks} weeks</Typography>
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ScheduleIcon color="action" />
+                      <ScheduleIcon />
                       <Typography variant="body2" color="text.secondary">Hours per Visit:</Typography>
                       <Typography variant="body1">{client.maintenanceHoursPerVisit || '-'}</Typography>
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <ScheduleIcon color="action" />
+                      <ScheduleIcon />
                       <Typography variant="body2" color="text.secondary">Rate:</Typography>
                       <Typography variant="body1">{client.maintenanceRate || '-'}</Typography>
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CalendarIcon color="action" />
+                      <CalendarIcon />
                       <Typography variant="body2" color="text.secondary">Last Maintenance:</Typography>
                       <Typography variant="body1">{formatDatePacific(client.lastMaintenanceDate)}</Typography>
                     </Box>
                     
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CalendarIcon color="action" />
+                      <CalendarIcon />
                       <Typography variant="body2" color="text.secondary">Next Target:</Typography>
                       <Typography variant="body1">{formatDatePacific(client.nextMaintenanceTarget)}</Typography>
                     </Box>
@@ -834,7 +849,7 @@ const ClientDetail: React.FC = () => {
             <Grid item xs={12} sm={6} md={3}>
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
-                  <WorkIcon sx={{ fontSize: 40, color: 'primary.main' }} />
+                  <WorkIcon size={40} />
                   <Typography variant="h4">{summary?.totalActivities || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">Total Activities</Typography>
                 </CardContent>
@@ -844,7 +859,7 @@ const ClientDetail: React.FC = () => {
             <Grid item xs={12} sm={6} md={3}>
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
-                  <ScheduleIcon sx={{ fontSize: 40, color: 'secondary.main' }} />
+                  <ScheduleIcon size={40} />
                   <Typography variant="h4">{summary?.totalHours.toFixed(1) || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">Total Hours</Typography>
                 </CardContent>
@@ -854,7 +869,7 @@ const ClientDetail: React.FC = () => {
             <Grid item xs={12} sm={6} md={3}>
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
-                  <ScheduleIcon sx={{ fontSize: 40, color: 'info.main' }} />
+                  <ScheduleIcon size={40} />
                   <Typography variant="h4">{summary?.totalBillableHours.toFixed(1) || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">Total Billable Hours</Typography>
                 </CardContent>
@@ -864,7 +879,7 @@ const ClientDetail: React.FC = () => {
             <Grid item xs={12} sm={6} md={3}>
               <Card>
                 <CardContent sx={{ textAlign: 'center' }}>
-                  <CalendarIcon sx={{ fontSize: 40, color: 'warning.main' }} />
+                  <CalendarIcon size={40} />
                   <Typography variant="h4">{summary?.yearToDateHours.toFixed(1) || 0}</Typography>
                   <Typography variant="body2" color="text.secondary">YTD Hours</Typography>
                 </CardContent>
@@ -889,15 +904,15 @@ const ClientDetail: React.FC = () => {
                 size="small"
               >
                 <ToggleButton value="table" aria-label="table view">
-                  <TableChartIcon sx={{ mr: 1 }} />
+                  <TableChartIcon style={{ marginRight: 8 }} />
                   Table View
                 </ToggleButton>
                 <ToggleButton value="date" aria-label="date view">
-                  <ViewListIcon sx={{ mr: 1 }} />
+                  <ViewListIcon style={{ marginRight: 8 }} />
                   Tasks List
                 </ToggleButton>
                 <ToggleButton value="notes" aria-label="notes view">
-                  <StickyNote2Icon sx={{ mr: 1 }} />
+                  <StickyNote2Icon style={{ marginRight: 8 }} />
                   Notes List
                 </ToggleButton>
               </ToggleButtonGroup>
@@ -932,7 +947,7 @@ const ClientDetail: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ReceiptIcon sx={{ color: 'primary.main' }} />
+                  <ReceiptIcon />
                   <Typography variant="h6">Ready to Invoice</Typography>
                 </Box>
                 <Button
@@ -983,7 +998,7 @@ const ClientDetail: React.FC = () => {
                 </Box>
               ) : (
                 <Box sx={{ textAlign: 'center', py: 3 }}>
-                  <ReceiptIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <ReceiptIcon size={48} style={{ marginBottom: 16 }} />
                   <Typography variant="body1" color="text.secondary">
                     No completed work activities ready to invoice
                   </Typography>
@@ -1001,7 +1016,7 @@ const ClientDetail: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CalendarIcon color="primary" />
+                <CalendarIcon />
                 Upcoming Schedule
                 {upcomingSchedule && (
                   <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
@@ -1039,7 +1054,7 @@ const ClientDetail: React.FC = () => {
                           </Typography>
                           {event.location && (
                             <Typography variant="body2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <LocationIcon fontSize="small" />
+                              <LocationIcon size={16} />
                               {event.location}
                             </Typography>
                           )}
@@ -1068,7 +1083,7 @@ const ClientDetail: React.FC = () => {
             <CardContent>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <NoteIcon color="primary" />
+                  <NoteIcon />
                   Client Notes
                   {clientNotes.length > 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ ml: 1 }}>
@@ -1389,7 +1404,7 @@ const ClientDetail: React.FC = () => {
                             onClick={() => removePreviewLineItem(index)}
                             aria-label="Remove line"
                           >
-                            <DeleteIcon fontSize="small" />
+                            <DeleteIcon size={16} />
                           </IconButton>
                         </TableCell>
                       </TableRow>
@@ -1523,7 +1538,7 @@ const ClientDetail: React.FC = () => {
                                   onClick={() => removeSuggestedLineItem(index)}
                                   aria-label="Remove suggestion"
                                 >
-                                  <DeleteIcon fontSize="small" />
+                                  <DeleteIcon size={16} />
                                 </IconButton>
                               </TableCell>
                             </TableRow>
@@ -1810,7 +1825,7 @@ const ClientDetail: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </main>
   );
 };
 

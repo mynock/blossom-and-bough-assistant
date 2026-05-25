@@ -17,7 +17,6 @@ import {
   Alert,
   Divider,
   Paper,
-  IconButton,
   Accordion,
   AccordionSummary,
   AccordionDetails,
@@ -31,25 +30,25 @@ import {
   Stack,
 } from '@mui/material';
 import {
-  ArrowBack,
-  Assignment,
-  AccessTime,
-  AttachMoney,
-  Person,
-  Business,
-  Edit,
-  Delete,
-  Schedule,
-  CheckCircle,
-  PendingActions,
-  Cancel,
-  Work,
-  ExpandMore,
-  LocalFlorist,
+  ArrowLeft as ArrowBack,
+  ClipboardCheck as Assignment,
+  Clock as AccessTime,
+  DollarSign as AttachMoney,
+  UserRound as Person,
+  Building2 as Business,
+  Edit3 as Edit,
+  Trash2 as Delete,
+  CalendarDays as Schedule,
+  CheckCircle2 as CheckCircle,
+  Clock as PendingActions,
+  XCircle as Cancel,
+  Hammer as Work,
+  ChevronDown as ExpandMore,
+  Leaf as LocalFlorist,
   ShoppingCart,
-  Timeline,
-  Sync,
-} from '@mui/icons-material';
+  Activity as Timeline,
+  RefreshCw as Sync,
+} from '../icons';
 import { API_ENDPOINTS } from '../config/api';
 import { formatDateLongPacific, formatDateTimePacific } from '../utils/dateUtils';
 import { sanitizeHtml } from '../utils/sanitizeHtml';
@@ -254,38 +253,40 @@ const WorkActivityDetail: React.FC = () => {
   );
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <IconButton onClick={() => navigate('/work-activities')} sx={{ mr: 1 }}>
-            <ArrowBack />
-          </IconButton>
-          <Typography variant="h4" sx={{ flexGrow: 1 }}>
-            Work Activity Details
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="outlined"
-              startIcon={<Edit />}
-              onClick={handleEdit}
-            >
-              Edit
-            </Button>
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<Delete />}
-              onClick={handleDelete}
-            >
-              Delete
-            </Button>
-          </Box>
+    <main className="gc-page-wide" data-screen-label="Work activity">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <button
+            type="button"
+            className="gc-btn ghost sm"
+            onClick={() => navigate('/work-activities')}
+            style={{ marginBottom: 6, paddingLeft: 6 }}
+          >
+            <ArrowBack size={16} />
+            Back to work activities
+          </button>
+          <div className="gc-eyebrow">Work activity · #{activity.id}</div>
+          <h1>{activity.clientName || 'Work activity'}</h1>
+          <div className="sub">{formatDateLongPacific(activity.date)} · {activity.workType.replace(/_/g, ' ')}</div>
+        </div>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button variant="outlined" startIcon={<Edit />} onClick={handleEdit}>
+            Edit
+          </Button>
+          <Button variant="outlined" color="error" startIcon={<Delete />} onClick={handleDelete}>
+            Delete
+          </Button>
         </Box>
-        <Typography variant="subtitle1" color="text.secondary">
-          Activity #{activity.id} • {formatDateLongPacific(activity.date)}
-        </Typography>
-      </Box>
+      </div>
 
       {/* Status and Basic Info */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -310,7 +311,7 @@ const WorkActivityDetail: React.FC = () => {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <AccessTime sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+              <AccessTime size={40} style={{ marginBottom: 8 }} />
               <Typography variant="h4">{activity.totalHours}h</Typography>
               <Typography variant="body2" color="text.secondary">
                 Total Hours
@@ -327,7 +328,7 @@ const WorkActivityDetail: React.FC = () => {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <AttachMoney sx={{ fontSize: 40, color: 'success.main', mb: 1 }} />
+              <AttachMoney size={40} style={{ marginBottom: 8 }} />
               <Typography variant="h4">{formatCurrency(totalEarnings)}</Typography>
               <Typography variant="body2" color="text.secondary">
                 Total Earnings
@@ -344,10 +345,10 @@ const WorkActivityDetail: React.FC = () => {
         <Grid item xs={12} md={3}>
           <Card>
             <CardContent sx={{ textAlign: 'center' }}>
-              <Person sx={{ fontSize: 40, color: 'info.main', mb: 1 }} />
+              <Person size={40} style={{ marginBottom: 8 }} />
               <Typography variant="h4">{activity.employeesList.length}</Typography>
               <Typography variant="body2" color="text.secondary">
-                {activity.employeesList.length === 1 ? 'Employee' : 'Employees'}
+                {activity.employeesList.length === 1 ? 'Helper' : 'Helpers'}
               </Typography>
             </CardContent>
           </Card>
@@ -368,7 +369,7 @@ const WorkActivityDetail: React.FC = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Business sx={{ mr: 1, color: 'text.secondary' }} />
+                    <Business style={{ marginRight: 8 }} />
                     <Box>
                       <Typography variant="body2" color="text.secondary">
                         Client
@@ -391,7 +392,7 @@ const WorkActivityDetail: React.FC = () => {
                 </Grid>
                 <Grid item xs={12} sm={6}>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                    <Assignment sx={{ mr: 1, color: 'text.secondary' }} />
+                    <Assignment style={{ marginRight: 8 }} />
                     <Box>
                       <Typography variant="body2" color="text.secondary">
                         Project
@@ -477,7 +478,7 @@ const WorkActivityDetail: React.FC = () => {
                 <Table>
                   <TableHead>
                     <TableRow>
-                      <TableCell>Employee</TableCell>
+                      <TableCell>Helper</TableCell>
                       <TableCell align="right">Hours</TableCell>
                       <TableCell align="right">Earnings</TableCell>
                     </TableRow>
@@ -551,7 +552,7 @@ const WorkActivityDetail: React.FC = () => {
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                <ShoppingCart sx={{ mr: 1, verticalAlign: 'middle' }} />
+                <ShoppingCart style={{ marginRight: 8, verticalAlign: 'middle' }} />
                 Other Charges
               </Typography>
               <Divider sx={{ mb: 2 }} />
@@ -594,7 +595,7 @@ const WorkActivityDetail: React.FC = () => {
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                <LocalFlorist sx={{ mr: 1, verticalAlign: 'middle' }} />
+                <LocalFlorist style={{ marginRight: 8, verticalAlign: 'middle' }} />
                 Plants Used
               </Typography>
               <Divider sx={{ mb: 2 }} />
@@ -603,7 +604,7 @@ const WorkActivityDetail: React.FC = () => {
                   {activity.plantsList.map((plant, index) => (
                     <ListItem key={index} divider>
                       <ListItemIcon>
-                        <LocalFlorist color="success" />
+                        <LocalFlorist />
                       </ListItemIcon>
                       <ListItemText
                         primary={plant.name}
@@ -624,7 +625,7 @@ const WorkActivityDetail: React.FC = () => {
           <Card>
             <CardContent>
               <Typography variant="h6" gutterBottom>
-                <Timeline sx={{ mr: 1, verticalAlign: 'middle' }} />
+                <Timeline style={{ marginRight: 8, verticalAlign: 'middle' }} />
                 System Information
               </Typography>
               <Divider sx={{ mb: 2 }} />
@@ -661,7 +662,7 @@ const WorkActivityDetail: React.FC = () => {
                       Notion Integration
                     </Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                      <Sync color="info" />
+                      <Sync />
                       <Typography variant="body2">
                         Synced with Notion
                       </Typography>
@@ -689,7 +690,7 @@ const WorkActivityDetail: React.FC = () => {
           </Card>
         </Grid>
       </Grid>
-    </Container>
+    </main>
   );
 };
 

@@ -22,13 +22,13 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  Preview as PreviewIcon,
-  PlayArrow as ApplyIcon,
-  Warning as WarningIcon,
-  ExpandMore as ExpandMoreIcon,
-  DateRange as DateRangeIcon,
-  Today as TodayIcon,
-} from '@mui/icons-material';
+  Eye as PreviewIcon,
+  Play as ApplyIcon,
+  AlertTriangle as WarningIcon,
+  ChevronDown as ExpandMoreIcon,
+  Calendar as DateRangeIcon,
+  Calendar as TodayIcon,
+} from '../icons';
 import { apiClient } from '../config/api';
 
 interface TravelTimeAllocationProps {

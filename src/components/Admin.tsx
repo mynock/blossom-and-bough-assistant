@@ -40,23 +40,23 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  Refresh,
-  Storage,
+  RefreshCw as Refresh,
+  Database as Storage,
   CloudUpload,
   CloudDownload,
-  DeleteForever,
-  Warning,
-  CheckCircle,
-  Error,
+  Trash2 as DeleteForever,
+  AlertTriangle as Warning,
+  CheckCircle2 as CheckCircle,
+  AlertCircle as Error,
   Settings,
-  History,
-  PlayArrow,
-  ExpandMore,
-  ExpandLess,
-  Timeline,
-  Cancel,
-  Schedule,
-} from '@mui/icons-material';
+  Clock as History,
+  Play as PlayArrow,
+  ChevronDown as ExpandMore,
+  ChevronUp as ExpandLess,
+  Activity as Timeline,
+  XCircle as Cancel,
+  CalendarDays as Schedule,
+} from '../icons';
 
 // Use proxy in development, direct URL in production
 const API_BASE = process.env.NODE_ENV === 'production' 
@@ -522,7 +522,7 @@ const Admin: React.FC = () => {
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Settings color="primary" />
+          <Settings />
           Database Administration
         </Typography>
         <Typography variant="subtitle1" color="text.secondary" gutterBottom>
@@ -557,7 +557,7 @@ const Admin: React.FC = () => {
               <Grid item xs={6} md={2}>
                 <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'primary.50' }}>
                   <Typography variant="h4" color="primary.main">{status.employeesCount}</Typography>
-                  <Typography variant="body2" color="primary.dark">Employees</Typography>
+                  <Typography variant="body2" color="primary.dark">Helpers</Typography>
                 </Paper>
               </Grid>
               <Grid item xs={6} md={2}>
@@ -716,7 +716,7 @@ const Admin: React.FC = () => {
             <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Timeline color="primary" />
+                  <Timeline />
                   Import Progress - {importOptions.client}
                 </Typography>
                 <Button
@@ -778,9 +778,9 @@ const Admin: React.FC = () => {
                           <ListItem key={index}>
                             <ListItemIcon>
                               {progress.phase === 'error' ? (
-                                <Error color="error" />
+                                <Error />
                               ) : progress.phase === 'complete' ? (
-                                <CheckCircle color="success" />
+                                <CheckCircle />
                               ) : (
                                 <CircularProgress size={20} />
                               )}
@@ -915,7 +915,7 @@ const Admin: React.FC = () => {
             <Box sx={{ mt: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                 <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Timeline color="primary" />
+                  <Timeline />
                   Pull Progress
                 </Typography>
               </Box>
@@ -960,9 +960,9 @@ const Admin: React.FC = () => {
                           <ListItem key={index}>
                             <ListItemIcon>
                               {progress.phase === 'error' ? (
-                                <Error color="error" />
+                                <Error />
                               ) : progress.phase === 'complete' ? (
-                                <CheckCircle color="success" />
+                                <CheckCircle />
                               ) : (
                                 <CircularProgress size={20} />
                               )}
@@ -1191,7 +1191,7 @@ const Admin: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Schedule fontSize="small" color="action" />
+                          <Schedule size={16} />
                           <Typography variant="body2" sx={{ fontFamily: 'monospace' }}>
                             {job.schedule}
                           </Typography>
@@ -1387,7 +1387,7 @@ const Admin: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Warning color="error" />
+          <Warning />
           Confirm Operation
         </DialogTitle>
         <DialogContent>
@@ -1420,7 +1420,7 @@ const Admin: React.FC = () => {
         fullWidth
       >
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <History color="primary" />
+          <History />
           Import Work Activities
         </DialogTitle>
         <DialogContent>

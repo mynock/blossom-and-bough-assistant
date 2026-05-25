@@ -15,10 +15,10 @@ import {
   AccordionDetails,
 } from '@mui/material';
 import {
-  CalendarToday as CalendarIcon,
-  CheckCircle as CheckCircleIcon,
-  ExpandMore as ExpandMoreIcon,
-} from '@mui/icons-material';
+  Calendar as CalendarIcon,
+  CheckCircle2 as CheckCircleIcon,
+  ChevronDown as ExpandMoreIcon,
+} from '../icons';
 import { formatDatePacific } from '../utils/dateUtils';
 
 interface WorkActivity {
@@ -180,7 +180,7 @@ export const ClientTasksList: React.FC<ClientTasksListProps> = ({
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CalendarIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                <CalendarIcon size={20} />
                 <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
                   {formatDatePacific(date)}
                 </Typography>
@@ -245,14 +245,14 @@ export const ClientTasksList: React.FC<ClientTasksListProps> = ({
                                   alignItems: 'center',
                                   gap: 1
                                 }}>
-                                  <CheckCircleIcon sx={{ fontSize: 16 }} />
+                                  <CheckCircleIcon size={16} />
                                   Tasks Completed:
                                 </Typography>
                                 <List dense sx={{ pl: 2 }}>
                                   {taskItems.map((task, index) => (
                                     <ListItem key={index} sx={{ py: 0.25, px: 0 }}>
                                       <ListItemIcon sx={{ minWidth: 24 }}>
-                                        <CheckCircleIcon sx={{ fontSize: 12, color: 'success.main' }} />
+                                        <CheckCircleIcon size={12} />
                                       </ListItemIcon>
                                       <ListItemText 
                                         primary={task} 

@@ -28,18 +28,18 @@ import {
   FormControlLabel,
 } from '@mui/material';
 import {
-  Sync,
-  CheckCircle,
-  Error,
+  RefreshCw as Sync,
+  CheckCircle2 as CheckCircle,
+  AlertCircle as Error,
   Info,
-  Assignment,
-  Warning,
-  ExpandMore,
+  ClipboardCheck as Assignment,
+  AlertTriangle as Warning,
+  ChevronDown as ExpandMore,
   Shield,
-  Stop,
-  Description,
-  Link,
-} from '@mui/icons-material';
+  Square as Stop,
+  FileText as Description,
+  LinkIcon as Link,
+} from '../icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -441,7 +441,7 @@ export const NotionSync: React.FC = () => {
         <CardHeader
           title="Notion Sync with AI Parsing"
           subheader="Sync work activities between Notion and your CRM using intelligent AI parsing"
-          avatar={<Assignment color="primary" />}
+          avatar={<Assignment />}
         />
         <CardContent>
           {/* Configuration Status */}
@@ -754,7 +754,7 @@ export const NotionSync: React.FC = () => {
           {/* Specific Page Sync Section */}
           <Box sx={{ mb: 4 }}>
             <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Description color="primary" />
+              <Description />
               Sync Specific Page
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
@@ -772,7 +772,7 @@ export const NotionSync: React.FC = () => {
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
-                      <Link color="action" />
+                      <Link />
                     </InputAdornment>
                   ),
                 }}
@@ -940,7 +940,7 @@ export const NotionSync: React.FC = () => {
               <Accordion>
                 <AccordionSummary expandIcon={<ExpandMore />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Warning color="warning" />
+                    <Warning />
                     <Typography variant="h6">
                       Sync Warnings ({lastSyncWarnings.length})
                     </Typography>
@@ -965,9 +965,9 @@ export const NotionSync: React.FC = () => {
                         <ListItem key={index} sx={{ pl: 0, alignItems: 'flex-start' }}>
                           <ListItemIcon sx={{ minWidth: 36, mt: 0.5 }}>
                             {isSkipped ? (
-                              <Shield color="info" fontSize="small" />
+                              <Shield size={16} />
                             ) : (
-                              <Warning color="warning" fontSize="small" />
+                              <Warning size={16} />
                             )}
                           </ListItemIcon>
                           <ListItemText 
@@ -1065,43 +1065,43 @@ export const NotionSync: React.FC = () => {
           <Box sx={{ mt: 4 }}>
             <Paper sx={{ p: 3, bgcolor: 'grey.50' }}>
               <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Info color="primary" />
+                <Info />
                 How AI-Powered Sync Works
               </Typography>
               <List dense>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Fetches Notion pages from your configured database" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Converts Notion page content to natural text format" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Uses AI to intelligently parse and extract work activity data" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Validates and imports activities using the same logic as work notes import" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Handles inconsistent data entry and cleans up field mapping automatically" />
                 </ListItem>
                 <ListItem>
                   <ListItemIcon>
-                    <CheckCircle color="primary" fontSize="small" />
+                    <CheckCircle size={16} />
                   </ListItemIcon>
                   <ListItemText primary="Provides detailed warnings for parsing issues" />
                 </ListItem>

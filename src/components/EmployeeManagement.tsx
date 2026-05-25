@@ -30,12 +30,12 @@ import {
   Checkbox,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Work as WorkIcon,
-  Visibility as VisibilityIcon,
-} from '@mui/icons-material';
+  Edit3 as EditIcon,
+  Trash2 as DeleteIcon,
+  Plus as AddIcon,
+  Hammer as WorkIcon,
+  Eye as VisibilityIcon,
+} from '../icons';
 
 interface Employee {
   id: number;
@@ -251,14 +251,14 @@ const EmployeeManagement: React.FC = () => {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <WorkIcon /> Employee Management
+          <WorkIcon /> Helpers
         </Typography>
         <Button
           variant="contained"
           startIcon={<AddIcon />}
           onClick={handleCreate}
         >
-          Add Employee
+          Add helper
         </Button>
       </Box>
 

@@ -27,11 +27,11 @@ import {
   InputLabel,
 } from '@mui/material';
 import {
-  Edit as EditIcon,
-  Delete as DeleteIcon,
-  Add as AddIcon,
-  Work as WorkIcon,
-} from '@mui/icons-material';
+  Edit3 as EditIcon,
+  Trash2 as DeleteIcon,
+  Plus as AddIcon,
+  Hammer as WorkIcon,
+} from '../icons';
 import { Client } from '../services/api';
 import { formatDatePacific } from '../utils/dateUtils';
 

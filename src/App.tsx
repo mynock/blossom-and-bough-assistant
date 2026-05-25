@@ -1,8 +1,9 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { ThemeProvider, CssBaseline } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { theme } from './theme/theme';
 import { AuthProvider, ProtectedRoute } from './contexts/AuthContext';
 import { NotificationsProvider } from './contexts/NotificationsContext';
 import Dashboard from './components/Dashboard';
@@ -28,31 +29,6 @@ import Settings from './components/Settings';
 import Reports from './components/Reports';
 import NaturalLanguageSQL from './components/NaturalLanguageSQL';
 import Notifications from './components/Notifications';
-
-const theme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: {
-      main: '#2e7d32', // Green theme for landscaping
-    },
-    secondary: {
-      main: '#558b2f',
-    },
-    background: {
-      default: '#f5f5f5',
-    },
-  },
-  typography: {
-    h4: {
-      fontWeight: 600,
-      color: '#2e7d32',
-    },
-    h5: {
-      fontWeight: 500,
-      color: '#2e7d32',
-    },
-  },
-});
 
 function App() {
   return (

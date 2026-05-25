@@ -18,12 +18,12 @@ import {
 } from '@mui/material';
 import {
   Info as InfoIcon,
-  Warning as WarningIcon,
-  Error as ErrorIcon,
-  Close as CloseIcon,
-  Done as DoneIcon,
-  OpenInNew
-} from '@mui/icons-material';
+  AlertTriangle as WarningIcon,
+  AlertCircle as ErrorIcon,
+  X as CloseIcon,
+  Check as DoneIcon,
+  ExternalLink as OpenInNew,
+} from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { notificationsApi, type Notification, type NotificationSeverity } from '../services/notifications';
 import { useNotifications } from '../contexts/NotificationsContext';
@@ -32,9 +32,9 @@ type Filter = 'all' | 'unread' | 'dismissed';
 
 function severityIcon(severity: NotificationSeverity) {
   switch (severity) {
-    case 'error': return <ErrorIcon color="error" />;
-    case 'warn': return <WarningIcon color="warning" />;
-    default: return <InfoIcon color="info" />;
+    case 'error': return <ErrorIcon />;
+    case 'warn': return <WarningIcon />;
+    default: return <InfoIcon />;
   }
 }
 
@@ -170,7 +170,7 @@ const Notifications: React.FC = () => {
                       !n.dismissedAt && (
                         <Tooltip title="Dismiss">
                           <IconButton edge="end" size="small" onClick={(e) => handleDismiss(e, n)} aria-label="dismiss">
-                            <CloseIcon fontSize="small" />
+                            <CloseIcon size={16} />
                           </IconButton>
                         </Tooltip>
                       )
@@ -202,7 +202,7 @@ const Notifications: React.FC = () => {
                                   onClick={(e) => e.stopPropagation()}
                                   style={{ color: 'inherit', textDecoration: 'underline' }}
                                 >
-                                  source <OpenInNew sx={{ fontSize: 12, verticalAlign: 'middle' }} />
+                                  source <OpenInNew size={12} style={{ verticalAlign: 'middle' }} />
                                 </a>
                               </>
                             )}

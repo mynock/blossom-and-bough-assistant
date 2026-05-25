@@ -28,19 +28,19 @@ import {
 } from '@mui/material';
 import {
   Settings as SettingsIcon,
-  AttachMoney,
-  ExpandMore,
+  DollarSign as AttachMoney,
+  ChevronDown as ExpandMore,
   Save,
-  RestoreOutlined,
+  RotateCcw as RestoreOutlined,
   Home,
-  Security,
-  Notifications,
-  Schedule,
-  Refresh,
-  Preview,
-  PlayArrow,
-  InfoOutlined,
-} from '@mui/icons-material';
+  Shield as Security,
+  Bell as Notifications,
+  CalendarDays as Schedule,
+  RefreshCw as Refresh,
+  Eye as Preview,
+  Play as PlayArrow,
+  Info as InfoOutlined,
+} from '../icons';
 import { apiClient } from '../config/api';
 
 interface Setting {
@@ -398,7 +398,7 @@ const Settings: React.FC = () => {
           >
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <AttachMoney color="primary" />
+                <AttachMoney />
                 <Typography variant="h6">Billing & Pricing</Typography>
                 <Chip label="billing" size="small" color="primary" />
               </Box>
@@ -479,7 +479,7 @@ const Settings: React.FC = () => {
                     <Card>
                       <CardContent>
                         <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <InfoOutlined color="info" />
+                          <InfoOutlined />
                           Apply Rounding to Existing Work Activities
                         </Typography>
                         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -593,7 +593,7 @@ const Settings: React.FC = () => {
           >
             <AccordionSummary expandIcon={<ExpandMore />}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Home color="secondary" />
+                <Home />
                 <Typography variant="h6">General</Typography>
                 <Chip label="general" size="small" color="secondary" />
               </Box>

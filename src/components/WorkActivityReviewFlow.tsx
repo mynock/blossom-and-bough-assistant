@@ -32,20 +32,19 @@ import {
   TableRow,
 } from '@mui/material';
 import {
-  CheckCircle,
-  NavigateNext,
-  NavigateBefore,
-  Edit,
-  PendingActions,
-  AccessTime,
-  Person,
-  Close,
+  CheckCircle2 as CheckCircle,
+  ChevronRight as NavigateNext,
+  ChevronLeft as NavigateBefore,
+  Edit3 as Edit,
+  Clock as AccessTime,
+  UserRound as Person,
+  X as Close,
   Save,
-  Cancel,
-  DirectionsCar,
-  Warning,
-  OpenInNew,
-} from '@mui/icons-material';
+  XCircle as Cancel,
+  MapPin as DirectionsCar,
+  AlertTriangle as Warning,
+  ExternalLink as OpenInNew,
+} from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { API_ENDPOINTS, apiClient } from '../config/api';
 import { formatDateLongPacific } from '../utils/dateUtils';
@@ -944,7 +943,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {selectedBulkDates.has(dateInfo.date) && (
-                            <CheckCircle color="primary" />
+                            <CheckCircle />
                           )}
                           <Button
                             size="small"
@@ -1087,7 +1086,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                           </Typography>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             {selectedBulkBreakDates.has(dateInfo.date) && (
-                              <CheckCircle color="secondary" />
+                              <CheckCircle />
                             )}
                             <Button
                               size="small"
@@ -1226,7 +1225,7 @@ const WorkActivityReviewFlow: React.FC = () => {
     return (
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Paper sx={{ p: 4, textAlign: 'center' }}>
-          <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+          <CheckCircle size={64} style={{ marginBottom: 16 }} />
           <Typography variant="h4" gutterBottom>
             All Caught Up! 🎉
           </Typography>
@@ -1247,7 +1246,7 @@ const WorkActivityReviewFlow: React.FC = () => {
       <Container maxWidth="lg" sx={{ py: 4 }}>
         <Paper sx={{ p: 4 }}>
           <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <CheckCircle sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+            <CheckCircle size={64} style={{ marginBottom: 16 }} />
             <Typography variant="h4" gutterBottom>
               Review Session Complete! 🎉
             </Typography>
@@ -1261,7 +1260,7 @@ const WorkActivityReviewFlow: React.FC = () => {
             <Card sx={{ mb: 4 }}>
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <DirectionsCar color="primary" />
+                  <DirectionsCar />
                   Travel Time Allocation Summary
                 </Typography>
                 
@@ -1348,33 +1347,48 @@ const WorkActivityReviewFlow: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" gutterBottom>
-          Review Work Activities
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Review and approve work activities synced from Notion
-        </Typography>
-      </Box>
+    <main className="gc-page-wide" data-screen-label="Review">
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          marginBottom: 14,
+          color: 'var(--fg-muted)',
+          fontSize: 13,
+          flexWrap: 'wrap',
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => navigate('/work-activities')}
+          className="gc-btn ghost sm"
+          style={{ paddingLeft: 6 }}
+        >
+          <NavigateBefore size={16} />
+          Back to queue
+        </button>
+        <span style={{ opacity: 0.5 }}>·</span>
+        <span style={{ fontFamily: 'var(--font-mono)' }}>
+          {currentIndex + 1} of {totalActivities}
+        </span>
+      </div>
 
-      {/* Progress */}
+      <div className="gc-page-header" style={{ marginBottom: 18 }}>
+        <div className="gc-eyebrow">Operations · Review</div>
+        <h1>Review work activities</h1>
+        <div className="sub">
+          {remainingCount === 0
+            ? 'All entries have been reviewed.'
+            : `${remainingCount} ${remainingCount === 1 ? 'entry needs' : 'entries need'} your review · ${Math.round(progress)}% complete`}
+        </div>
+      </div>
+
       <Card sx={{ mb: 4 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              Activity {currentIndex + 1} of {totalActivities}
-            </Typography>
-            <Chip 
-              label={`${remainingCount} remaining`} 
-              color={remainingCount === 0 ? "success" : "warning"} 
-              icon={<PendingActions />} 
-            />
-          </Box>
           <LinearProgress variant="determinate" value={progress} sx={{ mb: 1 }} />
           <Typography variant="body2" color="text.secondary">
-            {Math.round(progress)}% complete ({processedCount} of {totalActivities} approved)
+            {processedCount} of {totalActivities} approved
           </Typography>
         </CardContent>
       </Card>
@@ -1473,7 +1487,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <DirectionsCar fontSize="small" />
+                    <DirectionsCar size={16} />
                     Original Travel Time
                   </Typography>
                   <Typography variant="body1">
@@ -1482,7 +1496,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <DirectionsCar fontSize="small" />
+                    <DirectionsCar size={16} />
                     Allocated Travel Time
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1502,7 +1516,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <AccessTime fontSize="small" />
+                    <AccessTime size={16} />
                     Original Break Time
                   </Typography>
                   <Typography variant="body1">
@@ -1511,7 +1525,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <AccessTime fontSize="small" />
+                    <AccessTime size={16} />
                     Allocated Break Time
                   </Typography>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -1531,7 +1545,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 </Grid>
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <AccessTime fontSize="small" />
+                    <AccessTime size={16} />
                     Non-Billable Time
                   </Typography>
                   <Typography variant="body1">
@@ -1739,7 +1753,7 @@ const WorkActivityReviewFlow: React.FC = () => {
         fullWidth
       >
         <DialogTitle>
-          Edit Work Activity
+          Edit work activity
           <IconButton
             onClick={() => setEditDialogOpen(false)}
             sx={{ position: 'absolute', right: 8, top: 8 }}
@@ -1837,7 +1851,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 onChange={(e) => setEditedActivity(prev => ({ ...prev, travelTimeMinutes: parseInt(e.target.value) || 0 }))}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
-                  startAdornment: <DirectionsCar sx={{ mr: 1, color: 'text.secondary' }} />
+                  startAdornment: <DirectionsCar size={20} style={{ marginRight: 8 }} />
                 }}
                 helperText="Original travel time from work notes"
               />
@@ -1851,7 +1865,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 onChange={(e) => setEditedActivity(prev => ({ ...prev, adjustedTravelTimeMinutes: parseInt(e.target.value) || 0 }))}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
-                  startAdornment: <DirectionsCar sx={{ mr: 1, color: 'primary.main' }} />
+                  startAdornment: <DirectionsCar size={20} style={{ marginRight: 8 }} />
                 }}
                 helperText="Proportionally allocated travel time"
               />
@@ -1865,7 +1879,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 onChange={(e) => setEditedActivity(prev => ({ ...prev, breakTimeMinutes: parseInt(e.target.value) || 0 }))}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
-                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                  startAdornment: <AccessTime size={20} style={{ marginRight: 8 }} />
                 }}
                 helperText="Original break time from work notes"
               />
@@ -1879,7 +1893,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 onChange={(e) => setEditedActivity(prev => ({ ...prev, adjustedBreakTimeMinutes: parseInt(e.target.value) || 0 }))}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
-                  startAdornment: <AccessTime sx={{ mr: 1, color: 'secondary.main' }} />
+                  startAdornment: <AccessTime size={20} style={{ marginRight: 8 }} />
                 }}
                 helperText="Proportionally allocated break time"
               />
@@ -1893,7 +1907,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                 onChange={(e) => handleNonBillableTimeChange(parseInt(e.target.value) || 0)}
                 inputProps={{ step: 1, min: 0 }}
                 InputProps={{
-                  startAdornment: <AccessTime sx={{ mr: 1, color: 'text.secondary' }} />
+                  startAdornment: <AccessTime size={20} style={{ marginRight: 8 }} />
                 }}
                 helperText="Automatically updates billable hours"
               />
@@ -1904,7 +1918,7 @@ const WorkActivityReviewFlow: React.FC = () => {
             {editedActivity.employeesList && editedActivity.employeesList.length > 0 && (
               <Grid item xs={12}>
                 <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
-                  <Person color="primary" />
+                  <Person />
                   Employee Hours
                 </Typography>
                 <Paper sx={{ p: 2, border: '1px solid', borderColor: 'grey.200' }}>
@@ -1933,7 +1947,7 @@ const WorkActivityReviewFlow: React.FC = () => {
                             Employee Total: <strong>{calculateEmployeeHoursTotal()}h</strong> | Activity Total: <strong>{editedActivity.totalHours || 0}h</strong> | Billable: <strong>{editedActivity.billableHours || 0}h</strong>
                           </Typography>
                           <Typography variant="body2" color="success.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
-                            <CheckCircle fontSize="small" />
+                            <CheckCircle size={16} />
                             Totals automatically calculated from employee hours
                           </Typography>
                         </Box>
@@ -2275,7 +2289,7 @@ const WorkActivityReviewFlow: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </main>
   );
 };
 
