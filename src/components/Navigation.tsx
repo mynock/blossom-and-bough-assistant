@@ -45,6 +45,7 @@ import {
   Computer
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import NotificationBell from './NotificationBell';
 
 const Navigation: React.FC = () => {
   const navigate = useNavigate();
@@ -365,6 +366,8 @@ const Navigation: React.FC = () => {
           {!isMobile && <DesktopNav />}
 
           <Box sx={{ flexGrow: 1 }} />
+
+          <NotificationBell />
 
           {/* User Menu */}
           <Button
