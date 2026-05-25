@@ -1,0 +1,15 @@
+title: Blossom and Bough
+description: Legal documents for the Blossom and Bough business management app.
+
+# Only the legal/ folder should be published. Everything else under docs/
+# is internal planning material and must stay out of GitHub Pages output.
+exclude:
+  - README.md
+  - billable-hours-calculation.md
+  - reporting-needs.md
+  - plans
+  - design
+  - features
+  - setup
+
+theme: jekyll-theme-minimal
