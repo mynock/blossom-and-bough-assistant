@@ -7,18 +7,26 @@ import { NotificationService } from './NotificationService';
 import { debugLog } from '../utils/logger';
 import { Employee, NewWorkActivity, otherCharges, workActivityEmployees } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import {
+  getSelectProperty,
+  getMultiSelectProperty,
+  getTextProperty,
+  extractTextFromRichText,
+} from './notion/notionProperties';
+import {
+  parseHoursProperty,
+  parseTime,
+  calculateHoursFromTimeRange,
+  parseChargeFromText,
+} from './notion/notionParsers';
+import { findEmployeeMatch } from './notion/employeeMatcher';
+import { calculateSimilarity, findBestClientMatch } from './notion/clientMatcher';
 
 const notion = new Client({
   auth: process.env.NOTION_TOKEN,
 });
 
 const DATABASE_ID = process.env.NOTION_DATABASE_ID!;
-
-// Split a name into lowercase tokens on whitespace and hyphens, dropping blanks.
-// Used for whole-token name matching (see findEmployeeMatch).
-function tokenize(name: string): string[] {
-  return name.toLowerCase().split(/[\s-]+/).filter(Boolean);
-}
 
 export interface NotionWorkActivityData {
   notionPageId: string;
@@ -410,15 +418,15 @@ export class NotionSyncService {
       const properties = page.properties;
 
       // Extract all structured properties
-      const clientName = this.getSelectProperty(properties, 'Client Name');
+      const clientName = getSelectProperty(properties, 'Client Name');
       const date = this.getDateProperty(properties, 'Date');
-      const workType = this.getSelectProperty(properties, 'Work Type');
-      const startTime = this.getTextProperty(properties, 'Start Time');
-      const endTime = this.getTextProperty(properties, 'End Time');
-      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
+      const workType = getSelectProperty(properties, 'Work Type');
+      const startTime = getTextProperty(properties, 'Start Time');
+      const endTime = getTextProperty(properties, 'End Time');
+      const teamMembers = getMultiSelectProperty(properties, 'Team Members');
       const travelTime = this.parseTravelTime(properties, 'Travel Time');
       const breakTime = this.parseNonBillableTime(properties, 'Break Minutes');
-      const totalHours = this.parseHoursProperty(properties, 'Total Hours');
+      const totalHours = parseHoursProperty(properties, 'Total Hours');
       
       debugLog.info(`📊 Extracting structured data for ${clientName}: travel=${travelTime}min, break=${breakTime}min, hours=${totalHours}`);
 
@@ -481,12 +489,12 @@ export class NotionSyncService {
       const properties = page.properties;
 
       // Extract basic properties
-      const clientName = this.getSelectProperty(properties, 'Client Name');
+      const clientName = getSelectProperty(properties, 'Client Name');
       const date = this.getDateProperty(properties, 'Date');
-      const workType = this.getSelectProperty(properties, 'Work Type');
-      const startTime = this.getTextProperty(properties, 'Start Time');
-      const endTime = this.getTextProperty(properties, 'End Time');
-      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members');
+      const workType = getSelectProperty(properties, 'Work Type');
+      const startTime = getTextProperty(properties, 'Start Time');
+      const endTime = getTextProperty(properties, 'End Time');
+      const teamMembers = getMultiSelectProperty(properties, 'Team Members');
       const travelTime = this.parseTravelTime(properties, 'Travel Time');
       const breakTime = this.parseNonBillableTime(properties, 'Break Minutes');
       
@@ -601,91 +609,6 @@ export class NotionSyncService {
   // REMOVED: getEmployeeAbbreviation() - no longer needed with structured data approach
 
   /**
-   * Parse hours property from Notion (handles various formats)
-   */
-  private parseHoursProperty(properties: any, propertyName: string): number | null {
-    try {
-      const property = properties[propertyName];
-      if (!property) return null;
-
-      if (property.type === 'number' && property.number) {
-        return property.number;
-      }
-
-      if (property.type === 'rich_text' && property.rich_text?.[0]?.text?.content) {
-        const text = property.rich_text[0].text.content.trim();
-        const hours = parseFloat(text);
-        return isNaN(hours) ? null : hours;
-      }
-
-      return null;
-    } catch (error) {
-      debugLog.warn(`Failed to parse hours property '${propertyName}':`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Calculate hours from time range and employee count
-   */
-  private calculateHoursFromTimeRange(startTime: string, endTime: string, employeeCount: number): number | null {
-    try {
-      // Parse time strings (e.g., "2:00 pm", "4:35 pm")
-      const start = this.parseTime(startTime);
-      const end = this.parseTime(endTime);
-      
-      if (!start || !end) return null;
-
-      let duration = end - start;
-      if (duration < 0) duration += 24; // Handle overnight work
-
-      // Total work hours = duration × number of employees
-      return duration * employeeCount;
-    } catch (error) {
-      debugLog.warn(`Failed to calculate hours from time range ${startTime}-${endTime}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Parse time string to decimal hours
-   */
-  private parseTime(timeStr: string): number | null {
-    try {
-      const time = timeStr.toLowerCase().trim();
-      
-      // Handle formats like "2:00 pm", "14:30", "2:30"
-      const pmMatch = time.match(/(\d{1,2}):(\d{2})\s*pm/);
-      const amMatch = time.match(/(\d{1,2}):(\d{2})\s*am/);
-      const militaryMatch = time.match(/(\d{1,2}):(\d{2})$/);
-
-      if (pmMatch) {
-        let hours = parseInt(pmMatch[1]);
-        const minutes = parseInt(pmMatch[2]);
-        if (hours !== 12) hours += 12;
-        return hours + minutes / 60;
-      }
-
-      if (amMatch) {
-        let hours = parseInt(amMatch[1]);
-        const minutes = parseInt(amMatch[2]);
-        if (hours === 12) hours = 0;
-        return hours + minutes / 60;
-      }
-
-      if (militaryMatch) {
-        const hours = parseInt(militaryMatch[1]);
-        const minutes = parseInt(militaryMatch[2]);
-        return hours + minutes / 60;
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
    * Apply hours adjustments from Notion page content
    */
   private applyHoursAdjustments(baseHours: number, adjustments: Array<{ person: string; adjustment: string; notes: string }>): number {
@@ -715,63 +638,6 @@ export class NotionSyncService {
   }
 
   /**
-   * Find an employee by name. Matches in this order:
-   *   1. Exact full name (case-insensitive).
-   *   2. Whole-token match: every token of the shorter name appears as a complete
-   *      token of the longer name. So "Anne" matches "Anne McGary" (because "anne"
-   *      is a token of "Anne McGary"), but "An" does NOT match "Anne McGary"
-   *      (because "an" is not a token of "Anne McGary"), and "Andy" does NOT
-   *      match "Andrea Wilson" (no shared tokens).
-   *
-   * If more than one candidate matches at the token level the result is treated
-   * as ambiguous: returns null so the caller auto-creates with a visible warning
-   * rather than silently picking the wrong person.
-   *
-   * Does NOT do nickname/variant matching - "Andy" will not match "Andrea".
-   */
-  private findEmployeeMatch(
-    searchName: string,
-    employees: Employee[]
-  ): { match: Employee | null; ambiguousCandidates?: Employee[] } {
-    const search = searchName.toLowerCase().trim();
-    if (!search) return { match: null };
-
-    const exact = employees.find(emp => emp.name.toLowerCase().trim() === search);
-    if (exact) {
-      debugLog.info(`   📍 Found exact match: "${searchName}" = "${exact.name}"`);
-      return { match: exact };
-    }
-
-    const searchTokens = tokenize(search);
-    if (searchTokens.length === 0) return { match: null };
-
-    const tokenMatches = employees.filter(emp => {
-      const empTokens = tokenize(emp.name);
-      if (empTokens.length === 0) return false;
-      const [shorter, longer] =
-        searchTokens.length <= empTokens.length
-          ? [searchTokens, empTokens]
-          : [empTokens, searchTokens];
-      return shorter.every(t => longer.includes(t));
-    });
-
-    if (tokenMatches.length === 1) {
-      const match = tokenMatches[0];
-      debugLog.info(`   📍 Found token match: "${searchName}" ~ "${match.name}"`);
-      return { match };
-    }
-
-    if (tokenMatches.length > 1) {
-      const names = tokenMatches.map(e => e.name).join(', ');
-      debugLog.warn(`   ⚠️ Ambiguous match for "${searchName}" - candidates: ${names}. Treating as unmatched.`);
-      return { match: null, ambiguousCandidates: tokenMatches };
-    }
-
-    debugLog.info(`   ❌ No match found for "${searchName}"`);
-    return { match: null };
-  }
-
-  /**
    * Create work activity directly from structured Notion data (bypassing AI parsing)
    */
   private async createWorkActivityFromStructuredData(
@@ -782,15 +648,15 @@ export class NotionSyncService {
       const properties = page.properties;
 
       // Extract all structured data directly from Notion
-      const clientName = this.getSelectProperty(properties, 'Client Name');
+      const clientName = getSelectProperty(properties, 'Client Name');
       const date = this.getDateProperty(properties, 'Date');
-      const workType = this.getSelectProperty(properties, 'Work Type') || 'maintenance';
-      const startTime = this.getTextProperty(properties, 'Start Time');
-      const endTime = this.getTextProperty(properties, 'End Time');
-      const teamMembers = this.getMultiSelectProperty(properties, 'Team Members') || [];
+      const workType = getSelectProperty(properties, 'Work Type') || 'maintenance';
+      const startTime = getTextProperty(properties, 'Start Time');
+      const endTime = getTextProperty(properties, 'End Time');
+      const teamMembers = getMultiSelectProperty(properties, 'Team Members') || [];
       const travelTime = this.parseTravelTime(properties, 'Travel Time') || 0;
       const breakTime = this.parseNonBillableTime(properties, 'Break Minutes') || 0;
-      const totalHoursFromNotion = this.parseHoursProperty(properties, 'Total Hours');
+      const totalHoursFromNotion = parseHoursProperty(properties, 'Total Hours');
 
       debugLog.info(`📊 Direct Notion data extraction for ${clientName}:`);
       debugLog.info(`   Date: ${date}, Work Type: ${workType}`);
@@ -805,7 +671,7 @@ export class NotionSyncService {
       // Calculate total hours if not provided in Notion
       let totalHours = totalHoursFromNotion;
       if (!totalHours && startTime && endTime) {
-        const calculatedHours = this.calculateHoursFromTimeRange(startTime, endTime, teamMembers.length);
+        const calculatedHours = calculateHoursFromTimeRange(startTime, endTime, teamMembers.length);
         if (calculatedHours) {
           totalHours = calculatedHours;
           debugLog.info(`📊 Calculated total hours: ${totalHours}h (${startTime}-${endTime} × ${teamMembers.length} employees)`);
@@ -959,7 +825,7 @@ export class NotionSyncService {
       
       // If no exact match, try fuzzy matching
       if (!existingClient) {
-        const fuzzyMatch = this.findBestClientMatch(parsedActivity.clientName, existingClients);
+        const fuzzyMatch = findBestClientMatch(parsedActivity.clientName, existingClients);
         if (fuzzyMatch && fuzzyMatch.client) {
           existingClient = fuzzyMatch.client;
           debugLog.info(`🎯 Using fuzzy matched client: "${parsedActivity.clientName}" → "${fuzzyMatch.client.name}"`);
@@ -1076,73 +942,6 @@ export class NotionSyncService {
   }
 
   /**
-   * Calculate similarity between two strings using Levenshtein distance
-   */
-  private calculateSimilarity(str1: string, str2: string): number {
-    const a = str1.toLowerCase().trim();
-    const b = str2.toLowerCase().trim();
-    
-    if (a === b) return 1.0;
-    if (a.length === 0 || b.length === 0) return 0.0;
-    
-    const matrix: number[][] = [];
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
-    }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-    
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) === a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j] + 1
-          );
-        }
-      }
-    }
-    
-    const maxLength = Math.max(a.length, b.length);
-    const distance = matrix[b.length][a.length];
-    return (maxLength - distance) / maxLength;
-  }
-
-  /**
-   * Find the best matching client using fuzzy matching
-   */
-  private findBestClientMatch(clientName: string, existingClients: any[]): { client: any; similarity: number; } | null {
-    debugLog.info(`🔍 Finding best match for client: "${clientName}"`);
-    debugLog.info(`📋 Available clients: ${existingClients.map(c => c.name).join(', ')}`);
-    
-    let bestMatch: any = null;
-    let bestSimilarity = 0;
-    
-    for (const client of existingClients) {
-      const similarity = this.calculateSimilarity(clientName, client.name);
-      debugLog.info(`📊 Similarity "${clientName}" vs "${client.name}": ${(similarity * 100).toFixed(1)}%`);
-      
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = client;
-      }
-    }
-    
-    // Consider it a match if similarity is above 85%
-    if (bestSimilarity >= 0.85) {
-      debugLog.info(`✅ Found good match: "${clientName}" → "${bestMatch.name}" (${(bestSimilarity * 100).toFixed(1)}%)`);
-      return { client: bestMatch, similarity: bestSimilarity };
-    }
-    
-    debugLog.info(`❌ No good match found for "${clientName}" (best: ${(bestSimilarity * 100).toFixed(1)}%)`);
-    return null;
-  }
-
-  /**
    * Ensure a client exists, creating it if necessary with improved matching
    */
   private async ensureClientExists(clientName: string, notionPageUrl?: string): Promise<void> {
@@ -1165,7 +964,7 @@ export class NotionSyncService {
       }
 
       // Try fuzzy matching for similar names
-      const fuzzyMatch = this.findBestClientMatch(clientName, existingClients);
+      const fuzzyMatch = findBestClientMatch(clientName, existingClients);
       if (fuzzyMatch) {
         debugLog.info(`🎯 Using fuzzy match: "${clientName}" → "${fuzzyMatch.client.name}" (${(fuzzyMatch.similarity * 100).toFixed(1)}% match)`);
         return; // Use the existing similar client instead of creating a new one
@@ -1216,7 +1015,7 @@ export class NotionSyncService {
       const name = (rawName || '').trim();
       if (!name) continue;
 
-      const { match, ambiguousCandidates } = this.findEmployeeMatch(name, allEmployees);
+      const { match, ambiguousCandidates } = findEmployeeMatch(name, allEmployees);
       if (match) {
         employeeIds.push(match.id);
         debugLog.info(`   ✅ Matched "${name}" to "${match.name}" (ID: ${match.id})`);
@@ -1452,7 +1251,7 @@ export class NotionSyncService {
           case 'heading_1':
           case 'heading_2':
           case 'heading_3':
-            const headingText = this.extractTextFromRichText(block as any);
+            const headingText = extractTextFromRichText(block as any);
             if (headingText) {
               currentSection = headingText.toLowerCase();
               inChargesSection = currentSection.includes('materials') || 
@@ -1489,9 +1288,9 @@ export class NotionSyncService {
           case 'bulleted_list_item':
           case 'numbered_list_item':
             if (inChargesSection) {
-              const listText = this.extractTextFromRichText(block as any);
+              const listText = extractTextFromRichText(block as any);
               if (listText) {
-                const chargeItem = this.parseChargeFromText(listText, true); // true = from charges section
+                const chargeItem = parseChargeFromText(listText, true); // true = from charges section
                 if (chargeItem) {
                   materials.push(chargeItem);
                 }
@@ -1573,86 +1372,13 @@ export class NotionSyncService {
   }
 
   /**
-   * Extract text content from rich text blocks
-   */
-  private extractTextFromRichText(block: any): string {
-    if (block.type === 'heading_1' && block.heading_1?.rich_text) {
-      return block.heading_1.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    if (block.type === 'heading_2' && block.heading_2?.rich_text) {
-      return block.heading_2.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    if (block.type === 'heading_3' && block.heading_3?.rich_text) {
-      return block.heading_3.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    if (block.type === 'bulleted_list_item' && block.bulleted_list_item?.rich_text) {
-      return block.bulleted_list_item.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    if (block.type === 'numbered_list_item' && block.numbered_list_item?.rich_text) {
-      return block.numbered_list_item.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    return '';
-  }
-
-  /**
-   * Parse charge information from text like "1 bag debris" or "2 native mock orange"
-   */
-  private parseChargeFromText(text: string, isFromChargesSection: boolean = true): { description: string; cost: number } | null {
-    if (!text || text.trim() === '') return null;
-    
-    // Only skip plant list items if this is NOT from a charges/materials section
-    // This allows plant-related materials/fees to be processed as charges
-    if (!isFromChargesSection) {
-      const plantIndicators = ['native', 'achillea', 'agastache', 'guara', 'allium', 'terracotta', 'whirling', 'butterflies', 'kudos', 'yellow', 'cernuum'];
-      const lowerText = text.toLowerCase();
-      if (plantIndicators.some(indicator => lowerText.includes(indicator))) {
-        debugLog.debug(`Skipping plant list item: ${text}`);
-        return null;
-      }
-    }
-
-    // Try to extract cost from parentheses like "mulch ($27)" or "debris (35)"
-    const costMatch = text.match(/\(.*?(\d+(?:\.\d{2})?)\s*\)/);
-    const cost = costMatch ? parseFloat(costMatch[1]) : 0;
-
-    // Clean up description (remove cost info in parentheses)
-    let description = text.replace(/\(.*?\)/g, '').trim();
-    
-    // If no explicit cost, look for debris items which typically have standard costs
-    if (cost === 0 && description.toLowerCase().includes('debris')) {
-      // Default cost for debris items
-      return { description, cost: 25 }; // Default debris cost
-    }
-
-    return { description, cost };
-  }
-
-  /**
    * Check if Notion page was updated since last sync
    */
   private isNotionPageUpdated(notionLastEdited: string, dbLastUpdated: string): boolean {
     return new Date(notionLastEdited) > new Date(dbLastUpdated);
   }
 
-  // Helper methods for extracting Notion properties
-  private getSelectProperty(properties: any, propertyName: string): string | null {
-    const prop = properties[propertyName];
-    return prop?.select?.name || null;
-  }
-
-  private getMultiSelectProperty(properties: any, propertyName: string): string[] {
-    const prop = properties[propertyName];
-    return prop?.multi_select?.map((item: any) => item.name) || [];
-  }
-
-  private getTextProperty(properties: any, propertyName: string): string | null {
-    const prop = properties[propertyName];
-    if (prop?.rich_text?.length > 0) {
-      return prop.rich_text.map((text: any) => text.plain_text).join('');
-    }
-    return null;
-  }
-
+  // Helper methods for extracting Notion properties (extraction helpers now in ./notion/notionProperties)
   private getNumberProperty(properties: any, propertyName: string): number | null {
     const prop = properties[propertyName];
     return prop?.number || null;
