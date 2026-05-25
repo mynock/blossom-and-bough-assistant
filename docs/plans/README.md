@@ -8,12 +8,14 @@ A multi-agent architectural review of the codebase surfaced 32 substantial findi
 
 Finding #7 ("all authenticated users are admins") is intentionally omitted from these plans — the app is only used by ~2 people, so role-separation isn't worth doing yet.
 
+Finding #12 (FK on-delete behavior, Plan 2.5) is intentionally skipped — see `02-data-integrity.md` for rationale. Same scale reasoning: `NO ACTION` fails loudly today, and a `deleted_at`-everywhere change isn't justified at ~2 users.
+
 ## Index
 
 | # | Plan | Findings | Effort | Tier | Status |
 |---|---|---|---|---|---|
 | 1 | [Security Hardening](./01-security-hardening.md) | #1, #2, #3, #4, #5, #6 | 2–3 days | 🚨 Urgent | 🟡 In review ([#54](https://github.com/mynock/blossom-and-bough-assistant/pull/54)) |
-| 2 | [Data Integrity & Schema](./02-data-integrity.md) | #8, #9, #10, #11, #12 | 1.5 weeks | 🚨 Urgent | ⚪ Not started |
+| 2 | [Data Integrity & Schema](./02-data-integrity.md) | #8, #9, #10, #11, ~~#12~~ | 1.5 weeks | 🚨 Urgent | 🟢 2.1–2.4 merged · 2.5 🚫 won't do |
 | 3 | [Background Job Reliability](./03-background-jobs.md) | #13 | 1 week | 📉 Medium | ⚪ Not started |
 | 4 | [Query Performance](./04-query-performance.md) | #14, #15, #19 | 1 week | 📉 Urgent-soon | ⚪ Not started |
 | 5 | [Integration Efficiency](./05-integration-efficiency.md) | #16, #17, #18 | 4–5 days | 📉 Medium | ⚪ Not started |
@@ -32,7 +34,7 @@ Finding #7 ("all authenticated users are admins") is intentionally omitted from 
 Plan 1 (Security) ──── independent ──── ship anytime
 Plan 2 (Data Integrity)
   ├─ 2.1 (transactions) ── independent ── ship first
-  └─ 2.2-2.5 ─────── independent migrations
+  └─ 2.2-2.4 ─────── independent migrations (2.5 won't do)
 Plan 3 (Background Jobs) ── independent ── ship anytime
 Plan 4 (Query Perf)
   ├─ 4.1 (indexes) ── ship first
@@ -56,7 +58,7 @@ Plan 11 (Hygiene)
 
 1. **Week 1 — stop the bleeding**: Plan 1 (all), Plan 2.1 (transactions), Plan 11 (hygiene)
 2. **Week 2 — make it fast**: Plan 4 (all), Plan 5.1 (Anthropic caching)
-3. **Week 3 — make it correct long-term**: Plan 2.2–2.5 (types + constraints), Plan 5.2 (Notion sync), Plan 5.3 (QBO)
+3. **Week 3 — make it correct long-term**: Plan 2.2–2.4 (types + constraints), Plan 5.2 (Notion sync), Plan 5.3 (QBO)
 4. **Week 4 — frontend foundation**: Plan 8.2 → Plan 8.1, Plan 6
 5. **Weeks 5–6 — backend architecture**: Plan 7.5 → Plan 7.1, then 7.2, 7.3, 7.4, 7.6, 7.7
 6. **Weeks 7–8 — testing foundation**: Plan 10

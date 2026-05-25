@@ -68,13 +68,25 @@ Zero transactions across the entire codebase + several silent-corruption risks i
   3. Update `WorkActivityService` insert paths to use `.onConflictDoUpdate({ target: [workActivityId, employeeId], set: { hours, ... } })`.
 - **Verify**: Insert same `(workActivityId, employeeId)` twice → second call updates, doesn't create duplicate.
 
-## 2.5 — Make FK on-delete behavior explicit (Finding #12)
+## 2.5 — Make FK on-delete behavior explicit (Finding #12) — 🚫 Won't do
+
+**Decision**: skip this sub-plan. The original problem statement and approach are preserved below as a historical record, but no work is scheduled.
+
+**Rationale**:
+
+1. **Scale**: the app has ~2 users (business owner + dev/ops consultant). Destructive-delete scenarios where a stale row would silently corrupt downstream data are vanishingly rare in practice.
+2. **Current behavior is safe**: all FKs use `ON DELETE NO ACTION`, which fails loudly when a delete would violate referential integrity. That's the desired behavior — a thrown error is much better than silent cascade or orphaned rows. The risk this sub-plan was meant to address ("someone switches to `CASCADE` to silence the error") is a code-review concern, not an architectural one.
+3. **Cross-cutting cost**: introducing `deleted_at` on `clients`, `employees`, `projects`, and `invoices` would touch *every* active query against those tables — every list, every join, every report — and add a permanent maintenance tax (forget the `isNull(deletedAt)` filter once and you leak deleted data into reports). Not justified at current scale.
+4. **Revisit trigger**: if multi-user/role separation lands (i.e. Finding #7 gets addressed), reopen this. At that point soft-delete becomes more defensible because (a) more humans means more accidental deletes, and (b) audit/recovery needs grow.
+
+---
+
+### Original problem statement (historical)
 
 - **Files**: `server/src/db/schema.ts` (all 13 FK columns)
 - **Problem**: All FKs use `ON DELETE NO ACTION`. `ClientService.deleteClient`, `EmployeeService.deleteEmployee`, `ProjectService.deleteProject` just call `db.delete()` and rely on the FK to throw. If anyone "fixes" this by switching to `CASCADE` to silence the error, a single client delete wipes their invoice history.
-- **Approach**: Per-FK intent:
+- **Approach (not executed)**: Per-FK intent:
   - **`CASCADE`** (true junction/child): `work_activity_employees.work_activity_id`, `other_charges.work_activity_id`, `plant_list.work_activity_id`, `invoice_line_items.invoice_id`.
   - **`RESTRICT`/`NO ACTION`** (preserve business entity): `work_activities.client_id`, `invoices.client_id`, `projects.client_id`, `work_activity_employees.employee_id`.
   - **`SET NULL`** (preserve historical row): `invoice_line_items.qbo_item_id`, `invoice_line_items.work_activity_id`.
   - Add a `deleted_at timestamp` column to `clients`, `employees`, `projects`, `invoices` and convert their `delete*` service methods to UPDATE-set-deleted-at. Filter every active query by `isNull(table.deletedAt)`.
-- **Verify**: Delete a client with no children → succeeds, sets `deleted_at`. Delete a client with invoices → still succeeds (soft delete). All active queries hide soft-deleted rows.
