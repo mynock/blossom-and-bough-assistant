@@ -183,6 +183,35 @@ describe('Transaction rollback', () => {
     });
   });
 
+  describe('work_activity_employees unique (workActivityId, employeeId)', () => {
+    it('rejects a second insert of the same (activity, employee) pair', async () => {
+      // The unique constraint added in Plan 2.4 stops Notion sync retries
+      // and double-form-submits from double-counting an employee's hours.
+      const activity = await workActivityService.createWorkActivity(sampleActivity());
+
+      // Drizzle wraps the Postgres error so the unique-violation detail
+      // ends up on `cause`, not the top-level message. Catch and inspect.
+      let caught: any = null;
+      try {
+        await dbService.db.insert(workActivityEmployees).values({
+          workActivityId: activity.id,
+          employeeId: testEmployeeId,
+          hours: 1
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).not.toBeNull();
+      // Postgres unique_violation SQLSTATE
+      expect(caught?.cause?.code ?? caught?.code).toBe('23505');
+
+      // Only the original assignment exists.
+      const rows = await dbService.db.select().from(workActivityEmployees);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].hours).toBe(4.0);
+    });
+  });
+
   describe('DataMigrationService.clearAllData', () => {
     it('actually wipes everything on the happy path', async () => {
       // Smoke test the commit path of the wrapped transaction. The rollback

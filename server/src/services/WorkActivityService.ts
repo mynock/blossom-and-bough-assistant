@@ -16,7 +16,7 @@ import {
   type PlantListItem,
   type NewPlantListItem
 } from '../db';
-import { eq, desc, like, and, gte, lte, inArray, exists } from 'drizzle-orm';
+import { eq, desc, like, and, gte, lte, between, inArray, exists } from 'drizzle-orm';
 
 export interface CreateWorkActivityData {
   workActivity: NewWorkActivity;
@@ -201,7 +201,7 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
-   * Get work activities by date range
+   * Get work activities by date range (inclusive).
    */
   async getWorkActivitiesByDateRange(startDate: string, endDate: string): Promise<WorkActivityWithDetails[]> {
     const activities = await this.db
@@ -209,10 +209,7 @@ export class WorkActivityService extends DatabaseService {
       .from(workActivities)
       .leftJoin(clients, eq(workActivities.clientId, clients.id))
       .leftJoin(projects, eq(workActivities.projectId, projects.id))
-      .where(and(
-        eq(workActivities.date, startDate), // For now, just match exact date
-        // TODO: Add proper date range filtering
-      ))
+      .where(between(workActivities.date, startDate, endDate))
       .orderBy(desc(workActivities.date), desc(workActivities.createdAt));
 
     // Get employees and charges for each activity
