@@ -686,26 +686,41 @@ const ClientDetail: React.FC = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/clients')} variant="outlined">
-            Back
-          </Button>
-          <Typography variant="h4" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <PersonIcon /> {client.name}
-          </Typography>
-          <Chip 
-            label={client.activeStatus} 
-            color={client.activeStatus === 'active' ? 'success' : 'default'} 
-            size="small" 
-          />
-        </Box>
+    <main className="gc-page-wide" data-screen-label="Client detail">
+      <div
+        className="gc-page-header"
+        style={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          justifyContent: 'space-between',
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div>
+          <button
+            type="button"
+            className="gc-btn ghost sm"
+            onClick={() => navigate('/clients')}
+            style={{ marginBottom: 6 }}
+          >
+            <ArrowBackIcon fontSize="small" />
+            Back to clients
+          </button>
+          <div className="gc-eyebrow">Client · {client.clientId}</div>
+          <h1 style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {client.name}
+            <Chip
+              label={client.activeStatus === 'active' ? 'Active' : 'Paused'}
+              color={client.activeStatus === 'active' ? 'success' : 'default'}
+              size="small"
+            />
+          </h1>
+        </div>
         <Button startIcon={<EditIcon />} variant="contained" onClick={handleEdit}>
-          Edit Client
+          Edit client
         </Button>
-      </Box>
+      </div>
 
       {/* Client Information */}
       <Grid container spacing={3}>
@@ -1810,7 +1825,7 @@ const ClientDetail: React.FC = () => {
           {snackbar.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </main>
   );
 };
 
