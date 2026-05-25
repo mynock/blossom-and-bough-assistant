@@ -1,17 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import {
-  Box,
-  TextField,
-  IconButton,
-  Typography,
-  Avatar,
-  CircularProgress,
-  Divider,
-} from '@mui/material';
-import { Send, Person, SmartToy } from '@mui/icons-material';
+import { CircularProgress } from '@mui/material';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import { Sparkles, ArrowUp } from '../icons';
+import { useAuth } from '../contexts/AuthContext';
 import { chatApi } from '../services/api';
 import 'highlight.js/styles/github.css';
 
@@ -22,173 +15,123 @@ interface ChatMessage {
   timestamp: Date;
 }
 
-// Custom markdown component with Claude-like styling
-const MarkdownMessage: React.FC<{ content: string; isUser: boolean }> = ({ content, isUser }) => {
-  if (isUser) {
-    return (
-      <Typography 
-        variant="body1" 
-        sx={{ 
-          whiteSpace: 'pre-wrap',
-          lineHeight: 1.6,
-          fontSize: '15px',
-        }}
-      >
-        {content}
-      </Typography>
-    );
-  }
+const SUGGESTED_PROMPTS = [
+  "Show me this week's billable hours rollup",
+  "Which clients haven't had a visit in 3+ weeks?",
+  'Where can I fit a 4-hour install next week?',
+  'Sarah called in sick — help me reschedule today',
+];
 
-  return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={[rehypeHighlight]}
-      components={{
-        h1: ({ children }) => (
-          <Typography variant="h5" sx={{ fontWeight: 600, mb: 2, mt: 1.5, fontSize: '20px' }}>
-            {children}
-          </Typography>
-        ),
-        h2: ({ children }) => (
-          <Typography variant="h6" sx={{ fontWeight: 600, mb: 1.5, mt: 1.5, fontSize: '18px' }}>
-            {children}
-          </Typography>
-        ),
-        h3: ({ children }) => (
-          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1, mt: 1.5, fontSize: '16px' }}>
-            {children}
-          </Typography>
-        ),
-        p: ({ children }) => (
-          <Typography 
-            variant="body1" 
-            sx={{ 
-              mb: 1.5, 
-              lineHeight: 1.6,
-              fontSize: '15px',
-              '&:last-child': { mb: 0 }
+const initialsFor = (name?: string) =>
+  (name || '?')
+    .split(/\s+/)
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+const MarkdownMessage: React.FC<{ content: string }> = ({ content }) => (
+  <ReactMarkdown
+    remarkPlugins={[remarkGfm]}
+    rehypePlugins={[rehypeHighlight]}
+    components={{
+      h1: ({ children }) => (
+        <h2 style={{ fontWeight: 600, margin: '12px 0 8px', fontSize: 18 }}>{children}</h2>
+      ),
+      h2: ({ children }) => (
+        <h3 style={{ fontWeight: 600, margin: '10px 0 6px', fontSize: 16 }}>{children}</h3>
+      ),
+      h3: ({ children }) => (
+        <h4 style={{ fontWeight: 600, margin: '10px 0 6px', fontSize: 15 }}>{children}</h4>
+      ),
+      p: ({ children }) => (
+        <p style={{ margin: '0 0 10px', fontSize: 15, lineHeight: 1.6 }}>{children}</p>
+      ),
+      ul: ({ children }) => (
+        <ul style={{ paddingLeft: 22, margin: '0 0 10px' }}>{children}</ul>
+      ),
+      ol: ({ children }) => (
+        <ol style={{ paddingLeft: 22, margin: '0 0 10px' }}>{children}</ol>
+      ),
+      li: ({ children }) => (
+        <li style={{ fontSize: 15, lineHeight: 1.6, marginBottom: 4 }}>{children}</li>
+      ),
+      code: ({ children, className }) => {
+        const isInline = !className;
+        return isInline ? (
+          <code
+            style={{
+              backgroundColor: 'rgba(58,46,31,0.06)',
+              padding: '1px 5px',
+              borderRadius: 4,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12.5,
             }}
           >
             {children}
-          </Typography>
-        ),
-        ul: ({ children }) => (
-          <Box component="ul" sx={{ pl: 3, mb: 1.5, '& li': { mb: 0.5 } }}>
-            {children}
-          </Box>
-        ),
-        ol: ({ children }) => (
-          <Box component="ol" sx={{ pl: 3, mb: 1.5, '& li': { mb: 0.5 } }}>
-            {children}
-          </Box>
-        ),
-        li: ({ children }) => (
-          <Typography component="li" variant="body1" sx={{ fontSize: '15px', lineHeight: 1.6 }}>
-            {children}
-          </Typography>
-        ),
-        strong: ({ children }) => (
-          <Typography component="strong" sx={{ fontWeight: 600 }}>
-            {children}
-          </Typography>
-        ),
-        em: ({ children }) => (
-          <Typography component="em" sx={{ fontStyle: 'italic' }}>
-            {children}
-          </Typography>
-        ),
-        code: ({ children, className }) => {
-          const isInline = !className;
-          return isInline ? (
-            <Typography
-              component="code"
-              sx={{
-                backgroundColor: 'rgba(0, 0, 0, 0.05)',
-                color: '#d73a49',
-                padding: '2px 6px',
-                borderRadius: '4px',
-                fontFamily: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
-                fontSize: '13px',
-                fontWeight: 500,
-              }}
-            >
-              {children}
-            </Typography>
-          ) : (
-            <Box
-              sx={{
-                backgroundColor: '#f6f8fa',
-                border: '1px solid #e1e4e8',
-                borderRadius: '8px',
-                p: 2,
-                mb: 1.5,
-                overflow: 'auto',
-              }}
-            >
-              <Typography
-                component="pre"
-                sx={{
-                  fontFamily: '"SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace',
-                  fontSize: '13px',
-                  margin: 0,
-                  whiteSpace: 'pre-wrap',
-                  lineHeight: 1.45,
-                }}
-              >
-                <code className={className}>{children}</code>
-              </Typography>
-            </Box>
-          );
-        },
-        blockquote: ({ children }) => (
-          <Box
-            sx={{
-              borderLeft: '4px solid #dfe2e5',
-              backgroundColor: '#f6f8fa',
-              pl: 2,
-              py: 1,
-              mb: 1.5,
-              borderRadius: '0 4px 4px 0',
+          </code>
+        ) : (
+          <pre
+            style={{
+              background: 'var(--parchment)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: 14,
+              overflow: 'auto',
+              margin: '0 0 10px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12.5,
             }}
           >
-            {children}
-          </Box>
-        ),
-      }}
-    >
-      {content}
-    </ReactMarkdown>
-  );
-};
+            <code className={className}>{children}</code>
+          </pre>
+        );
+      },
+      blockquote: ({ children }) => (
+        <blockquote
+          style={{
+            borderLeft: '3px solid var(--border-strong)',
+            background: 'var(--parchment)',
+            margin: '0 0 10px',
+            padding: '8px 14px',
+            borderRadius: '0 8px 8px 0',
+          }}
+        >
+          {children}
+        </blockquote>
+      ),
+    }}
+  >
+    {content}
+  </ReactMarkdown>
+);
 
 const Chat: React.FC = () => {
+  const { user } = useAuth();
+  const firstName = user?.name?.split(' ')[0] || 'there';
+
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: '1',
-      text: `Hi! I'm your AI assistant for Garden Care CRM. I can help you analyze work activities, optimize schedules, and get insights from your business data.
+      text: `Hi ${firstName} — I can help you analyze work activities, plan schedules, and surface insights from your business data.
 
-**What I can help with:**
-• Work activity analysis and reporting
-• Schedule optimization and planning
-• Client and project management insights
-• Time tracking and billing analysis
-• Team workload balancing
+**I'm good at:**
+- Rolling up hours by client, helper, or week
+- Spotting maintenance visits coming due
+- Finding open slots for new installs
+- Recommending who to send where, given travel time
 
-**Try asking me:**
-• "Show me this week's work activity summary"
-• "Which clients had the most billable hours this month?"
-• "Help me schedule a new maintenance job"
-• "What's our team utilization looking like?"
-
-I understand your business data including work activities, client information, and team schedules. What would you like to analyze today?`,
+I know about your work activities, clients, helpers, and Google Calendar — what would you like to look at?`,
       isUser: false,
       timestamp: new Date(),
     },
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState('Thinking...');
+  const [loadingMessage, setLoadingMessage] = useState('Checking your work activities…');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -198,300 +141,254 @@ I understand your business data including work activities, client information, a
     scrollToBottom();
   }, [messages]);
 
-  // Dynamic loading messages
   useEffect(() => {
     if (!isLoading) {
-      setLoadingMessage('Thinking...');
+      setLoadingMessage('Checking your work activities…');
       return;
     }
-
-    const messages = [
-      'Thinking...',
-      'Analyzing your schedule...',
-      'Checking helper availability...',
-      'Calculating travel times...',
-      'Optimizing recommendations...',
-      'Almost done...'
+    const cycle = [
+      'Checking your work activities…',
+      'Analyzing your schedule…',
+      'Checking helper availability…',
+      'Calculating travel times…',
+      'Almost done…',
     ];
-
-    let messageIndex = 0;
-    setLoadingMessage(messages[0]);
-
+    let idx = 0;
+    setLoadingMessage(cycle[0]);
     const interval = setInterval(() => {
-      messageIndex = (messageIndex + 1) % messages.length;
-      setLoadingMessage(messages[messageIndex]);
-    }, 3000); // Change message every 3 seconds
-
+      idx = (idx + 1) % cycle.length;
+      setLoadingMessage(cycle[idx]);
+    }, 3000);
     return () => clearInterval(interval);
   }, [isLoading]);
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+  // Auto-grow textarea
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [inputValue]);
+
+  const send = async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
-      text: inputValue,
+      text,
       isUser: true,
       timestamp: new Date(),
     };
-
     setMessages((prev) => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
 
     try {
-      const response = await chatApi.sendMessage(inputValue);
-      
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        text: response.response,
-        isUser: false,
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, aiMessage]);
+      const response = await chatApi.sendMessage(text);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: response.response,
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
     } catch (error: any) {
+      // eslint-disable-next-line no-console
       console.error('Chat error:', error);
-      
-      let errorText = "I'm having trouble connecting right now. Please try again in a moment, or check if your backend server is running.";
-      
-      // Handle specific error types from the server
-      if (error.response?.status === 408 || error.response?.data?.timeout) {
-        errorText = "⏰ **Request Timed Out**\n\nYour request is taking longer than expected to process. This usually happens when I need to analyze complex scheduling data or make multiple calculations.\n\n**Try:**\n• Breaking your request into smaller, more specific questions\n• Asking about a shorter time period\n• Simplifying your query\n\nFor example, instead of \"optimize my entire schedule,\" try \"when can I fit a 4-hour job next week?\"";
-      } else if (error.response?.status === 429 || error.response?.data?.rateLimited) {
-        errorText = "🚫 **Rate Limit Exceeded**\n\nI'm receiving too many requests right now. Please wait a moment before trying again.\n\n**This helps ensure:**\n• Fair access for all users\n• Stable system performance\n• Quality responses\n\nTry again in about 30 seconds.";
-      } else if (error.response?.status >= 500) {
-        errorText = "🔧 **Server Error**\n\nThere's a temporary issue with the scheduling system. This might be due to:\n• Database connectivity issues\n• External service problems\n• System maintenance\n\n**Please:**\n• Try again in a few minutes\n• Contact support if the issue persists\n• Check the server logs for more details";
+      let errorText = "I'm having trouble connecting right now. Try again in a moment, or check that the backend server is running.";
+      const status = error.response?.status;
+      if (status === 408 || error.response?.data?.timeout) {
+        errorText = '⏰ **Request timed out.** Try a smaller question — e.g. "when can I fit a 4-hour job next week?"';
+      } else if (status === 429 || error.response?.data?.rateLimited) {
+        errorText = "🚫 **Rate limit reached.** Wait about 30 seconds and try again.";
+      } else if (typeof status === 'number' && status >= 500) {
+        errorText = "🔧 **Server error.** Try again in a few minutes, or check the server logs.";
       } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        errorText = "🌐 **Connection Timeout**\n\nThe request took too long to complete. This might be due to:\n• Slow network connection\n• Complex scheduling calculations\n• High server load\n\n**Try:**\n• Checking your internet connection\n• Asking a simpler question\n• Waiting a moment and trying again";
+        errorText = '🌐 **Connection timeout.** Check your network and try again.';
       }
-      
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        text: errorText,
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          text: errorText,
+          isUser: false,
+          timestamp: new Date(),
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyPress = (event: React.KeyboardEvent) => {
+  const handleKey = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      handleSendMessage();
+      send(inputValue);
     }
   };
 
   return (
-    <Box sx={{ 
-      height: '100vh', 
-      display: 'flex', 
-      flexDirection: 'column',
-      backgroundColor: '#ffffff',
-    }}>
-      {/* Header */}
-      <Box sx={{ 
-        p: 3, 
-        borderBottom: '1px solid #e5e7eb',
-        backgroundColor: '#ffffff',
-        zIndex: 1,
-      }}>
-        <Typography 
-          variant="h5" 
-          sx={{ 
-            fontWeight: 600,
-            color: '#1f2937',
-            textAlign: 'center',
-          }}
-        >
-          AI Business Assistant
-        </Typography>
-      </Box>
+    <main
+      data-screen-label="Assistant"
+      style={{
+        maxWidth: 820,
+        margin: '0 auto',
+        padding: '20px 24px 0',
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'calc(100vh - 56px)',
+      }}
+    >
+      <div className="gc-page-header" style={{ marginBottom: 12 }}>
+        <div className="gc-eyebrow">AI assistant</div>
+        <h1>Ask about your business</h1>
+      </div>
 
-      {/* Messages Container */}
-      <Box sx={{ 
-        flex: 1, 
-        overflow: 'auto',
-        backgroundColor: '#ffffff',
-      }}>
-        <Box sx={{ maxWidth: '768px', mx: 'auto', px: 3 }}>
-          {messages.map((message, index) => (
-            <Box key={message.id}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 3,
-                  py: 4,
-                  alignItems: 'flex-start',
+      <div style={{ flex: 1, overflow: 'auto', paddingRight: 4 }}>
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              display: 'flex',
+              gap: 14,
+              padding: '20px 0',
+              borderBottom: '1px solid var(--hairline)',
+            }}
+          >
+            {m.isUser ? (
+              <span className="gc-avatar" aria-hidden="true">{initialsFor(user?.name)}</span>
+            ) : (
+              <span
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 999,
+                  background: 'var(--moss-700)',
+                  color: 'var(--linen)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
                 }}
               >
-                {/* Avatar */}
-                <Avatar
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    backgroundColor: message.isUser ? '#2563eb' : '#059669',
-                    fontSize: '14px',
-                    flexShrink: 0,
-                  }}
-                >
-                  {message.isUser ? <Person sx={{ fontSize: 18 }} /> : <SmartToy sx={{ fontSize: 18 }} />}
-                </Avatar>
-
-                {/* Message Content */}
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      color: '#6b7280',
-                      mb: 1,
-                      fontSize: '13px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    {message.isUser ? 'You' : 'Assistant'}
-                  </Typography>
-                  <Box sx={{ color: '#1f2937' }}>
-                    <MarkdownMessage content={message.text} isUser={message.isUser} />
-                  </Box>
-                </Box>
-              </Box>
-              
-              {/* Divider between messages */}
-              {index < messages.length - 1 && (
-                <Divider sx={{ borderColor: '#f3f4f6' }} />
-              )}
-            </Box>
-          ))}
-
-          {/* Loading indicator */}
-          {isLoading && (
-            <>
-              <Divider sx={{ borderColor: '#f3f4f6' }} />
-              <Box
-                sx={{
-                  display: 'flex',
-                  gap: 3,
-                  py: 4,
-                  alignItems: 'flex-start',
+                <Sparkles size={16} strokeWidth={1.8} />
+              </span>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: 'var(--fg-muted)',
+                  marginBottom: 4,
                 }}
               >
-                <Avatar
-                  sx={{
-                    width: 32,
-                    height: 32,
-                    backgroundColor: '#059669',
-                    fontSize: '14px',
-                  }}
-                >
-                  <SmartToy sx={{ fontSize: 18 }} />
-                </Avatar>
-                <Box sx={{ flex: 1 }}>
-                  <Typography 
-                    variant="body2" 
-                    sx={{ 
-                      color: '#6b7280',
-                      mb: 1,
-                      fontSize: '13px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Assistant
-                  </Typography>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <CircularProgress size={16} sx={{ color: '#6b7280' }} />
-                    <Typography variant="body2" sx={{ color: '#6b7280', fontSize: '15px' }}>
-                      {loadingMessage}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Box>
-            </>
-          )}
-          
-          <div ref={messagesEndRef} />
-        </Box>
-      </Box>
+                {m.isUser ? user?.name?.split(' ')[0] || 'You' : 'Assistant'}
+              </div>
+              <div style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--fg)' }}>
+                <MarkdownMessage content={m.text} />
+              </div>
+            </div>
+          </div>
+        ))}
 
-      {/* Input Area */}
-      <Box sx={{ 
-        borderTop: '1px solid #e5e7eb',
-        backgroundColor: '#ffffff',
-        p: 3,
-      }}>
-        <Box sx={{ maxWidth: '768px', mx: 'auto' }}>
-          <Box sx={{ 
-            display: 'flex', 
-            gap: 2,
-            alignItems: 'flex-end',
-          }}>
-            <TextField
-              fullWidth
-              multiline
-              maxRows={6}
-              placeholder="Ask about scheduling, helper availability, client requests..."
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              disabled={isLoading}
-              variant="outlined"
-              sx={{
-                '& .MuiOutlinedInput-root': {
-                  borderRadius: '12px',
-                  backgroundColor: '#f9fafb',
-                  fontSize: '15px',
-                  lineHeight: 1.6,
-                  '&:hover': {
-                    backgroundColor: '#f3f4f6',
-                  },
-                  '&.Mui-focused': {
-                    backgroundColor: '#ffffff',
-                  },
-                  '& fieldset': {
-                    borderColor: '#d1d5db',
-                  },
-                  '&:hover fieldset': {
-                    borderColor: '#9ca3af',
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: '#2563eb',
-                    borderWidth: '2px',
-                  },
-                },
-                '& .MuiInputBase-input': {
-                  py: 1.5,
-                  px: 2,
-                },
-              }}
-            />
-            <IconButton
-              onClick={handleSendMessage}
-              disabled={!inputValue.trim() || isLoading}
-              sx={{
-                backgroundColor: inputValue.trim() && !isLoading ? '#2563eb' : '#e5e7eb',
-                color: inputValue.trim() && !isLoading ? '#ffffff' : '#9ca3af',
-                width: 40,
-                height: 40,
-                borderRadius: '8px',
-                '&:hover': {
-                  backgroundColor: inputValue.trim() && !isLoading ? '#1d4ed8' : '#e5e7eb',
-                },
-                '&:disabled': {
-                  backgroundColor: '#e5e7eb',
-                  color: '#9ca3af',
-                },
+        {isLoading && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              padding: '20px 0',
+              color: 'var(--fg-muted)',
+            }}
+          >
+            <span
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 999,
+                background: 'var(--moss-700)',
+                color: 'var(--linen)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Send sx={{ fontSize: 18 }} />
-            </IconButton>
-          </Box>
-        </Box>
-      </Box>
-    </Box>
+              <Sparkles size={16} strokeWidth={1.8} />
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontStyle: 'italic' }}>
+              <CircularProgress size={12} sx={{ color: 'var(--fg-muted)' }} />
+              {loadingMessage}
+            </span>
+          </div>
+        )}
+
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div style={{ padding: '10px 0', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {SUGGESTED_PROMPTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className="gc-btn secondary sm"
+            style={{ height: 30, fontWeight: 400, color: 'var(--fg-muted)' }}
+            onClick={() => send(s)}
+            disabled={isLoading}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 10,
+          padding: '12px 0 20px',
+          alignItems: 'flex-end',
+        }}
+      >
+        <textarea
+          ref={textareaRef}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={handleKey}
+          placeholder="Ask about scheduling, hours, clients, helpers…"
+          rows={1}
+          disabled={isLoading}
+          style={{
+            flex: 1,
+            padding: '11px 14px',
+            borderRadius: 10,
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-strong)',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 15,
+            resize: 'none',
+            color: 'var(--fg)',
+            outline: 'none',
+            minHeight: 44,
+            maxHeight: 160,
+            lineHeight: 1.5,
+          }}
+        />
+        <button
+          type="button"
+          className="gc-btn primary"
+          onClick={() => send(inputValue)}
+          disabled={!inputValue.trim() || isLoading}
+          aria-label="Send"
+          style={{ width: 44, height: 44, padding: 0 }}
+        >
+          <ArrowUp size={18} strokeWidth={1.8} />
+        </button>
+      </div>
+    </main>
   );
 };
 
-export default Chat; 
+export default Chat;
