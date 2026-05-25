@@ -91,9 +91,7 @@ const Navigation: React.FC = () => {
       items: [
         { path: '/ask-data', label: 'Ask the assistant', Icon: Sparkles },
         { path: '/notion-sync', label: 'Notion sync', Icon: RefreshCw },
-        ...(process.env.NODE_ENV !== 'production'
-          ? [{ path: '/quickbooks', label: 'QuickBooks', Icon: Banknote }]
-          : []),
+        { path: '/quickbooks', label: 'QuickBooks', Icon: Banknote },
       ],
     },
     {
