@@ -152,6 +152,9 @@ const { doubleCsrfProtection, generateCsrfToken } = doubleCsrf({
   },
   getCsrfTokenFromRequest: (req) => req.headers['x-csrf-token'] as string | undefined,
   skipCsrfProtection: (req) => {
+    // DEV: MemoryStore sessions get wiped on backend restart, which breaks the
+    // sessionID-bound CSRF tokens until the user re-auths. Skip in dev only.
+    if (process.env.NODE_ENV !== 'production') return true;
     const p = req.path;
     return (
       p === '/api/health' ||
