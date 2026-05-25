@@ -1,4 +1,4 @@
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService, type DbOrTx } from './DatabaseService';
 import { QuickBooksService } from './QuickBooksService';
 import { ClientService } from './ClientService';
 import { WorkActivityService } from './WorkActivityService';
@@ -288,16 +288,22 @@ export class InvoiceService extends DatabaseService {
 
       const qboInvoice = await this.qbService.createInvoice(qboInvoiceData);
 
-      const localInvoice = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems);
-
       const invoicedWorkActivityIds = resolveInvoicedWorkActivityIds(
         request.workActivityIds,
         normalizedLineItems
       );
 
-      if (invoicedWorkActivityIds.length > 0) {
-        await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced');
-      }
+      // Save the local invoice AND mark its work activities as invoiced in
+      // one transaction. Without this, a crash between the two leaves an
+      // invoice whose work activities still appear as "completed" and will
+      // be re-offered for invoicing.
+      const localInvoice = await this.db.transaction(async (tx) => {
+        const inv = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems, tx);
+        if (invoicedWorkActivityIds.length > 0) {
+          await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced', tx);
+        }
+        return inv;
+      });
 
       return {
         invoice: localInvoice,
@@ -664,50 +670,57 @@ export class InvoiceService extends DatabaseService {
     return invoiceData;
   }
 
-  private async saveInvoiceToLocal(qboInvoice: any, clientId: number, lineItems: InvoiceLineItemData[]): Promise<any> {
-    // Save invoice
-    const invoiceData = {
-      qboInvoiceId: qboInvoice.Id,
-      qboCustomerId: qboInvoice.CustomerRef.value,
-      clientId: clientId,
-      invoiceNumber: qboInvoice.DocNumber,
-      status: this.mapQBOInvoiceStatus(qboInvoice),
-      totalAmount: qboInvoice.TotalAmt,
-      invoiceDate: qboInvoice.TxnDate,
-      dueDate: qboInvoice.DueDate || null,
-      qboSyncAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+  private async saveInvoiceToLocal(qboInvoice: any, clientId: number, lineItems: InvoiceLineItemData[], tx?: DbOrTx): Promise<any> {
+    // Wrap invoice + line item inserts in a transaction so a failure between
+    // the two cannot leave an invoice without its line items (totals would
+    // appear correct but the lines that justify them would be missing).
+    // Accepts an external `tx` so callers can compose this with other writes
+    // (e.g. marking work activities as invoiced) in a single atomic unit.
+    const run = async (conn: DbOrTx) => {
+      const invoiceData = {
+        qboInvoiceId: qboInvoice.Id,
+        qboCustomerId: qboInvoice.CustomerRef.value,
+        clientId: clientId,
+        invoiceNumber: qboInvoice.DocNumber,
+        status: this.mapQBOInvoiceStatus(qboInvoice),
+        totalAmount: qboInvoice.TotalAmt,
+        invoiceDate: qboInvoice.TxnDate,
+        dueDate: qboInvoice.DueDate || null,
+        qboSyncAt: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      const savedInvoice = await conn
+        .insert(invoices)
+        .values(invoiceData)
+        .returning();
+
+      const invoiceLineItemsData = lineItems.map(item => ({
+        invoiceId: savedInvoice[0].id,
+        workActivityId: item.workActivityId || null,
+        otherChargeId: item.otherChargeId || null,
+        qboItemId: item.qboItemId,
+        description: item.description,
+        quantity: item.quantity,
+        rate: item.rate,
+        amount: item.amount,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }));
+
+      await conn
+        .insert(invoiceLineItems)
+        .values(invoiceLineItemsData);
+
+      return savedInvoice[0];
     };
-
-    const savedInvoice = await this.db
-      .insert(invoices)
-      .values(invoiceData)
-      .returning();
-
-    // Save line items
-    const invoiceLineItemsData = lineItems.map(item => ({
-      invoiceId: savedInvoice[0].id,
-      workActivityId: item.workActivityId || null,
-      otherChargeId: item.otherChargeId || null,
-      qboItemId: item.qboItemId,
-      description: item.description,
-      quantity: item.quantity,
-      rate: item.rate,
-      amount: item.amount,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }));
-
-    await this.db
-      .insert(invoiceLineItems)
-      .values(invoiceLineItemsData);
-
-    return savedInvoice[0];
+    return tx ? run(tx) : this.db.transaction(run);
   }
 
-  private async updateWorkActivitiesStatus(workActivityIds: number[], status: string): Promise<void> {
-    await this.db
+  private async updateWorkActivitiesStatus(workActivityIds: number[], status: string, tx?: DbOrTx): Promise<void> {
+    const conn = tx ?? this.db;
+    await conn
       .update(workActivities)
       .set({
         status: status,
@@ -756,19 +769,23 @@ export class InvoiceService extends DatabaseService {
         // Continue with local deletion even if QB void fails
       }
       
-      // 3. Delete invoice line items first (foreign key constraint)
-      await this.db.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
-      console.log('Deleted invoice line items');
-      
-      // 4. Delete the invoice record
-      await this.db.delete(invoices).where(eq(invoices.id, invoiceId));
-      console.log('Deleted invoice record');
-      
-      // 5. Revert work activities status back to 'completed'
-      if (workActivityIds.length > 0) {
-        await this.updateWorkActivitiesStatus(workActivityIds, 'completed');
-        console.log(`Reverted ${workActivityIds.length} work activities to 'completed' status`);
-      }
+      // Wrap the local-DB deletions and status revert in a single transaction.
+      // QBO void already happened above and is best-effort by design.
+      await this.db.transaction(async (tx) => {
+        // 3. Delete invoice line items first (foreign key constraint)
+        await tx.delete(invoiceLineItems).where(eq(invoiceLineItems.invoiceId, invoiceId));
+        console.log('Deleted invoice line items');
+
+        // 4. Delete the invoice record
+        await tx.delete(invoices).where(eq(invoices.id, invoiceId));
+        console.log('Deleted invoice record');
+
+        // 5. Revert work activities status back to 'completed'
+        if (workActivityIds.length > 0) {
+          await this.updateWorkActivitiesStatus(workActivityIds, 'completed', tx);
+          console.log(`Reverted ${workActivityIds.length} work activities to 'completed' status`);
+        }
+      });
       
       console.log(`✅ Successfully deleted invoice ${invoice.invoiceNumber}`);
       
