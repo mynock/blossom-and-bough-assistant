@@ -1,5 +1,19 @@
-import { pgTable, text, integer, real, boolean, timestamp, serial, jsonb, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, numeric, date, time, boolean, timestamp, serial, uniqueIndex, jsonb, index } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+// Postgres `numeric(precision, scale)` returned as JS number (not string).
+// Use these for money and hours so storage is exact (no IEEE-754 drift) but
+// the TypeScript API stays as `number`. JS Number can exactly represent any
+// 12,2 money amount up to ~$10^10 and any 6,2 hours value, so the cast back
+// to number is lossless for the values this app stores.
+const money = (name: string) => numeric(name, { precision: 12, scale: 2, mode: 'number' });
+const hours = (name: string) => numeric(name, { precision: 6, scale: 2, mode: 'number' });
+
+// Native `date` returned as a 'YYYY-MM-DD' string so existing code that
+// reads/writes ISO date strings keeps working — the storage becomes proper
+// `date` (correct sorting, range queries, BETWEEN) without forcing every
+// consumer to switch to Date objects.
+const dateText = (name: string) => date(name, { mode: 'string' });
 
 // Clients table
 export const clients = pgTable('clients', {
@@ -10,10 +24,10 @@ export const clients = pgTable('clients', {
   geoZone: text('geo_zone').notNull(),
   isRecurringMaintenance: boolean('is_recurring_maintenance').notNull().default(false),
   maintenanceIntervalWeeks: integer('maintenance_interval_weeks'),
-  maintenanceHoursPerVisit: text('maintenance_hours_per_visit'),
-  maintenanceRate: text('maintenance_rate'),
-  lastMaintenanceDate: text('last_maintenance_date'), // ISO date string
-  nextMaintenanceTarget: text('next_maintenance_target'), // ISO date string
+  maintenanceHoursPerVisit: hours('maintenance_hours_per_visit'),
+  maintenanceRate: money('maintenance_rate'),
+  lastMaintenanceDate: dateText('last_maintenance_date'),
+  nextMaintenanceTarget: dateText('next_maintenance_target'),
   priorityLevel: text('priority_level'),
   scheduleFlexibility: text('schedule_flexibility'),
   preferredDays: text('preferred_days'),
@@ -56,13 +70,13 @@ export const projects = pgTable('projects', {
 export const workActivities = pgTable('work_activities', {
   id: serial('id').primaryKey(),
   workType: text('work_type').notNull(), // maintenance, install, errand, office work, etc.
-  date: text('date').notNull(), // ISO date string
+  date: dateText('date').notNull(),
   status: text('status').notNull(), // planned, in_progress, completed, invoiced
-  startTime: text('start_time'), // ISO time string
-  endTime: text('end_time'), // ISO time string
-  billableHours: real('billable_hours'),
-  totalHours: real('total_hours').notNull(),
-  hourlyRate: real('hourly_rate'),
+  startTime: time('start_time'),
+  endTime: time('end_time'),
+  billableHours: hours('billable_hours'),
+  totalHours: hours('total_hours').notNull(),
+  hourlyRate: money('hourly_rate'),
   projectId: integer('project_id').references(() => projects.id),
   clientId: integer('client_id').references(() => clients.id), // required if billable_hours > 0
   travelTimeMinutes: integer('travel_time_minutes'),
@@ -84,10 +98,15 @@ export const workActivityEmployees = pgTable('work_activity_employees', {
   id: serial('id').primaryKey(),
   workActivityId: integer('work_activity_id').notNull().references(() => workActivities.id),
   employeeId: integer('employee_id').notNull().references(() => employees.id),
-  hours: real('hours').notNull(),
+  hours: hours('hours').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
-});
+}, (t) => ({
+  // One row per (activity, employee). Double-clicks, retries, and re-runs of
+  // NotionSyncService used to be able to double-count an employee's hours,
+  // which then flowed straight into invoices.
+  workActivityEmployeeUnique: uniqueIndex('wae_wa_emp_uidx').on(t.workActivityId, t.employeeId)
+}));
 
 // Other Charges table
 export const otherCharges = pgTable('other_charges', {
@@ -96,8 +115,8 @@ export const otherCharges = pgTable('other_charges', {
   chargeType: text('charge_type').notNull(), // material, service, debris, delivery, etc.
   description: text('description').notNull(), // e.g., "1 debris bag", "3 astrantia", "mulch delivery"
   quantity: real('quantity'),
-  unitRate: real('unit_rate'),
-  totalCost: real('total_cost'),
+  unitRate: money('unit_rate'),
+  totalCost: money('total_cost'),
   billable: boolean('billable').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
@@ -120,7 +139,7 @@ export const clientNotes = pgTable('client_notes', {
   noteType: text('note_type').notNull(), // meeting, property_info, client_preferences, etc.
   title: text('title').notNull(), // e.g., "Rod & Yahya convo 3/12"
   content: text('content').notNull(),
-  date: text('date'), // ISO date string
+  date: dateText('date'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
@@ -132,7 +151,7 @@ export const qboItems = pgTable('qbo_items', {
   name: text('name').notNull(), // Item name in QuickBooks
   description: text('description'), // Item description
   type: text('type').notNull(), // Service, Inventory, NonInventory
-  unitPrice: real('unit_price'), // Current unit price from QBO
+  unitPrice: money('unit_price'), // Current unit price from QBO
   incomeAccountRef: text('income_account_ref'), // QBO Income Account reference
   active: boolean('active').notNull().default(true), // Active status in QBO
   lastSyncAt: timestamp('last_sync_at').notNull().defaultNow(), // Last sync from QBO
@@ -148,9 +167,9 @@ export const invoices = pgTable('invoices', {
   clientId: integer('client_id').notNull().references(() => clients.id),
   invoiceNumber: text('invoice_number').notNull(), // QBO Invoice Number
   status: text('status').notNull(), // draft, sent, paid, overdue, void, etc.
-  totalAmount: real('total_amount').notNull(),
-  invoiceDate: text('invoice_date').notNull(), // ISO date string
-  dueDate: text('due_date'), // ISO date string
+  totalAmount: money('total_amount').notNull(),
+  invoiceDate: dateText('invoice_date').notNull(),
+  dueDate: dateText('due_date'),
   qboSyncAt: timestamp('qbo_sync_at').notNull().defaultNow(), // Last sync from QBO
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
@@ -165,8 +184,8 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   qboItemId: text('qbo_item_id').references(() => qboItems.qboId), // Reference to QBO Item
   description: text('description').notNull(),
   quantity: real('quantity').notNull(),
-  rate: real('rate').notNull(), // Rate at time of invoice
-  amount: real('amount').notNull(), // Total line amount
+  rate: money('rate').notNull(), // Rate at time of invoice
+  amount: money('amount').notNull(), // Total line amount
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
