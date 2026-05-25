@@ -341,7 +341,7 @@ const ClientManagement: React.FC = () => {
                     fontFamily: 'var(--font-mono)',
                   }}
                 >
-                  {(c.totalHours || 0).toFixed(1)}h
+                  {Number(c.totalHours ?? 0).toFixed(1)}h
                 </td>
                 <td
                   style={{
@@ -351,7 +351,7 @@ const ClientManagement: React.FC = () => {
                     fontWeight: 600,
                   }}
                 >
-                  {(c.totalBillableHours || 0).toFixed(1)}h
+                  {Number(c.totalBillableHours ?? 0).toFixed(1)}h
                 </td>
                 <td style={{ width: 40 }}>
                   <ChevronRight size={16} strokeWidth={1.8} color="var(--fg-subtle)" />

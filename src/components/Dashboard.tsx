@@ -264,15 +264,16 @@ const Dashboard: React.FC = () => {
         const now = new Date();
         const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
+        const num = (v: unknown) => Number(v ?? 0) || 0;
         const thisWeekActivities = workActivities.filter((a) => new Date(a.date) >= weekAgo);
-        const totalHours = workActivities.reduce((s, a) => s + (a.totalHours || 0), 0);
-        const billableHours = workActivities.reduce((s, a) => s + (a.billableHours || 0), 0);
+        const totalHours = workActivities.reduce((s, a) => s + num(a.totalHours), 0);
+        const billableHours = workActivities.reduce((s, a) => s + num(a.billableHours), 0);
         const needsReviewCount = workActivities.filter((a) => a.status === 'needs_review').length;
 
         const readyToInvoice = workActivities.filter(
-          (a) => a.status === 'completed' && (a.totalCharges || 0) > 0,
+          (a) => a.status === 'completed' && num(a.totalCharges) > 0,
         );
-        const readyToInvoiceAmount = readyToInvoice.reduce((s, a) => s + (a.totalCharges || 0), 0);
+        const readyToInvoiceAmount = readyToInvoice.reduce((s, a) => s + num(a.totalCharges), 0);
         const readyToInvoiceClientCount = new Set(
           readyToInvoice.map((a) => a.clientId).filter(Boolean),
         ).size;
@@ -301,8 +302,8 @@ const Dashboard: React.FC = () => {
 
         setQuickStats({
           activeClients: clientsData.clients?.filter((c: any) => c.activeStatus === 'active').length || 0,
-          hoursThisWeek: thisWeekActivities.reduce((s, a) => s + (a.totalHours || 0), 0),
-          billableHoursThisWeek: thisWeekActivities.reduce((s, a) => s + (a.billableHours || 0), 0),
+          hoursThisWeek: thisWeekActivities.reduce((s, a) => s + num(a.totalHours), 0),
+          billableHoursThisWeek: thisWeekActivities.reduce((s, a) => s + num(a.billableHours), 0),
           visitsThisWeek: thisWeekActivities.length,
         });
       } catch (err) {
