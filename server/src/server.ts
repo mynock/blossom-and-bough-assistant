@@ -39,6 +39,7 @@ import reportsRouter from './routes/reports';
 import dataExportRouter from './routes/dataExport';
 import notificationsRouter from './routes/notifications';
 import { requireAuth } from './middleware/auth';
+import { noStore } from './middleware/noStore';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -174,8 +175,10 @@ const anthropicService = services.anthropicService;
 const authService = new AuthService();
 const cronService = new CronService();
 
-// Mount authentication routes (before other routes)
-app.use('/api/auth', authRouter);
+// Mount authentication routes (before other routes).
+// noStore prevents caching of any auth / session-bearing response — per Intuit's
+// app security review and OWASP guidance for endpoints that handle credentials.
+app.use('/api/auth', noStore, authRouter);
 
 // Routes
 app.get('/api/health', (req, res) => {
@@ -201,7 +204,7 @@ app.use('/api/notion', notionRouter); // Public routes for embedded usage
 app.use('/api/notion-sync', requireAuth, createNotionSyncRouter(anthropicService)); // Notion sync routes
 app.use('/api/admin', adminRouter); // Admin routes handle their own auth
 app.use('/api/data-export', dataExportRouter); // Uses its own bearer token auth
-app.use('/api/qbo', quickbooksRouter); // QuickBooks Online routes
+app.use('/api/qbo', noStore, quickbooksRouter); // QuickBooks Online routes
 // app.use('/api/natural-language-sql', naturalLanguageSQLRouter); // DISABLED — see §1.1 above
 app.use('/api/natural-language-sql', (_req, res) =>
   res.status(503).json({ error: 'Natural language SQL endpoint is disabled pending security review.' })

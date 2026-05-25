@@ -71,15 +71,12 @@ export class InvoiceService extends DatabaseService {
   }
 
   /**
-   * Ensure QuickBooks service is initialized with latest tokens
+   * No-op shim retained for now. QuickBooksService loads tokens lazily and
+   * refreshes them automatically before each API call, so callers do not
+   * need to initialize anything up-front.
    */
   private async ensureQBServiceInitialized(): Promise<void> {
-    try {
-      await this.qbService.reinitialize();
-    } catch (error) {
-      console.error('Failed to reinitialize QuickBooks service:', error);
-      throw new Error('QuickBooks service not properly initialized. Please check your authentication.');
-    }
+    // intentionally empty
   }
 
   /**

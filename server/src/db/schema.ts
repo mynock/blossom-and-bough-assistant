@@ -144,6 +144,19 @@ export const clientNotes = pgTable('client_notes', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// QuickBooks Online credentials (singleton — one row enforced by id default).
+// Tokens are encrypted at rest with AES-256-GCM; see utils/encryption.ts.
+export const qboCredentials = pgTable('qbo_credentials', {
+  id: integer('id').primaryKey().default(1),
+  realmId: text('realm_id').notNull(),
+  accessTokenEncrypted: text('access_token_encrypted').notNull(),
+  refreshTokenEncrypted: text('refresh_token_encrypted').notNull(),
+  accessTokenExpiresAt: timestamp('access_token_expires_at').notNull(),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // QuickBooks Online Items table
 export const qboItems = pgTable('qbo_items', {
   id: serial('id').primaryKey(),

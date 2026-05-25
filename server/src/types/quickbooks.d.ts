@@ -53,6 +53,8 @@ declare module 'intuit-oauth' {
     refresh(): Promise<any>;
     isAccessTokenValid(): boolean;
     getToken(): any;
+    setToken(token: any): void;
+    revoke(): Promise<any>;
   }
 
   const OAuthClient: OAuthClientConstructor;

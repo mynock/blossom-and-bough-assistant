@@ -390,15 +390,8 @@ class QBOSeedDataGenerator {
     const invoiceSvc = invoiceService || this.invoiceService;
     
     try {
-      // If using provided service, make sure our instance is also initialized with tokens
-      if (qbService && !this.qbService.isAccessTokenValid()) {
-        // Reinitialize our instance to get the tokens from environment
-        this.qbService = new QuickBooksService();
-        this.invoiceService = new InvoiceService();
-      }
-      
       // Check if we're authenticated
-      if (!qbSvc.isAccessTokenValid()) {
+      if (!(await qbSvc.isAccessTokenValid())) {
         console.error('❌ QuickBooks not authenticated. Please run OAuth flow first.');
         return;
       }
