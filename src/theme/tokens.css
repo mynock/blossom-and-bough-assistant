@@ -184,7 +184,7 @@ hr.rule {
 .gc-brand .eye { font-family: var(--font-sans); font-size: 9.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--fg-muted); margin-top: 2px; }
 .gc-brand .mk { width: 28px; height: 28px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 22px; line-height: 1; }
 
-.gc-nav { display: flex; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
+.gc-nav { display: flex; gap: 2px; flex: 1; min-width: 0; }
 .gc-nav .item { flex-shrink: 0; }
 .gc-nav .item {
   display: inline-flex; align-items: center; gap: 7px;
