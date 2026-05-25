@@ -34,6 +34,7 @@ import {
   Menu as MenuIcon,
   ChevronDown,
   LogOut,
+  HelpCircle,
 } from '../icons';
 import type { LucideIcon } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -302,6 +303,17 @@ const Navigation: React.FC = () => {
       >
         <MenuItem disabled>
           <ListItemText primary={user?.name} secondary={user?.email} />
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          component="a"
+          href="mailto:mynock51@gmail.com?subject=Blossom%20and%20Bough%20support"
+          onClick={() => setUserMenuAnchor(null)}
+        >
+          <ListItemIcon>
+            <HelpCircle size={16} />
+          </ListItemIcon>
+          <ListItemText primary="Contact support" />
         </MenuItem>
         <Divider />
         <MenuItem
