@@ -1,4 +1,4 @@
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService, type DbOrTx } from './DatabaseService';
 import { WorkActivityService, CreateWorkActivityData } from './WorkActivityService';
 import { debugLog } from '../utils/logger';
 import {
@@ -241,13 +241,18 @@ export class ProductionPullService extends DatabaseService {
             continue;
           }
 
-          // If force and duplicate, delete existing first
-          if (isDuplicate && options.force && !options.dryRun) {
-            await this.deleteExistingActivity(activity);
-          }
-
+          // Force-overwrite path: delete the existing duplicate then create
+          // the replacement. Wrap the pair in a transaction so a create
+          // failure restores the deleted activity instead of losing it.
           if (!options.dryRun) {
-            await this.createActivityFromExport(activity);
+            if (isDuplicate && options.force) {
+              await this.db.transaction(async (tx) => {
+                await this.deleteExistingActivity(activity, tx);
+                await this.createActivityFromExport(activity, tx);
+              });
+            } else {
+              await this.createActivityFromExport(activity);
+            }
           }
           activitiesCreated++;
         } catch (err) {
@@ -403,16 +408,17 @@ export class ProductionPullService extends DatabaseService {
     return false;
   }
 
-  private async deleteExistingActivity(activity: ExportedActivity): Promise<void> {
+  private async deleteExistingActivity(activity: ExportedActivity, tx?: DbOrTx): Promise<void> {
+    const conn = tx ?? this.db;
     // Delete by notionPageId if present
     if (activity.notionPageId) {
-      const existing = await this.db
+      const existing = await conn
         .select({ id: workActivities.id })
         .from(workActivities)
         .where(eq(workActivities.notionPageId, activity.notionPageId));
 
       if (existing.length > 0) {
-        await this.workActivityService.deleteWorkActivity(existing[0].id);
+        await this.workActivityService.deleteWorkActivity(existing[0].id, tx);
         return;
       }
     }
@@ -421,7 +427,7 @@ export class ProductionPullService extends DatabaseService {
     if (activity.clientName) {
       const client = await this.findClientByName(activity.clientName);
       if (client) {
-        const existing = await this.db
+        const existing = await conn
           .select({ id: workActivities.id })
           .from(workActivities)
           .where(and(
@@ -431,13 +437,13 @@ export class ProductionPullService extends DatabaseService {
           ));
 
         if (existing.length > 0) {
-          await this.workActivityService.deleteWorkActivity(existing[0].id);
+          await this.workActivityService.deleteWorkActivity(existing[0].id, tx);
         }
       }
     }
   }
 
-  private async createActivityFromExport(activity: ExportedActivity): Promise<void> {
+  private async createActivityFromExport(activity: ExportedActivity, tx?: DbOrTx): Promise<void> {
     // Resolve client ID
     let clientId: number | undefined;
     if (activity.clientName) {
@@ -494,6 +500,6 @@ export class ProductionPullService extends DatabaseService {
       })),
     };
 
-    await this.workActivityService.createWorkActivity(data);
+    await this.workActivityService.createWorkActivity(data, tx);
   }
 }
