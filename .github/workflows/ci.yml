@@ -92,16 +92,16 @@ jobs:
         npm run db:generate
         npm run db:push
         
-    - name: Run billable hours regression tests
+    - name: Run all backend tests (with coverage)
+      # Plan 10 / B4: full Jest suite now that route smoke tests and Notion
+      # pure-function tests are in place. The dedicated Billable Hours
+      # Regression workflow (.github/workflows/billable-hours-tests.yml) still
+      # runs independently on paths that affect billable-hours logic and
+      # produces per-suite JUnit output; this step is the broader gate.
       run: |
         cd server
-        npm run test:billable-hours
-        
-    - name: Generate test coverage
-      run: |
-        cd server
-        npm run test:coverage -- src/__tests__/billableHours
-        
+        npm run test:coverage
+
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
