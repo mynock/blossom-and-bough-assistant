@@ -65,18 +65,19 @@ BEGIN
     RAISE EXCEPTION 'invoices.due_date has % non-ISO rows — normalize before migrating', bad_count;
   END IF;
 
-  -- start/end times: HH:MM or HH:MM:SS (with optional am/pm not allowed —
-  -- Postgres `time` is 24h ISO format)
+  -- start/end times: H:MM, HH:MM, or HH:MM:SS. Postgres' `time` parser
+  -- handles single-digit hours natively ('9:00'::time → 09:00:00) so we
+  -- accept either width here — the USING cast below does the real check.
   SELECT COUNT(*) INTO bad_count FROM work_activities
-   WHERE start_time IS NOT NULL AND start_time !~ '^\d{2}:\d{2}(:\d{2})?$';
+   WHERE start_time IS NOT NULL AND start_time !~ '^\d{1,2}:\d{2}(:\d{2})?$';
   IF bad_count > 0 THEN
-    RAISE EXCEPTION 'work_activities.start_time has % non-ISO rows — normalize to HH:MM[:SS] before migrating', bad_count;
+    RAISE EXCEPTION 'work_activities.start_time has % non-parseable rows — expected H:MM, HH:MM, or HH:MM:SS', bad_count;
   END IF;
 
   SELECT COUNT(*) INTO bad_count FROM work_activities
-   WHERE end_time IS NOT NULL AND end_time !~ '^\d{2}:\d{2}(:\d{2})?$';
+   WHERE end_time IS NOT NULL AND end_time !~ '^\d{1,2}:\d{2}(:\d{2})?$';
   IF bad_count > 0 THEN
-    RAISE EXCEPTION 'work_activities.end_time has % non-ISO rows — normalize to HH:MM[:SS] before migrating', bad_count;
+    RAISE EXCEPTION 'work_activities.end_time has % non-parseable rows — expected H:MM, HH:MM, or HH:MM:SS', bad_count;
   END IF;
 END $$;
 --> statement-breakpoint
