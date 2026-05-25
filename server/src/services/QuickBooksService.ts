@@ -1,22 +1,25 @@
 /// <reference path="../types/quickbooks.d.ts" />
 
-// Temporary type declarations to bypass strict typing
-declare const QuickBooks: any;
-declare const OAuthClient: any;
-
 import QuickBooksLib from 'node-quickbooks';
 import OAuthClientLib from 'intuit-oauth';
 import { DatabaseService } from './DatabaseService';
-import { qboItems, invoices, invoiceLineItems } from '../db';
+import { qboItems, qboCredentials, invoices, invoiceLineItems } from '../db';
 import { eq } from 'drizzle-orm';
+import { encryptToken, decryptToken } from '../utils/encryption';
 
-export interface QBOCredentials {
-  accessToken: string;
-  refreshToken: string;
-  realmId: string;
+export interface QBOAppConfig {
   clientId: string;
   clientSecret: string;
   environment: 'sandbox' | 'production';
+  redirectUri: string;
+}
+
+export interface QBOTokens {
+  accessToken: string;
+  refreshToken: string;
+  realmId: string;
+  accessTokenExpiresAt: Date;
+  refreshTokenExpiresAt: Date | null;
 }
 
 export interface QBOItem {
@@ -25,10 +28,7 @@ export interface QBOItem {
   Description?: string;
   Type: string;
   UnitPrice?: number;
-  IncomeAccountRef?: {
-    value: string;
-    name: string;
-  };
+  IncomeAccountRef?: { value: string; name: string };
   Active: boolean;
 }
 
@@ -41,213 +41,282 @@ export interface QBOInvoice {
   Balance: number;
   EmailStatus: string;
   PrintStatus: string;
-  CustomerRef: {
-    value: string;
-    name: string;
-  };
+  CustomerRef: { value: string; name: string };
   Line: Array<{
     Id: string;
     LineNum: number;
     Amount: number;
     DetailType: string;
     SalesItemLineDetail?: {
-      ItemRef: {
-        value: string;
-        name: string;
-      };
+      ItemRef: { value: string; name: string };
       Qty: number;
       UnitPrice: number;
     };
   }>;
 }
 
+// Refresh the access token if it expires within this many seconds. Intuit
+// access tokens last 1 hour; refreshing 5 minutes early avoids racing the
+// expiry on any single in-flight request.
+const REFRESH_LEEWAY_SECONDS = 5 * 60;
+
 export class QuickBooksService extends DatabaseService {
   private qbo: any;
   private oauthClient: any;
+  private cachedExpiresAt: Date | null = null;
 
   constructor() {
     super();
-    this.initializeClients();
+    this.initializeOAuthClient();
   }
 
-  /**
-   * Reinitialize the QuickBooks clients (public method for token updates)
-   */
-  async reinitialize(): Promise<void> {
-    this.initializeClients();
-  }
-
-  private initializeClients() {
-    const credentials = this.getCredentials();
-    
-    // Initialize OAuth client
-    this.oauthClient = new OAuthClientLib({
-      clientId: credentials.clientId,
-      clientSecret: credentials.clientSecret,
-      environment: credentials.environment,
-      redirectUri: process.env.QBO_REDIRECT_URI || 'http://localhost:3001/api/qbo/callback',
-    });
-
-    // If we have stored tokens, load them into the OAuth client
-    if (credentials.accessToken && credentials.refreshToken && credentials.realmId) {
-      try {
-        this.oauthClient.setToken({
-          token_type: 'bearer',
-          access_token: credentials.accessToken,
-          refresh_token: credentials.refreshToken,
-          expires_in: 3600, // Default expiry
-          x_refresh_token_expires_in: 8726400,
-          realmId: credentials.realmId
-        });
-      } catch (error) {
-        console.warn('Failed to set existing tokens in OAuth client:', error);
-      }
-    }
-
-    // Initialize QuickBooks client if we have tokens
-    if (credentials.accessToken && credentials.realmId) {
-      this.qbo = new QuickBooksLib(
-        credentials.clientId,
-        credentials.clientSecret,
-        credentials.accessToken,
-        false, // no token secret for OAuth 2.0
-        credentials.realmId,
-        credentials.environment === 'sandbox', // use sandbox
-        false, // enable debugging
-        null, // minor version
-        '2.0', // OAuth version
-        credentials.refreshToken
-      );
-    }
-  }
-
-  private getCredentials(): QBOCredentials {
+  private getAppConfig(): QBOAppConfig {
     return {
       clientId: process.env.QBO_CLIENT_ID || '',
       clientSecret: process.env.QBO_CLIENT_SECRET || '',
-      accessToken: process.env.QBO_ACCESS_TOKEN || '',
-      refreshToken: process.env.QBO_REFRESH_TOKEN || '',
-      realmId: process.env.QBO_REALM_ID || '',
       environment: (process.env.QBO_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
+      redirectUri: process.env.QBO_REDIRECT_URI || 'http://localhost:3001/api/qbo/callback',
+    };
+  }
+
+  private initializeOAuthClient() {
+    const config = this.getAppConfig();
+    if (!config.clientId || !config.clientSecret) {
+      // OAuth client cannot be constructed without app credentials; defer.
+      return;
+    }
+    this.oauthClient = new OAuthClientLib({
+      clientId: config.clientId,
+      clientSecret: config.clientSecret,
+      environment: config.environment,
+      redirectUri: config.redirectUri,
+    });
+  }
+
+  // ------------------------------------------------------------------
+  // Credential persistence (encrypted at rest in qbo_credentials table)
+  // ------------------------------------------------------------------
+
+  private async loadTokensFromDb(): Promise<QBOTokens | null> {
+    const rows = await this.db.select().from(qboCredentials).limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      accessToken: decryptToken(row.accessTokenEncrypted),
+      refreshToken: decryptToken(row.refreshTokenEncrypted),
+      realmId: row.realmId,
+      accessTokenExpiresAt: row.accessTokenExpiresAt,
+      refreshTokenExpiresAt: row.refreshTokenExpiresAt,
+    };
+  }
+
+  private async saveTokensToDb(tokens: QBOTokens): Promise<void> {
+    const row = {
+      id: 1,
+      realmId: tokens.realmId,
+      accessTokenEncrypted: encryptToken(tokens.accessToken),
+      refreshTokenEncrypted: encryptToken(tokens.refreshToken),
+      accessTokenExpiresAt: tokens.accessTokenExpiresAt,
+      refreshTokenExpiresAt: tokens.refreshTokenExpiresAt,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(qboCredentials)
+      .values({ ...row, createdAt: new Date() })
+      .onConflictDoUpdate({ target: qboCredentials.id, set: row });
+    this.cachedExpiresAt = tokens.accessTokenExpiresAt;
+  }
+
+  private async clearTokensInDb(): Promise<void> {
+    await this.db.delete(qboCredentials).where(eq(qboCredentials.id, 1));
+    this.cachedExpiresAt = null;
+  }
+
+  /**
+   * Convert an Intuit token response into a QBOTokens with absolute expiries.
+   * The library returns expires_in / x_refresh_token_expires_in as seconds
+   * from now; we store absolute timestamps so we can persist them.
+   */
+  private toQBOTokens(token: any): QBOTokens {
+    const now = Date.now();
+    return {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token,
+      realmId: token.realmId,
+      accessTokenExpiresAt: new Date(now + (token.expires_in ?? 3600) * 1000),
+      refreshTokenExpiresAt: token.x_refresh_token_expires_in
+        ? new Date(now + token.x_refresh_token_expires_in * 1000)
+        : null,
     };
   }
 
   /**
-   * Get OAuth authorization URL
+   * Push tokens into the in-memory OAuth client and rebuild the QB API client.
+   * Computes a synthetic expires_in so the library's own expiry tracking stays
+   * accurate when we restore from DB.
    */
-  getAuthUrl(): string {
-    const credentials = this.getCredentials();
-    
-    // Check if required credentials are present
-    if (!credentials.clientId || !credentials.clientSecret) {
-      throw new Error('QuickBooks credentials not configured. Please set QBO_CLIENT_ID and QBO_CLIENT_SECRET in your environment variables.');
+  private hydrateClients(tokens: QBOTokens) {
+    if (!this.oauthClient) {
+      this.initializeOAuthClient();
+      if (!this.oauthClient) {
+        throw new Error('Cannot hydrate QuickBooks client: app credentials are missing');
+      }
     }
-    
+    const config = this.getAppConfig();
+    const expiresInSec = Math.max(
+      0,
+      Math.floor((tokens.accessTokenExpiresAt.getTime() - Date.now()) / 1000)
+    );
+    const refreshExpiresInSec = tokens.refreshTokenExpiresAt
+      ? Math.max(0, Math.floor((tokens.refreshTokenExpiresAt.getTime() - Date.now()) / 1000))
+      : 8726400;
+    this.oauthClient.setToken({
+      token_type: 'bearer',
+      access_token: tokens.accessToken,
+      refresh_token: tokens.refreshToken,
+      expires_in: expiresInSec,
+      x_refresh_token_expires_in: refreshExpiresInSec,
+      realmId: tokens.realmId,
+    });
+    this.qbo = new QuickBooksLib(
+      config.clientId,
+      config.clientSecret,
+      tokens.accessToken,
+      false,
+      tokens.realmId,
+      config.environment === 'sandbox',
+      false,
+      null,
+      '2.0',
+      tokens.refreshToken
+    );
+    this.cachedExpiresAt = tokens.accessTokenExpiresAt;
+  }
+
+  /**
+   * Ensure an authenticated QB client is available and the access token is
+   * fresh. Called before every API operation. Loads from DB on first use,
+   * refreshes if within the leeway window of expiry.
+   */
+  private async ensureClient(): Promise<void> {
+    if (!this.qbo) {
+      const tokens = await this.loadTokensFromDb();
+      if (!tokens) {
+        throw new Error('QuickBooks is not connected. Authorize the app first.');
+      }
+      this.hydrateClients(tokens);
+    }
+    const expiresAt = this.cachedExpiresAt;
+    if (expiresAt && expiresAt.getTime() - Date.now() < REFRESH_LEEWAY_SECONDS * 1000) {
+      await this.refreshTokens();
+    }
+  }
+
+  // ------------------------------------------------------------------
+  // OAuth flow
+  // ------------------------------------------------------------------
+
+  /**
+   * Get OAuth authorization URL. State is supplied by the caller (a
+   * per-request nonce stored in the session) so the callback can verify
+   * it and reject forged callbacks. See routes/quickbooks.ts.
+   */
+  getAuthUrl(state: string): string {
+    const config = this.getAppConfig();
+    if (!config.clientId || !config.clientSecret) {
+      throw new Error('QuickBooks credentials not configured. Please set QBO_CLIENT_ID and QBO_CLIENT_SECRET.');
+    }
+    if (!this.oauthClient) {
+      this.initializeOAuthClient();
+    }
     if (!this.oauthClient) {
       throw new Error('QuickBooks OAuth client not initialized properly.');
     }
-    
-    try {
-      return this.oauthClient.authorizeUri({
-        scope: [OAuthClientLib.scopes.Accounting],
-        state: 'qbo_auth',
-      });
-    } catch (error) {
-      console.error('Error generating OAuth URL:', error);
-      throw new Error('Failed to generate QuickBooks authorization URL. Please check your QuickBooks credentials.');
+    if (!state) {
+      throw new Error('OAuth state nonce is required');
     }
+    return this.oauthClient.authorizeUri({
+      scope: [OAuthClientLib.scopes.Accounting],
+      state,
+    });
   }
 
   /**
-   * Handle OAuth callback and get tokens
+   * Exchange the OAuth callback URL for tokens and persist them encrypted.
    */
-  async handleOAuthCallback(callbackUrl: string): Promise<any> {
-    try {
-      const authResponse = await this.oauthClient.createToken(callbackUrl);
-      const token = authResponse.getToken();
-      
-      // Store the token in the OAuth client for future use
-      this.oauthClient.setToken(authResponse);
-      
-      return {
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
-        realmId: token.realmId,
-        expiresIn: token.expires_in,
-      };
-    } catch (error) {
-      console.error('OAuth callback error:', error);
-      throw error;
+  async handleOAuthCallback(callbackUrl: string): Promise<void> {
+    if (!this.oauthClient) {
+      this.initializeOAuthClient();
     }
+    if (!this.oauthClient) {
+      throw new Error('QuickBooks OAuth client not initialized properly.');
+    }
+    const authResponse = await this.oauthClient.createToken(callbackUrl);
+    const tokens = this.toQBOTokens(authResponse.getToken());
+    await this.saveTokensToDb(tokens);
+    this.hydrateClients(tokens);
   }
 
   /**
-   * Refresh access token
+   * Refresh the access token using the stored refresh token, persist the
+   * new tokens, and rebuild the QB API client.
    */
   async refreshTokens(): Promise<void> {
-    try {
-      const authResponse = await this.oauthClient.refresh();
-      const token = authResponse.getToken();
-      
-      // Update tokens - in production, store these securely
-      process.env.QBO_ACCESS_TOKEN = token.access_token;
-      process.env.QBO_REFRESH_TOKEN = token.refresh_token;
-      
-      // Update the OAuth client's token state
-      this.oauthClient.setToken(authResponse);
-      
-      // Reinitialize the QB client with new tokens
-      this.initializeClients();
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Check if access token is valid
-   */
-  isAccessTokenValid(): boolean {
-    const credentials = this.getCredentials();
-    
-    if (!credentials.clientId || !credentials.clientSecret) {
-      return false;
-    }
-    
     if (!this.oauthClient) {
-      return false;
+      const stored = await this.loadTokensFromDb();
+      if (!stored) {
+        throw new Error('Cannot refresh: no stored QuickBooks credentials');
+      }
+      this.hydrateClients(stored);
     }
-    
-    try {
-      return this.oauthClient.isAccessTokenValid();
-    } catch (error) {
-      console.error('Error checking token validity:', error);
-      return false;
-    }
+    const authResponse = await this.oauthClient.refresh();
+    const tokens = this.toQBOTokens(authResponse.getToken());
+    await this.saveTokensToDb(tokens);
+    this.hydrateClients(tokens);
   }
 
   /**
-   * Sync QBO Items to local database
+   * True when the app has stored, non-expired QBO credentials it can use.
    */
-  async syncItems(): Promise<void> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
+  async isAccessTokenValid(): Promise<boolean> {
+    const config = this.getAppConfig();
+    if (!config.clientId || !config.clientSecret) return false;
+    const tokens = await this.loadTokensFromDb();
+    if (!tokens) return false;
+    return tokens.accessTokenExpiresAt.getTime() > Date.now();
+  }
 
+  /**
+   * Disconnect the QuickBooks integration: revoke at Intuit if possible and
+   * remove the encrypted credentials from the database.
+   */
+  async disconnect(): Promise<void> {
+    try {
+      if (this.oauthClient && this.qbo) {
+        await this.oauthClient.revoke();
+      }
+    } catch (error) {
+      // Best-effort; clearing local credentials is the important part.
+      console.warn('QuickBooks token revoke failed; clearing local credentials anyway:', error);
+    }
+    this.qbo = null;
+    await this.clearTokensInDb();
+  }
+
+  // ------------------------------------------------------------------
+  // QuickBooks API operations — each ensures a fresh client first.
+  // ------------------------------------------------------------------
+
+  async syncItems(): Promise<void> {
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.findItems({}, async (err: any, items: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
+        if (err) return reject(err);
         try {
           const qboItemList = items.QueryResponse?.Item || [];
-          
           for (const item of qboItemList) {
             await this.upsertItem(item);
           }
-          
           console.log(`Synced ${qboItemList.length} items from QuickBooks`);
           resolve();
         } catch (error) {
@@ -257,9 +326,6 @@ export class QuickBooksService extends DatabaseService {
     });
   }
 
-  /**
-   * Upsert QBO Item to local database
-   */
   private async upsertItem(qboItem: QBOItem): Promise<void> {
     const itemData = {
       qboId: qboItem.Id,
@@ -272,34 +338,18 @@ export class QuickBooksService extends DatabaseService {
       lastSyncAt: new Date(),
       updatedAt: new Date(),
     };
-
-    // Check if item exists
     const existingItem = await this.db
       .select()
       .from(qboItems)
       .where(eq(qboItems.qboId, qboItem.Id))
       .limit(1);
-
     if (existingItem.length > 0) {
-      // Update existing item
-      await this.db
-        .update(qboItems)
-        .set(itemData)
-        .where(eq(qboItems.qboId, qboItem.Id));
+      await this.db.update(qboItems).set(itemData).where(eq(qboItems.qboId, qboItem.Id));
     } else {
-      // Insert new item
-      await this.db
-        .insert(qboItems)
-        .values({
-          ...itemData,
-          createdAt: new Date(),
-        });
+      await this.db.insert(qboItems).values({ ...itemData, createdAt: new Date() });
     }
   }
 
-  /**
-   * Get all synced QBO Items
-   */
   async getItems(): Promise<any[]> {
     return await this.db
       .select()
@@ -308,209 +358,109 @@ export class QuickBooksService extends DatabaseService {
       .orderBy(qboItems.name);
   }
 
-  /**
-   * Create invoice in QuickBooks
-   */
   async createInvoice(invoiceData: any): Promise<any> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.createInvoice(invoiceData, (err: any, invoice: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) return reject(err);
         resolve(invoice);
       });
     });
   }
 
-  /**
-   * Get invoice from QuickBooks
-   */
   async getInvoice(invoiceId: string): Promise<any> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.getInvoice(invoiceId, (err: any, invoice: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) return reject(err);
         resolve(invoice);
       });
     });
   }
 
-  /**
-   * Find invoices for a customer
-   */
   async findInvoicesByCustomer(customerId: string): Promise<any[]> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
-      this.qbo.findInvoices({
-        CustomerRef: customerId
-      }, (err: any, invoices: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve(invoices.QueryResponse?.Invoice || []);
+      this.qbo.findInvoices({ CustomerRef: customerId }, (err: any, invoicesResp: any) => {
+        if (err) return reject(err);
+        resolve(invoicesResp.QueryResponse?.Invoice || []);
       });
     });
   }
 
-  /**
-   * Create customer in QuickBooks
-   */
   async createCustomer(customerData: any): Promise<any> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.createCustomer(customerData, (err: any, customer: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) return reject(err);
         resolve(customer);
       });
     });
   }
 
-  /**
-   * Create item in QuickBooks
-   */
   async createItem(itemData: any): Promise<any> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.createItem(itemData, (err: any, item: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+        if (err) return reject(err);
         resolve(item);
       });
     });
   }
 
-  /**
-   * Get income accounts
-   */
   async getIncomeAccounts(): Promise<any[]> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
-      this.qbo.findAccounts({
-        AccountType: 'Income'
-      }, (err: any, accounts: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
+      this.qbo.findAccounts({ AccountType: 'Income' }, (err: any, accounts: any) => {
+        if (err) return reject(err);
         resolve(accounts.QueryResponse?.Account || []);
       });
     });
   }
 
-  /**
-   * Get all customers
-   */
   async getAllCustomers(): Promise<any[]> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.findCustomers({}, (err: any, customers: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
+        if (err) return reject(err);
         const customerList = customers.QueryResponse?.Customer || [];
         console.log(`getAllCustomers: Found ${customerList.length} customers`);
-        
         resolve(customerList);
       });
     });
   }
 
-  /**
-   * Find customer by name
-   */
   async findCustomerByName(name: string): Promise<any> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
-      // Get all customers and filter by name (more reliable than direct search)
       this.qbo.findCustomers({}, (err: any, customers: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        
+        if (err) return reject(err);
         const customerList = customers.QueryResponse?.Customer || [];
         console.log(`findCustomerByName: Searching for "${name}" among ${customerList.length} customers`);
-        
-        // Debug: Show first few customer names
         console.log(`First 5 customer names:`, customerList.slice(0, 5).map((c: any) => `"${c.DisplayName}"`).join(', '));
-        
-        // Case-insensitive search for exact match
         const foundCustomer = customerList.find((customer: any) => {
           const customerName = customer.DisplayName?.toLowerCase() || '';
           const searchName = name.toLowerCase();
           return customer.DisplayName && customerName === searchName;
         });
-        
         resolve(foundCustomer || null);
       });
     });
   }
 
-  /**
-   * Sync QBO Customers to local database
-   */
   async syncCustomers(): Promise<void> {
-    if (!this.qbo) {
-      throw new Error('QuickBooks client not initialized');
-    }
-
+    await this.ensureClient();
     return new Promise((resolve, reject) => {
       this.qbo.findCustomers({}, async (err: any, customers: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-
+        if (err) return reject(err);
         try {
           const qboCustomerList = customers.QueryResponse?.Customer || [];
-          
           console.log(`Found ${qboCustomerList.length} customers in QuickBooks`);
-          
-          // Import customers into local database
           const { ClientService } = await import('./ClientService');
           const clientService = new ClientService();
-          
           for (const customer of qboCustomerList) {
             await this.upsertCustomer(customer, clientService);
           }
-          
           console.log(`Synced ${qboCustomerList.length} customers from QuickBooks`);
           resolve();
         } catch (error) {
@@ -520,25 +470,18 @@ export class QuickBooksService extends DatabaseService {
     });
   }
 
-  /**
-   * Upsert a customer from QuickBooks to local database
-   */
   private async upsertCustomer(qboCustomer: any, clientService: any): Promise<void> {
     try {
-      // Check if customer already exists locally by name
       const existingClient = await clientService.getClientByName(qboCustomer.DisplayName);
-      
       if (!existingClient) {
-        // Create new local client from QuickBooks customer
         const newClient = {
           clientId: `qbo-${qboCustomer.Id}`,
           name: qboCustomer.DisplayName,
           address: qboCustomer.BillAddr?.Line1 || '',
-          geoZone: '', // Can be filled in later
+          geoZone: '',
           isRecurringMaintenance: false,
-          activeStatus: qboCustomer.Active ? 'active' : 'inactive'
+          activeStatus: qboCustomer.Active ? 'active' : 'inactive',
         };
-        
         await clientService.createClient(newClient);
         console.log(`Created local client from QuickBooks: ${qboCustomer.DisplayName}`);
       } else {
@@ -546,7 +489,6 @@ export class QuickBooksService extends DatabaseService {
       }
     } catch (error) {
       console.error(`Error upserting customer ${qboCustomer.DisplayName}:`, error);
-      // Continue with other customers
     }
   }
-} 
+}

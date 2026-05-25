@@ -51,6 +51,34 @@ const QuickBooksIntegration: React.FC = () => {
   const [success, setSuccess] = useState<string | null>(null);
 
   useEffect(() => {
+    // OAuth callback now 302-redirects the popup here with ?qbo=connected
+    // or ?qbo=error&reason=... — relay to the opener (if any) and close.
+    const params = new URLSearchParams(window.location.search);
+    const qboStatus = params.get('qbo');
+    if (qboStatus) {
+      if (window.opener) {
+        if (qboStatus === 'connected') {
+          window.opener.postMessage(
+            { type: 'QB_AUTH_SUCCESS', message: 'Authentication successful' },
+            window.location.origin
+          );
+        } else {
+          window.opener.postMessage(
+            { type: 'QB_AUTH_ERROR', error: params.get('reason') || 'Authentication failed' },
+            window.location.origin
+          );
+        }
+        window.close();
+        return;
+      }
+      // Not in a popup — show inline feedback and clean the URL.
+      if (qboStatus === 'connected') {
+        setSuccess('Successfully connected to QuickBooks!');
+      } else {
+        setError(params.get('reason') || 'QuickBooks authentication failed');
+      }
+      window.history.replaceState({}, '', window.location.pathname);
+    }
     checkAuthStatus();
     fetchQBOItems();
   }, []);

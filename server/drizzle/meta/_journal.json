@@ -92,6 +92,13 @@
       "when": 1779676434017,
       "tag": "0012_normal_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779747023875,
+      "tag": "0013_legal_warhawk",
+      "breakpoints": true
     }
   ]
 }
