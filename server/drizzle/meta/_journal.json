@@ -99,6 +99,13 @@
       "when": 1779747023875,
       "tag": "0013_legal_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779922781640,
+      "tag": "0014_magenta_rogue",
+      "breakpoints": true
     }
   ]
 }

@@ -634,6 +634,20 @@ export class WorkActivityService extends DatabaseService {
   }
 
   /**
+   * Bulk-update the status of a set of work activities. Accepts an optional
+   * transaction handle so callers can compose this with other writes atomically.
+   * Returns early when ids is empty to avoid a no-op SQL error.
+   */
+  async setStatus(ids: number[], status: string, tx?: DbOrTx): Promise<void> {
+    if (ids.length === 0) return;
+    const conn = tx ?? this.db;
+    await conn
+      .update(workActivities)
+      .set({ status, updatedAt: new Date() })
+      .where(inArray(workActivities.id, ids));
+  }
+
+  /**
    * Get a work activity by Notion page ID
    */
   async getWorkActivityByNotionPageId(notionPageId: string): Promise<WorkActivityWithDetails | undefined> {

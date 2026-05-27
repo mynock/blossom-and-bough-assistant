@@ -296,9 +296,7 @@ export class InvoiceService extends DatabaseService {
       // be re-offered for invoicing.
       const localInvoice = await this.db.transaction(async (tx) => {
         const inv = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems, tx);
-        if (invoicedWorkActivityIds.length > 0) {
-          await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced', tx);
-        }
+        await this.workActivityService.setStatus(invoicedWorkActivityIds, 'invoiced', tx);
         return inv;
       });
 
@@ -715,17 +713,6 @@ export class InvoiceService extends DatabaseService {
     return tx ? run(tx) : this.db.transaction(run);
   }
 
-  private async updateWorkActivitiesStatus(workActivityIds: number[], status: string, tx?: DbOrTx): Promise<void> {
-    const conn = tx ?? this.db;
-    await conn
-      .update(workActivities)
-      .set({
-        status: status,
-        updatedAt: new Date()
-      })
-      .where(inArray(workActivities.id, workActivityIds));
-  }
-
   private mapQBOInvoiceStatus(qboInvoice: any): string {
     // Map QuickBooks invoice status to our local status
     if (qboInvoice.Balance === 0) return 'paid';
@@ -778,8 +765,8 @@ export class InvoiceService extends DatabaseService {
         console.log('Deleted invoice record');
 
         // 5. Revert work activities status back to 'completed'
+        await this.workActivityService.setStatus(workActivityIds, 'completed', tx);
         if (workActivityIds.length > 0) {
-          await this.updateWorkActivitiesStatus(workActivityIds, 'completed', tx);
           console.log(`Reverted ${workActivityIds.length} work activities to 'completed' status`);
         }
       });

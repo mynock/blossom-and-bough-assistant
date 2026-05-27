@@ -41,6 +41,7 @@ export class ClientService extends BaseCrudService<typeof clients, Client, NewCl
         preferredTime: clients.preferredTime,
         specialNotes: clients.specialNotes,
         activeStatus: clients.activeStatus,
+        qboCustomerId: clients.qboCustomerId,
         createdAt: clients.createdAt,
         updatedAt: clients.updatedAt,
         // Work activity statistics

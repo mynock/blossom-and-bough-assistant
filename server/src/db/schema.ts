@@ -34,6 +34,7 @@ export const clients = pgTable('clients', {
   preferredTime: text('preferred_time'),
   specialNotes: text('special_notes'),
   activeStatus: text('active_status').notNull().default('active'),
+  qboCustomerId: text('qbo_customer_id').unique(), // Nullable: populated during QBO customer sync; used as primary join key for invoice import
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
@@ -199,6 +200,9 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   quantity: real('quantity').notNull(),
   rate: money('rate').notNull(), // Rate at time of invoice
   amount: money('amount').notNull(), // Total line amount
+  matchStatus: text('match_status').notNull().default('unmatched'), // 'auto' | 'manual' | 'needs_review' | 'unmatched'
+  matchScore: real('match_score'), // Nullable: winning candidate's score for debugging/sorting
+  matchCandidates: jsonb('match_candidates'), // Nullable: top-3 candidates { workActivityId, score, reason }; cleared when status → 'manual'
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
