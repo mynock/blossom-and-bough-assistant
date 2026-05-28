@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Box,
   Container,
@@ -150,14 +150,12 @@ interface EntryCardProps {
   entry: ReviewQueueEntry;
   isActive: boolean;
   onConfirmed: (lineItemId: number) => void;
-  onQueueEmpty: () => void;
 }
 
 const EntryCard: React.FC<EntryCardProps> = ({
   entry,
   isActive,
   onConfirmed,
-  onQueueEmpty,
 }) => {
   const candidates = entry.candidates ?? [];
   const defaultValue = candidates.length > 0
@@ -180,70 +178,70 @@ const EntryCard: React.FC<EntryCardProps> = ({
     }
   }, [isActive]);
 
-  const doConfirm = useCallback(
-    async (force?: boolean) => {
-      setConfirming(true);
-      setCardError(null);
-      try {
-        const workActivityId =
-          selected === 'unmatched' ? null : Number(selected);
-        const body: Record<string, unknown> = {
-          workActivityId,
-          source: 'review',
-        };
-        if (force) body.force = true;
+  const doConfirm = async (force?: boolean) => {
+    setConfirming(true);
+    setCardError(null);
+    try {
+      const workActivityId =
+        selected === 'unmatched' ? null : Number(selected);
+      const body: Record<string, unknown> = {
+        workActivityId,
+        source: 'review',
+      };
+      if (force) body.force = true;
 
-        const resp = await fetch(
-          `/api/qbo/invoices/${entry.invoiceId}/line-items/${entry.lineItemId}`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify(body),
-          }
-        );
+      const resp = await fetch(
+        `/api/qbo/invoices/${entry.invoiceId}/line-items/${entry.lineItemId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        }
+      );
 
-        if (resp.ok) {
-          onConfirmed(entry.lineItemId);
+      if (resp.ok) {
+        onConfirmed(entry.lineItemId);
+        return;
+      }
+
+      if (resp.status === 409) {
+        const data = await resp.json();
+        if (data.warning === 'already_linked') {
+          setPendingLink(data as DoubleLink409);
+          setModalOpen(true);
           return;
         }
-
-        if (resp.status === 409) {
-          const data = await resp.json();
-          if (data.warning === 'already_linked') {
-            setPendingLink(data as DoubleLink409);
-            setModalOpen(true);
-            return;
-          }
-        }
-
-        // Other non-2xx error
-        let errMsg = `Request failed (${resp.status})`;
-        try {
-          const errData = await resp.json();
-          if (errData.error || errData.message) {
-            errMsg = errData.error ?? errData.message;
-          }
-        } catch {
-          // ignore parse errors
-        }
-        setCardError(errMsg);
-      } catch (err) {
-        setCardError(err instanceof Error ? err.message : 'Network error');
-      } finally {
-        setConfirming(false);
       }
-    },
-    [entry.invoiceId, entry.lineItemId, selected, onConfirmed]
-  );
+
+      // Other non-2xx error
+      let errMsg = `Request failed (${resp.status})`;
+      try {
+        const errData = await resp.json();
+        if (errData.error || errData.message) {
+          errMsg = errData.error ?? errData.message;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      setCardError(errMsg);
+    } catch (err) {
+      setCardError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const handleLinkAnyway = async () => {
     setModalLinking(true);
-    setModalOpen(false);
-    // Re-issue with force=true; doConfirm handles removal on success.
-    await doConfirm(true);
-    setModalLinking(false);
-    setPendingLink(null);
+    // Keep the modal open so the spinner is visible while the request is in flight.
+    try {
+      await doConfirm(true);
+    } finally {
+      setModalLinking(false);
+      setModalOpen(false);
+      setPendingLink(null);
+    }
   };
 
   const handleModalCancel = () => {
@@ -455,7 +453,6 @@ const InvoiceReview: React.FC = () => {
 
   useEffect(() => {
     fetchQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConfirmed = (lineItemId: number) => {
@@ -533,7 +530,6 @@ const InvoiceReview: React.FC = () => {
           entry={entry}
           isActive={idx === 0}
           onConfirmed={handleConfirmed}
-          onQueueEmpty={() => navigate('/invoices', { replace: true })}
         />
       ))}
     </Container>
