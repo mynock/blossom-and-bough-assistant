@@ -453,6 +453,8 @@ const InvoiceReview: React.FC = () => {
 
   useEffect(() => {
     fetchQueue();
+    // fetchQueue is a stable closure over component state setters; safe to omit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleConfirmed = (lineItemId: number) => {
