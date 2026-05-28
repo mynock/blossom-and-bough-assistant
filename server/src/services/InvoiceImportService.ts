@@ -532,6 +532,10 @@ export class InvoiceImportService extends DatabaseService {
             .update(clients)
             .set({ qboCustomerId, updatedAt: new Date() })
             .where(eq(clients.id, byName[0].id));
+        } else if (byName[0].qboCustomerId !== qboCustomerId) {
+          console.warn(
+            `Client "${customerName.trim()}" (id=${byName[0].id}) already has qboCustomerId="${byName[0].qboCustomerId}" but invoice references qboCustomerId="${qboCustomerId}" — leaving existing mapping in place. Possible duplicate client.`
+          );
         }
         return byName[0].id;
       }
@@ -689,7 +693,7 @@ export class InvoiceImportService extends DatabaseService {
         return cd === ld || cd.includes(ld) || ld.includes(cd);
       };
       const amountMatches = (charge: OtherCharge) =>
-        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - amount) < 0.01;
+        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - amount) <= 0.01;
       const hits = candidateCharges.filter((c) => matchesDesc(c) && amountMatches(c));
       if (hits.length === 1) {
         materialMatches.push({
@@ -871,7 +875,7 @@ export class InvoiceImportService extends DatabaseService {
         return cd === ld || cd.includes(ld) || ld.includes(cd);
       };
       const amountMatches = (charge: OtherCharge) =>
-        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - ml.amount) < 0.01;
+        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - ml.amount) <= 0.01;
       const hits = candidateCharges.filter((c) => matchesDesc(c) && amountMatches(c));
       if (hits.length === 1) {
         materialDecisions.set(ml.lineId, { status: 'auto', otherChargeId: hits[0].id });
