@@ -34,6 +34,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Collapse,
 } from '@mui/material';
 import {
   Receipt,
@@ -48,6 +49,9 @@ import {
   CalendarDays as Schedule,
   ExternalLink as OpenInNew,
   Trash2 as Delete,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
@@ -75,6 +79,21 @@ interface InvoiceStats {
   overdueCount: number;
 }
 
+interface SyncResultError {
+  type: 'unmatched_client' | 'qbo_fetch_failed' | 'invoice_persist_failed' | 'matcher_failed';
+  qboInvoiceId?: string;
+  message: string;
+}
+
+interface SyncResult {
+  imported: number;
+  updated: number;
+  autoMatched: number;
+  needsReview: number;
+  unmatched: number;
+  errors: SyncResultError[];
+}
+
 const Invoices: React.FC = () => {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -89,6 +108,10 @@ const Invoices: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [errorsExpanded, setErrorsExpanded] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -198,6 +221,51 @@ const Invoices: React.FC = () => {
     }
   };
 
+  const syncAllInvoices = async () => {
+    try {
+      setSyncing(true);
+      setError(null);
+
+      const response = await fetch('/api/qbo/invoices/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sync failed: ${response.status}`);
+      }
+
+      const result: SyncResult = await response.json();
+      setSyncResult(result);
+      setSyncModalOpen(true);
+      setErrorsExpanded(false);
+      await fetchInvoices();
+    } catch (err) {
+      console.error('Error syncing invoices:', err);
+      setError(err instanceof Error ? err.message : 'Failed to sync invoices from QuickBooks');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const humanizeErrorType = (type: SyncResultError['type']): string => {
+    switch (type) {
+      case 'unmatched_client': return 'Unmatched client';
+      case 'qbo_fetch_failed': return 'QuickBooks fetch failed';
+      case 'invoice_persist_failed': return 'Invoice save failed';
+      case 'matcher_failed': return 'Matcher failed';
+      default: return type;
+    }
+  };
+
+  const handleSyncModalClose = () => {
+    setSyncModalOpen(false);
+    setSyncResult(null);
+    setErrorsExpanded(false);
+  };
+
   const handleSort = (property: keyof Invoice) => {
     const isAsc = orderBy === property && order === 'asc';
     setOrder(isAsc ? 'desc' : 'asc');
@@ -302,13 +370,23 @@ const Invoices: React.FC = () => {
               Manage and track your QuickBooks invoices
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => navigate('/clients')}
-          >
-            Create Invoice
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
+              onClick={syncAllInvoices}
+              disabled={syncing}
+            >
+              {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => navigate('/clients')}
+            >
+              Create Invoice
+            </Button>
+          </Box>
         </Box>
 
         {error && (
@@ -664,6 +742,129 @@ const Invoices: React.FC = () => {
             >
               {deleting ? 'Deleting...' : 'Delete Invoice'}
             </Button>
+          </DialogActions>
+        </Dialog>
+        {/* Sync Results Modal */}
+        <Dialog
+          open={syncModalOpen}
+          onClose={handleSyncModalClose}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>QuickBooks sync complete</DialogTitle>
+          <DialogContent>
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color="success.main">
+                    {syncResult?.imported ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Imported
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">
+                    {syncResult?.updated ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Updated
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color="success.main">
+                    {syncResult?.autoMatched ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Auto-matched
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color={(syncResult?.needsReview ?? 0) > 0 ? 'warning.main' : 'text.primary'}>
+                    {syncResult?.needsReview ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Needs review
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color={(syncResult?.errors?.length ?? 0) > 0 ? 'error.main' : 'text.primary'}>
+                    {syncResult?.errors?.length ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Errors
+                  </Typography>
+                </Box>
+              </Grid>
+            </Grid>
+
+            {(syncResult?.errors?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  color="error"
+                  startIcon={<AlertTriangle size={16} />}
+                  endIcon={errorsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setErrorsExpanded(prev => !prev)}
+                >
+                  {errorsExpanded ? 'Hide' : 'Show'} errors ({syncResult!.errors.length})
+                </Button>
+                <Collapse in={errorsExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 240, overflowY: 'auto' }}>
+                    {syncResult!.errors.map((err, idx) => (
+                      <Box
+                        key={idx}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'error.50',
+                          border: '1px solid',
+                          borderColor: 'error.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium" color="error.main">
+                          {humanizeErrorType(err.type)}
+                          {err.qboInvoiceId && (
+                            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                              (QBO #{err.qboInvoiceId})
+                            </Typography>
+                          )}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {err.message}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleSyncModalClose}>
+              Close
+            </Button>
+            {(syncResult?.needsReview ?? 0) > 0 && (
+              <Button
+                variant="contained"
+                onClick={() => {
+                  handleSyncModalClose();
+                  navigate('/invoices/review');
+                }}
+              >
+                Review {syncResult!.needsReview} match{syncResult!.needsReview === 1 ? '' : 'es'}
+              </Button>
+            )}
           </DialogActions>
         </Dialog>
       </Box>
