@@ -24,6 +24,7 @@ import { TravelTimeAllocationService } from './TravelTimeAllocationService';
 import { SettingsService } from './SettingsService';
 import { QuickBooksService } from './QuickBooksService';
 import { InvoiceService } from './InvoiceService';
+import { InvoiceImportService } from './InvoiceImportService';
 import { DataMigrationService } from './DataMigrationService';
 import { GoogleSheetsService } from './GoogleSheetsService';
 import { GoogleCalendarService } from './GoogleCalendarService';
@@ -50,6 +51,7 @@ class ServiceContainer {
   private _notionSyncService?: NotionSyncService;
   private _quickBooksService?: QuickBooksService;
   private _invoiceService?: InvoiceService;
+  private _invoiceImportService?: InvoiceImportService;
 
   // Google services
   private _googleSheetsService?: GoogleSheetsService;
@@ -119,6 +121,10 @@ class ServiceContainer {
 
   get invoiceService(): InvoiceService {
     return this._invoiceService ??= new InvoiceService();
+  }
+
+  get invoiceImportService(): InvoiceImportService {
+    return this._invoiceImportService ??= new InvoiceImportService();
   }
 
   // Google services
