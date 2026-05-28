@@ -295,11 +295,21 @@ router.patch('/invoices/:invoiceId/line-items/:lineItemId', async (req, res) => 
       return res.status(400).json({ error: 'workActivityId must be a number or null' });
     }
 
-    const validSources = ['review', 'detail'] as const;
+    const existingLine = await invoiceService.db
+      .select({ invoiceId: invoiceLineItems.invoiceId })
+      .from(invoiceLineItems)
+      .where(eq(invoiceLineItems.id, lineItemId))
+      .limit(1);
+
+    if (!existingLine[0]) {
+      return res.status(404).json({ error: 'Line item not found' });
+    }
+    if (existingLine[0].invoiceId !== invoiceId) {
+      return res.status(404).json({ error: 'Line item does not belong to this invoice' });
+    }
+
     const resolvedSource: 'review' | 'detail' =
-      typeof source === 'string' && (validSources as readonly string[]).includes(source)
-        ? (source as 'review' | 'detail')
-        : 'review';
+      source === 'detail' ? 'detail' : 'review';
 
     const result = await services.invoiceImportService.relinkLineItem(lineItemId, workActivityId, {
       source: resolvedSource,
