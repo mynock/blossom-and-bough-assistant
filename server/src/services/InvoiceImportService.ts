@@ -10,7 +10,7 @@ import {
   type WorkActivity,
   type OtherCharge
 } from '../db';
-import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne } from 'drizzle-orm';
 import { services } from './container';
 import type { QBOInvoice } from './QuickBooksService';
 import { workTypeMapping } from './InvoiceService';
@@ -281,9 +281,8 @@ export function classifyLine(
 // Service
 // ---------------------------------------------------------------------------
 
-type LabororMatch = {
+type LaborMatch = {
   lineIndex: number;
-  qboLine: QBOInvoice['Line'][number];
   status: 'auto' | 'needs_review' | 'unmatched';
   workActivityId: number | null;
   matchScore: number | null;
@@ -292,7 +291,6 @@ type LabororMatch = {
 
 type MaterialMatch = {
   lineIndex: number;
-  qboLine: QBOInvoice['Line'][number];
   status: 'auto' | 'unmatched';
   otherChargeId: number | null;
 };
@@ -389,7 +387,7 @@ export class InvoiceImportService extends DatabaseService {
 
     // INSERT path: persist invoice + line items + run matcher.
     let matcherResult: {
-      laborMatches: LabororMatch[];
+      laborMatches: LaborMatch[];
       materialMatches: MaterialMatch[];
     };
     try {
@@ -402,9 +400,8 @@ export class InvoiceImportService extends DatabaseService {
       });
       // Still insert the invoice with unmatched lines so the user has a record.
       matcherResult = {
-        laborMatches: qboInvoice.Line.map((line, lineIndex) => ({
+        laborMatches: qboInvoice.Line.map((_line, lineIndex) => ({
           lineIndex,
-          qboLine: line,
           status: 'unmatched' as const,
           workActivityId: null,
           matchScore: null,
@@ -548,21 +545,12 @@ export class InvoiceImportService extends DatabaseService {
       qboInvoiceId: qboInvoice.Id,
       message
     });
-    try {
-      await this.db.insert(notifications).values({
-        type: 'qbo_invoice_unmatched_client',
-        severity: 'warn',
-        title: `Unmatched QBO customer: ${customerName || qboCustomerId}`,
-        body:
-          `QBO invoice #${qboInvoice.DocNumber || qboInvoice.Id} for customer "${customerName}" ` +
-          `could not be linked to a local client. Add a matching client or set qboCustomerId, then re-run sync.`,
-        entityType: null,
-        metadata: { qboInvoiceId: qboInvoice.Id, qboCustomerId, customerName } as any
-      });
-    } catch (notifError) {
-      // Notification failure shouldn't crash the sync.
-      console.warn('Failed to insert unmatched_client notification:', notifError);
-    }
+    await services.notificationService.notifyQBOUnmatchedClient({
+      qboInvoiceId: qboInvoice.Id,
+      qboInvoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
+      qboCustomerId,
+      customerName
+    });
     return null;
   }
 
@@ -577,7 +565,7 @@ export class InvoiceImportService extends DatabaseService {
   private async matchInvoiceLines(
     qboInvoice: QBOInvoice,
     clientId: number
-  ): Promise<{ laborMatches: LabororMatch[]; materialMatches: MaterialMatch[] }> {
+  ): Promise<{ laborMatches: LaborMatch[]; materialMatches: MaterialMatch[] }> {
     const invoiceDate = qboInvoice.TxnDate;
     const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
 
@@ -611,7 +599,6 @@ export class InvoiceImportService extends DatabaseService {
     // Score every line ↔ candidate pair for labor lines.
     const laborLines: Array<{
       lineIndex: number;
-      qboLine: QBOInvoice['Line'][number];
       scored: Array<{ activity: ScoringActivity; score: number; reason: string }>;
     }> = [];
     const materialLines: Array<{
@@ -638,14 +625,14 @@ export class InvoiceImportService extends DatabaseService {
         activity: toScoringActivity(activity),
         ...scoreCandidate(toScoringActivity(activity), scoringLine, invoiceDate)
       }));
-      laborLines.push({ lineIndex, qboLine: line, scored });
+      laborLines.push({ lineIndex, scored });
     });
 
     // Within-invoice dedup: process labor lines in descending top-score order
     // so the strongest match wins ties, and remove claimed activities from the
     // candidate pool of subsequent lines.
     const claimedActivityIds = new Set<number>();
-    const laborMatches: LabororMatch[] = [];
+    const laborMatches: LaborMatch[] = [];
 
     // First, compute each line's current top score (before dedup) for ordering.
     const orderedByTopScore = [...laborLines].sort((a, b) => {
@@ -654,7 +641,7 @@ export class InvoiceImportService extends DatabaseService {
       return tb - ta;
     });
 
-    for (const { lineIndex, qboLine, scored } of orderedByTopScore) {
+    for (const { lineIndex, scored } of orderedByTopScore) {
       const filtered = scored.filter((s) => !claimedActivityIds.has(s.activity.id));
       const classification = classifyLine(filtered);
       if (classification.status === 'auto' && classification.workActivityId != null) {
@@ -662,7 +649,6 @@ export class InvoiceImportService extends DatabaseService {
       }
       laborMatches.push({
         lineIndex,
-        qboLine,
         status: classification.status,
         workActivityId: classification.workActivityId,
         matchScore: classification.matchScore,
@@ -698,14 +684,12 @@ export class InvoiceImportService extends DatabaseService {
       if (hits.length === 1) {
         materialMatches.push({
           lineIndex,
-          qboLine,
           status: 'auto',
           otherChargeId: hits[0].id
         });
       } else {
         materialMatches.push({
           lineIndex,
-          qboLine,
           status: 'unmatched',
           otherChargeId: null
         });
@@ -1059,6 +1043,9 @@ export class InvoiceImportService extends DatabaseService {
           .limit(1);
         if (thisInvoice[0]) allInvoiceNumbers.unshift(thisInvoice[0].invoiceNumber);
 
+        // Raw insert (not via NotificationService) so this stays atomic with the
+        // line-item update inside the transaction. NotificationService.create
+        // uses its own connection and can't participate in this tx.
         await tx.insert(notifications).values({
           type: 'work_activity_double_linked',
           severity: 'warn',

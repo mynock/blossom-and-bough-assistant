@@ -123,4 +123,26 @@ export class NotificationService extends BaseCrudService<typeof notifications, N
       metadata: { jobName, error: message }
     });
   }
+
+  async notifyQBOUnmatchedClient(params: {
+    qboInvoiceId: string;
+    qboInvoiceNumber: string;
+    qboCustomerId: string;
+    customerName: string;
+  }): Promise<void> {
+    try {
+      await this.create({
+        type: 'qbo_invoice_unmatched_client',
+        severity: 'warn',
+        title: `Unmatched QBO customer: ${params.customerName || params.qboCustomerId}`,
+        body:
+          `QBO invoice #${params.qboInvoiceNumber || params.qboInvoiceId} for customer "${params.customerName}" ` +
+          `could not be linked to a local client. Add a matching client or set qboCustomerId, then re-run sync.`,
+        entityType: null,
+        metadata: { qboInvoiceId: params.qboInvoiceId, qboCustomerId: params.qboCustomerId, customerName: params.customerName }
+      });
+    } catch (err) {
+      console.error('Failed to write qbo_invoice_unmatched_client notification', err);
+    }
+  }
 }
