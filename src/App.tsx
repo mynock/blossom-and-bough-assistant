@@ -25,6 +25,7 @@ import Login from './components/Login';
 import NotionEmbedPage from './components/NotionEmbedPage';
 import QuickBooksIntegration from './components/QuickBooksIntegration';
 import Invoices from './components/Invoices';
+import InvoiceReview from './components/InvoiceReview';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import NaturalLanguageSQL from './components/NaturalLanguageSQL';
@@ -61,6 +62,7 @@ function App() {
                         <Route path="/notifications" element={<Notifications />} />
                         <Route path="/quickbooks" element={<QuickBooksIntegration />} />
                         <Route path="/invoices" element={<Invoices />} />
+                        <Route path="/invoices/review" element={<InvoiceReview />} />
                         <Route path="/reports" element={<Reports />} />
                         <Route path="/ask-data" element={<NaturalLanguageSQL />} />
                         <Route path="/debug" element={<Debug />} />
