@@ -67,12 +67,24 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// Status values for work_activities.status. The matcher's candidate query
+// (InvoiceImportService) filters on status='completed', and setStatus flips
+// it to 'invoiced' when a line item claims an activity. Notion-sync imports
+// land in 'needs_review' until an operator confirms them. Typed so callers
+// can't pass a stale or misspelled value.
+export type WorkActivityStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'needs_review'
+  | 'completed'
+  | 'invoiced';
+
 // Work Activities table
 export const workActivities = pgTable('work_activities', {
   id: serial('id').primaryKey(),
   workType: text('work_type').notNull(), // maintenance, install, errand, office work, etc.
   date: dateText('date').notNull(),
-  status: text('status').notNull(), // planned, in_progress, completed, invoiced
+  status: text('status').$type<WorkActivityStatus>().notNull(), // planned, in_progress, completed, invoiced
   startTime: time('start_time'),
   endTime: time('end_time'),
   billableHours: hours('billable_hours'),
@@ -92,7 +104,13 @@ export const workActivities = pgTable('work_activities', {
   lastUpdatedBy: text('last_updated_by').$type<'web_app' | 'notion_sync'>().default('web_app'), // Who made the last update
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
-});
+}, (t) => ({
+  // Drives InvoiceImportService's per-invoice candidate query
+  // (clientId + status='completed' + date BETWEEN windowStart AND invoiceDate).
+  // Without this, each invoice in a sync run triggers a seq scan over the
+  // full work_activities table.
+  matcherIdx: index('work_activities_matcher_idx').on(t.clientId, t.status, t.date)
+}));
 
 // Work Activity Employees junction table
 export const workActivityEmployees = pgTable('work_activity_employees', {
@@ -189,6 +207,20 @@ export const invoices = pgTable('invoices', {
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
+// JSON shape persisted in invoice_line_items.match_candidates. Kept in schema
+// so the column can be typed at the source instead of cast at every read/write.
+export type MatchCandidateJSON = {
+  workActivityId: number;
+  score: number;
+  reason: string;
+  date: string;
+  workType: string;
+  billableHours: number | null;
+  notesSnippet: string;
+};
+
+export type MatchStatus = 'auto' | 'manual' | 'needs_review' | 'unmatched';
+
 // Invoice Line Items table
 export const invoiceLineItems = pgTable('invoice_line_items', {
   id: serial('id').primaryKey(),
@@ -200,12 +232,31 @@ export const invoiceLineItems = pgTable('invoice_line_items', {
   quantity: real('quantity').notNull(),
   rate: money('rate').notNull(), // Rate at time of invoice
   amount: money('amount').notNull(), // Total line amount
-  matchStatus: text('match_status').notNull().default('unmatched'), // 'auto' | 'manual' | 'needs_review' | 'unmatched'
+  matchStatus: text('match_status').$type<MatchStatus>().notNull().default('unmatched'),
   matchScore: real('match_score'), // Nullable: winning candidate's score for debugging/sorting
-  matchCandidates: jsonb('match_candidates'), // Nullable: top-3 candidates { workActivityId, score, reason }; cleared when status → 'manual'
+  // Nullable: top-3 candidates; cleared when status flips to 'manual'.
+  matchCandidates: jsonb('match_candidates').$type<MatchCandidateJSON[]>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
-});
+}, (t) => ({
+  // Drives getReviewQueue's WHERE match_status='needs_review' scan.
+  reviewQueueIdx: index('invoice_line_items_review_queue_idx')
+    .on(t.invoiceId)
+    .where(sql`${t.matchStatus} = 'needs_review'`),
+  // Speeds up the double-link check in relinkLineItem and the orphan check
+  // in revertOrphanedActivities. Partial so we only index meaningful rows.
+  workActivityIdx: index('invoice_line_items_work_activity_idx')
+    .on(t.workActivityId)
+    .where(sql`${t.workActivityId} IS NOT NULL`),
+  // Enforces single-claim invariant at the DB level: a work activity can only
+  // be linked to one line item with match_status IN ('auto','manual') at a
+  // time. Prevents the SELECT-then-UPDATE race in relinkLineItem from silently
+  // creating double-links. 'needs_review' and 'unmatched' rows are excluded
+  // because their workActivityId is always NULL.
+  workActivitySingleClaimUidx: uniqueIndex('invoice_line_items_work_activity_single_claim_uidx')
+    .on(t.workActivityId)
+    .where(sql`${t.workActivityId} IS NOT NULL AND ${t.matchStatus} IN ('auto', 'manual')`)
+}));
 
 // Settings table for application configuration
 export const settings = pgTable('settings', {
@@ -229,7 +280,7 @@ export const notifications = pgTable('notifications', {
   sourceUrl: text('source_url'), // external link, e.g. Notion page URL
   entityType: text('entity_type'), // 'employee' | 'client' | 'work_activity' | 'cron_run'
   entityId: integer('entity_id'),
-  metadata: jsonb('metadata'),
+  metadata: jsonb('metadata').$type<Record<string, unknown>>(),
   readAt: timestamp('read_at'),
   dismissedAt: timestamp('dismissed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow()

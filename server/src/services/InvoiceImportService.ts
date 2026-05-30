@@ -8,12 +8,14 @@ import {
   workActivities,
   notifications,
   type WorkActivity,
-  type OtherCharge
+  type OtherCharge,
+  type MatchCandidateJSON
 } from '../db';
 import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne } from 'drizzle-orm';
-import { services } from './container';
-import type { QBOInvoice } from './QuickBooksService';
-import { workTypeMapping } from './InvoiceService';
+import type { QBOInvoice, QuickBooksService } from './QuickBooksService';
+import { workTypeMapping, type InvoiceService } from './InvoiceService';
+import type { WorkActivityService } from './WorkActivityService';
+import type { NotificationService } from './NotificationService';
 
 // ---------------------------------------------------------------------------
 // Scoring thresholds — top of file so they're easy to tune.
@@ -61,15 +63,9 @@ export type ReviewQueueEntry = {
   candidates: MatchCandidate[] | null;
 };
 
-export type MatchCandidate = {
-  workActivityId: number;
-  score: number;
-  reason: string;
-  date: string;
-  workType: string;
-  billableHours: number | null;
-  notesSnippet: string;
-};
+// Re-export the persisted JSON shape under the in-service name for callers
+// that already import MatchCandidate from here.
+export type MatchCandidate = MatchCandidateJSON;
 
 export type RelinkSuccess = { ok: true };
 export type RelinkWarning = {
@@ -281,21 +277,49 @@ export function classifyLine(
 // Service
 // ---------------------------------------------------------------------------
 
-type LaborMatch = {
-  lineIndex: number;
+// Output of the matcher for a single labor line.
+type LaborDecision = {
   status: 'auto' | 'needs_review' | 'unmatched';
   workActivityId: number | null;
   matchScore: number | null;
   matchCandidates: MatchCandidate[] | null;
 };
 
-type MaterialMatch = {
-  lineIndex: number;
+// Output of the matcher for a single material line.
+type MaterialDecision = {
   status: 'auto' | 'unmatched';
   otherChargeId: number | null;
 };
 
+// Input shape for `runMatcher` — abstracts over whether the line came from
+// a live QBO invoice (key = lineIndex) or a persisted DB row (key = lineId).
+type NormalizedLine<K> = {
+  key: K;
+  qboItemId: string | null;
+  description: string;
+  qty: number | null;
+  amount: number;
+};
+
+type MatcherOutput<K> = {
+  laborDecisions: Map<K, LaborDecision>;
+  materialDecisions: Map<K, MaterialDecision>;
+};
+
 export class InvoiceImportService extends DatabaseService {
+  // Collaborators injected via the container — see services/container.ts.
+  // Holding references locally instead of reaching back into the container
+  // each call makes the service testable in isolation and avoids the
+  // module-level circular import the singleton pattern would introduce.
+  constructor(
+    private readonly quickBooksService: QuickBooksService,
+    private readonly invoiceService: InvoiceService,
+    private readonly workActivityService: WorkActivityService,
+    private readonly notificationService: NotificationService
+  ) {
+    super();
+  }
+
   // -----------------------------------------------------------------------
   // Public: syncAllInvoices
   // -----------------------------------------------------------------------
@@ -321,7 +345,7 @@ export class InvoiceImportService extends DatabaseService {
 
     let qboInvoices: QBOInvoice[];
     try {
-      qboInvoices = await services.quickBooksService.getAllInvoices();
+      qboInvoices = await this.quickBooksService.getAllInvoices();
     } catch (error) {
       result.errors.push({
         type: 'qbo_fetch_failed',
@@ -374,7 +398,7 @@ export class InvoiceImportService extends DatabaseService {
       await this.db
         .update(invoices)
         .set({
-          status: services.invoiceService.mapQBOInvoiceStatus(qboInvoice),
+          status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
           totalAmount: qboInvoice.TotalAmt,
           dueDate: qboInvoice.DueDate || null,
           qboSyncAt: new Date(),
@@ -386,12 +410,16 @@ export class InvoiceImportService extends DatabaseService {
     }
 
     // INSERT path: persist invoice + line items + run matcher.
-    let matcherResult: {
-      laborMatches: LaborMatch[];
-      materialMatches: MaterialMatch[];
-    };
+    let matcherResult: MatcherOutput<number>;
     try {
-      matcherResult = await this.matchInvoiceLines(qboInvoice, clientId);
+      const lines: NormalizedLine<number>[] = qboInvoice.Line.map((line, lineIndex) => ({
+        key: lineIndex,
+        qboItemId: line.SalesItemLineDetail?.ItemRef?.value ?? null,
+        description: line.Description || '',
+        qty: line.SalesItemLineDetail?.Qty ?? null,
+        amount: line.Amount
+      }));
+      matcherResult = await this.runMatcher(lines, clientId, qboInvoice.TxnDate);
     } catch (error) {
       result.errors.push({
         type: 'matcher_failed',
@@ -399,16 +427,7 @@ export class InvoiceImportService extends DatabaseService {
         message: error instanceof Error ? error.message : String(error)
       });
       // Still insert the invoice with unmatched lines so the user has a record.
-      matcherResult = {
-        laborMatches: qboInvoice.Line.map((_line, lineIndex) => ({
-          lineIndex,
-          status: 'unmatched' as const,
-          workActivityId: null,
-          matchScore: null,
-          matchCandidates: null
-        })),
-        materialMatches: []
-      };
+      matcherResult = { laborDecisions: new Map(), materialDecisions: new Map() };
     }
 
     await this.db.transaction(async (tx) => {
@@ -419,7 +438,7 @@ export class InvoiceImportService extends DatabaseService {
           qboCustomerId: qboInvoice.CustomerRef.value,
           clientId,
           invoiceNumber: qboInvoice.DocNumber,
-          status: services.invoiceService.mapQBOInvoiceStatus(qboInvoice),
+          status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
           totalAmount: qboInvoice.TotalAmt,
           invoiceDate: qboInvoice.TxnDate,
           dueDate: qboInvoice.DueDate || null,
@@ -428,47 +447,23 @@ export class InvoiceImportService extends DatabaseService {
         .returning();
       const localInvoiceId = inserted[0].id;
 
-      // Build line item rows from the QBO invoice. We index by lineIndex so
-      // we can layer matcher results on top regardless of whether each line
-      // was treated as labor or material.
-      const laborByIndex = new Map(matcherResult.laborMatches.map((m) => [m.lineIndex, m]));
-      const materialByIndex = new Map(matcherResult.materialMatches.map((m) => [m.lineIndex, m]));
-
+      // Build line item rows from the QBO invoice. Decisions are keyed by
+      // lineIndex; labor and material maps are mutually exclusive per line.
       const lineRows = qboInvoice.Line.map((line, lineIndex) => {
-        const labor = laborByIndex.get(lineIndex);
-        const material = materialByIndex.get(lineIndex);
-        const qboItemId = line.SalesItemLineDetail?.ItemRef?.value || null;
-        const qty = line.SalesItemLineDetail?.Qty ?? 0;
-        const rate = line.SalesItemLineDetail?.UnitPrice ?? 0;
-
-        let matchStatus: string = 'unmatched';
-        let workActivityId: number | null = null;
-        let otherChargeId: number | null = null;
-        let matchScore: number | null = null;
-        let matchCandidates: MatchCandidate[] | null = null;
-
-        if (labor) {
-          matchStatus = labor.status;
-          workActivityId = labor.workActivityId;
-          matchScore = labor.matchScore;
-          matchCandidates = labor.matchCandidates;
-        } else if (material) {
-          matchStatus = material.status;
-          otherChargeId = material.otherChargeId;
-        }
-
+        const labor = matcherResult.laborDecisions.get(lineIndex);
+        const material = matcherResult.materialDecisions.get(lineIndex);
         return {
           invoiceId: localInvoiceId,
-          workActivityId,
-          otherChargeId,
-          qboItemId,
+          workActivityId: labor?.workActivityId ?? null,
+          otherChargeId: material?.otherChargeId ?? null,
+          qboItemId: line.SalesItemLineDetail?.ItemRef?.value || null,
           description: line.Description || '',
-          quantity: qty,
-          rate,
+          quantity: line.SalesItemLineDetail?.Qty ?? 0,
+          rate: line.SalesItemLineDetail?.UnitPrice ?? 0,
           amount: line.Amount,
-          matchStatus,
-          matchScore,
-          matchCandidates: matchCandidates as any
+          matchStatus: labor?.status ?? material?.status ?? ('unmatched' as const),
+          matchScore: labor?.matchScore ?? null,
+          matchCandidates: labor?.matchCandidates ?? null
         };
       });
 
@@ -478,25 +473,20 @@ export class InvoiceImportService extends DatabaseService {
 
       // Flip status for any 'auto'-matched labor activities (materials don't
       // flip activity status — they live on already-completed activities).
-      const autoActivityIds = matcherResult.laborMatches
-        .filter((m) => m.status === 'auto' && m.workActivityId != null)
-        .map((m) => m.workActivityId as number);
+      const autoActivityIds: number[] = [];
+      for (const decision of matcherResult.laborDecisions.values()) {
+        if (decision.status === 'auto' && decision.workActivityId != null) {
+          autoActivityIds.push(decision.workActivityId);
+        }
+      }
       if (autoActivityIds.length > 0) {
-        await services.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
+        await this.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
       }
     });
 
     result.imported++;
-
-    for (const m of matcherResult.laborMatches) {
-      if (m.status === 'auto') result.autoMatched++;
-      else if (m.status === 'needs_review') result.needsReview++;
-      else result.unmatched++;
-    }
-    for (const m of matcherResult.materialMatches) {
-      if (m.status === 'auto') result.autoMatched++;
-      else result.unmatched++;
-    }
+    tallyLabor(matcherResult.laborDecisions, result);
+    tallyMaterial(matcherResult.materialDecisions, result);
   }
 
   /**
@@ -545,7 +535,7 @@ export class InvoiceImportService extends DatabaseService {
       qboInvoiceId: qboInvoice.Id,
       message
     });
-    await services.notificationService.notifyQBOUnmatchedClient({
+    await this.notificationService.notifyQBOUnmatchedClient({
       qboInvoiceId: qboInvoice.Id,
       qboInvoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
       qboCustomerId,
@@ -559,17 +549,25 @@ export class InvoiceImportService extends DatabaseService {
   // -----------------------------------------------------------------------
 
   /**
-   * Load candidate work activities + their charges and run the matcher for
-   * every line on the invoice. Implements within-invoice dedup for labor.
+   * Core matcher pipeline used by both initial sync (lines keyed by lineIndex)
+   * and rematch (lines keyed by lineId).
+   *
+   * For each line:
+   *   - Inventory / NonInventory items → material matching (description + amount fuzzy).
+   *   - Service / unknown items → labor matching (scoring against candidate activities).
+   *
+   * Within-invoice dedup: labor lines are processed in descending top-score
+   * order so the strongest match wins, and claimed activities are removed
+   * from the candidate pool of subsequent lines.
    */
-  private async matchInvoiceLines(
-    qboInvoice: QBOInvoice,
-    clientId: number
-  ): Promise<{ laborMatches: LaborMatch[]; materialMatches: MaterialMatch[] }> {
-    const invoiceDate = qboInvoice.TxnDate;
+  private async runMatcher<K>(
+    lines: NormalizedLine<K>[],
+    clientId: number,
+    invoiceDate: string
+  ): Promise<MatcherOutput<K>> {
     const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
 
-    // Candidate activities: same client, completed, within 90d window.
+    // Candidate activities: same client, completed, within window.
     const candidateActivities = (await this.db
       .select()
       .from(workActivities)
@@ -581,14 +579,11 @@ export class InvoiceImportService extends DatabaseService {
           lte(workActivities.date, invoiceDate)
         )
       )) as WorkActivity[];
+    const scoringActivities = candidateActivities.map(toScoringActivity);
 
-    // Classify lines into labor vs material using qbo_items.type.
+    // Resolve qbo_items types/names for the lines.
     const qboItemIds = Array.from(
-      new Set(
-        qboInvoice.Line
-          .map((l) => l.SalesItemLineDetail?.ItemRef?.value)
-          .filter((v): v is string => !!v)
-      )
+      new Set(lines.map((l) => l.qboItemId).filter((v): v is string => !!v))
     );
     const itemRows = qboItemIds.length
       ? await this.db.select().from(qboItems).where(inArray(qboItems.qboId, qboItemIds))
@@ -596,69 +591,52 @@ export class InvoiceImportService extends DatabaseService {
     const itemTypeById = new Map(itemRows.map((it) => [it.qboId, it.type]));
     const itemNameById = new Map(itemRows.map((it) => [it.qboId, it.name]));
 
-    // Score every line ↔ candidate pair for labor lines.
+    // Partition lines into labor vs material.
     const laborLines: Array<{
-      lineIndex: number;
+      key: K;
       scored: Array<{ activity: ScoringActivity; score: number; reason: string }>;
     }> = [];
-    const materialLines: Array<{
-      lineIndex: number;
-      qboLine: QBOInvoice['Line'][number];
-    }> = [];
+    const materialLines: Array<{ key: K; description: string; amount: number }> = [];
 
-    qboInvoice.Line.forEach((line, lineIndex) => {
-      const qboItemId = line.SalesItemLineDetail?.ItemRef?.value;
-      const itemType = qboItemId ? itemTypeById.get(qboItemId) : undefined;
-      const itemName = qboItemId ? itemNameById.get(qboItemId) : undefined;
-
+    for (const line of lines) {
+      const itemType = line.qboItemId ? itemTypeById.get(line.qboItemId) : undefined;
+      const itemName = line.qboItemId ? itemNameById.get(line.qboItemId) : undefined;
       if (itemType === 'Inventory' || itemType === 'NonInventory') {
-        materialLines.push({ lineIndex, qboLine: line });
-        return;
+        materialLines.push({ key: line.key, description: line.description, amount: line.amount });
+        continue;
       }
-      // Default to labor (Service or unknown).
       const scoringLine: ScoringLine = {
-        description: line.Description || '',
-        qty: line.SalesItemLineDetail?.Qty ?? null,
+        description: line.description,
+        qty: line.qty,
         qboItemName: itemName ?? null
       };
-      const scored = candidateActivities.map((activity) => ({
-        activity: toScoringActivity(activity),
-        ...scoreCandidate(toScoringActivity(activity), scoringLine, invoiceDate)
+      const scored = scoringActivities.map((sa) => ({
+        activity: sa,
+        ...scoreCandidate(sa, scoringLine, invoiceDate)
       }));
-      laborLines.push({ lineIndex, scored });
-    });
+      laborLines.push({ key: line.key, scored });
+    }
 
-    // Within-invoice dedup: process labor lines in descending top-score order
-    // so the strongest match wins ties, and remove claimed activities from the
-    // candidate pool of subsequent lines.
-    const claimedActivityIds = new Set<number>();
-    const laborMatches: LaborMatch[] = [];
-
-    // First, compute each line's current top score (before dedup) for ordering.
+    // Labor within-invoice dedup, descending top-score order.
     const orderedByTopScore = [...laborLines].sort((a, b) => {
       const ta = a.scored.length ? Math.max(...a.scored.map((s) => s.score)) : 0;
       const tb = b.scored.length ? Math.max(...b.scored.map((s) => s.score)) : 0;
       return tb - ta;
     });
 
-    for (const { lineIndex, scored } of orderedByTopScore) {
+    const claimedActivityIds = new Set<number>();
+    const laborDecisions = new Map<K, LaborDecision>();
+    for (const { key, scored } of orderedByTopScore) {
       const filtered = scored.filter((s) => !claimedActivityIds.has(s.activity.id));
-      const classification = classifyLine(filtered);
-      if (classification.status === 'auto' && classification.workActivityId != null) {
-        claimedActivityIds.add(classification.workActivityId);
+      const decision = classifyLine(filtered);
+      if (decision.status === 'auto' && decision.workActivityId != null) {
+        claimedActivityIds.add(decision.workActivityId);
       }
-      laborMatches.push({
-        lineIndex,
-        status: classification.status,
-        workActivityId: classification.workActivityId,
-        matchScore: classification.matchScore,
-        matchCandidates: classification.matchCandidates
-      });
+      laborDecisions.set(key, decision);
     }
 
-    // Material matching: for each material line, look for an other_charges row
-    // among candidate activities' charges whose description matches and whose
-    // totalCost is within $0.01. Auto-match only when exactly one such row exists.
+    // Material matching: candidate charges from the candidate activities.
+    // Auto-match only when exactly one charge matches both description and amount.
     const candidateActivityIds = candidateActivities.map((a) => a.id);
     const candidateCharges: OtherCharge[] = candidateActivityIds.length
       ? ((await this.db
@@ -667,36 +645,21 @@ export class InvoiceImportService extends DatabaseService {
           .where(inArray(otherCharges.workActivityId, candidateActivityIds))) as OtherCharge[])
       : [];
 
-    const materialMatches: MaterialMatch[] = [];
-    for (const { lineIndex, qboLine } of materialLines) {
-      const desc = (qboLine.Description || '').trim();
-      const amount = qboLine.Amount;
-      const matchesDesc = (charge: OtherCharge) => {
-        if (!desc) return false;
-        const cd = charge.description?.toLowerCase() || '';
-        const ld = desc.toLowerCase();
-        // ILIKE-ish: exact, contains, or contained-by.
-        return cd === ld || cd.includes(ld) || ld.includes(cd);
-      };
-      const amountMatches = (charge: OtherCharge) =>
-        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - amount) <= 0.01;
-      const hits = candidateCharges.filter((c) => matchesDesc(c) && amountMatches(c));
-      if (hits.length === 1) {
-        materialMatches.push({
-          lineIndex,
-          status: 'auto',
-          otherChargeId: hits[0].id
-        });
-      } else {
-        materialMatches.push({
-          lineIndex,
-          status: 'unmatched',
-          otherChargeId: null
-        });
-      }
+    const materialDecisions = new Map<K, MaterialDecision>();
+    for (const ml of materialLines) {
+      const desc = ml.description.trim();
+      const hits = desc
+        ? candidateCharges.filter((c) => matchCharge(c, desc, ml.amount))
+        : [];
+      materialDecisions.set(
+        ml.key,
+        hits.length === 1
+          ? { status: 'auto', otherChargeId: hits[0].id }
+          : { status: 'unmatched', otherChargeId: null }
+      );
     }
 
-    return { laborMatches, materialMatches };
+    return { laborDecisions, materialDecisions };
   }
 
   // -----------------------------------------------------------------------
@@ -745,128 +708,19 @@ export class InvoiceImportService extends DatabaseService {
       )
     );
 
-    // Build a synthetic QBOInvoice purely to feed the matcher.
-    const itemQboIds = Array.from(
-      new Set(
-        linesToRematch
-          .map((l) => l.qboItemId)
-          .filter((v): v is string => !!v)
-      )
+    // Run the matcher keyed by line id (vs the initial sync's lineIndex).
+    const normalizedLines: NormalizedLine<number>[] = linesToRematch.map((line) => ({
+      key: line.id,
+      qboItemId: line.qboItemId,
+      description: line.description,
+      qty: line.quantity ?? null,
+      amount: line.amount
+    }));
+    const { laborDecisions, materialDecisions } = await this.runMatcher(
+      normalizedLines,
+      invoice.clientId,
+      invoice.invoiceDate
     );
-    const itemRows = itemQboIds.length
-      ? await this.db.select().from(qboItems).where(inArray(qboItems.qboId, itemQboIds))
-      : [];
-    const itemTypeById = new Map(itemRows.map((it) => [it.qboId, it.type]));
-    const itemNameById = new Map(itemRows.map((it) => [it.qboId, it.name]));
-
-    // Re-score: candidate window from invoice date.
-    const invoiceDate = invoice.invoiceDate;
-    const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
-    const candidateActivities = (await this.db
-      .select()
-      .from(workActivities)
-      .where(
-        and(
-          eq(workActivities.clientId, invoice.clientId),
-          eq(workActivities.status, 'completed'),
-          gte(workActivities.date, windowStart),
-          lte(workActivities.date, invoiceDate)
-        )
-      )) as WorkActivity[];
-
-    // Partition lines into labor vs material based on item type.
-    const laborLines: Array<{
-      lineId: number;
-      qboItemId: string | null;
-      description: string;
-      qty: number | null;
-      scored: Array<{ activity: ScoringActivity; score: number; reason: string }>;
-    }> = [];
-    const materialLines: Array<{
-      lineId: number;
-      description: string;
-      amount: number;
-    }> = [];
-
-    for (const line of linesToRematch) {
-      const itemType = line.qboItemId ? itemTypeById.get(line.qboItemId) : undefined;
-      const itemName = line.qboItemId ? itemNameById.get(line.qboItemId) : undefined;
-      if (itemType === 'Inventory' || itemType === 'NonInventory') {
-        materialLines.push({
-          lineId: line.id,
-          description: line.description,
-          amount: line.amount
-        });
-        continue;
-      }
-      const sLine: ScoringLine = {
-        description: line.description,
-        qty: line.quantity ?? null,
-        qboItemName: itemName ?? null
-      };
-      const scored = candidateActivities.map((activity) => {
-        const sa = toScoringActivity(activity);
-        return { activity: sa, ...scoreCandidate(sa, sLine, invoiceDate) };
-      });
-      laborLines.push({
-        lineId: line.id,
-        qboItemId: line.qboItemId,
-        description: line.description,
-        qty: line.quantity ?? null,
-        scored
-      });
-    }
-
-    // Within-invoice dedup for the rematch — same algorithm as the initial sync.
-    const claimed = new Set<number>();
-    const ordered = [...laborLines].sort((a, b) => {
-      const ta = a.scored.length ? Math.max(...a.scored.map((s) => s.score)) : 0;
-      const tb = b.scored.length ? Math.max(...b.scored.map((s) => s.score)) : 0;
-      return tb - ta;
-    });
-    const laborDecisions = new Map<
-      number,
-      ReturnType<typeof classifyLine>
-    >();
-    for (const ll of ordered) {
-      const filtered = ll.scored.filter((s) => !claimed.has(s.activity.id));
-      const decision = classifyLine(filtered);
-      if (decision.status === 'auto' && decision.workActivityId != null) {
-        claimed.add(decision.workActivityId);
-      }
-      laborDecisions.set(ll.lineId, decision);
-    }
-
-    // Material rematch.
-    const candidateActivityIds = candidateActivities.map((a) => a.id);
-    const candidateCharges: OtherCharge[] = candidateActivityIds.length
-      ? ((await this.db
-          .select()
-          .from(otherCharges)
-          .where(inArray(otherCharges.workActivityId, candidateActivityIds))) as OtherCharge[])
-      : [];
-
-    const materialDecisions = new Map<
-      number,
-      { status: 'auto' | 'unmatched'; otherChargeId: number | null }
-    >();
-    for (const ml of materialLines) {
-      const desc = ml.description.trim();
-      const matchesDesc = (charge: OtherCharge) => {
-        if (!desc) return false;
-        const cd = charge.description?.toLowerCase() || '';
-        const ld = desc.toLowerCase();
-        return cd === ld || cd.includes(ld) || ld.includes(cd);
-      };
-      const amountMatches = (charge: OtherCharge) =>
-        typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - ml.amount) <= 0.01;
-      const hits = candidateCharges.filter((c) => matchesDesc(c) && amountMatches(c));
-      if (hits.length === 1) {
-        materialDecisions.set(ml.lineId, { status: 'auto', otherChargeId: hits[0].id });
-      } else {
-        materialDecisions.set(ml.lineId, { status: 'unmatched', otherChargeId: null });
-      }
-    }
 
     // Apply decisions in a single transaction: clear the old lines, write
     // new state, flip activity statuses.
@@ -902,7 +756,7 @@ export class InvoiceImportService extends DatabaseService {
             workActivityId: decision.workActivityId,
             matchStatus: decision.status,
             matchScore: decision.matchScore,
-            matchCandidates: (decision.matchCandidates ?? null) as any,
+            matchCandidates: decision.matchCandidates ?? null,
             updatedAt: new Date()
           })
           .where(eq(invoiceLineItems.id, lineId));
@@ -935,7 +789,7 @@ export class InvoiceImportService extends DatabaseService {
 
       // 5) Flip newly auto-matched activities to 'invoiced'.
       if (newAutoActivityIds.length > 0) {
-        await services.workActivityService.setStatus(newAutoActivityIds, 'invoiced', tx);
+        await this.workActivityService.setStatus(newAutoActivityIds, 'invoiced', tx);
       }
     });
 
@@ -1026,7 +880,7 @@ export class InvoiceImportService extends DatabaseService {
           .where(eq(workActivities.id, workActivityId))
           .limit(1);
         if (current[0] && current[0].status !== 'invoiced') {
-          await services.workActivityService.setStatus([workActivityId], 'invoiced', tx);
+          await this.workActivityService.setStatus([workActivityId], 'invoiced', tx);
         }
       }
 
@@ -1059,7 +913,7 @@ export class InvoiceImportService extends DatabaseService {
             workActivityId,
             lineItemId,
             invoiceIds: allInvoiceIds
-          } as any
+          }
         });
       }
     });
@@ -1106,7 +960,7 @@ export class InvoiceImportService extends DatabaseService {
       quantity: r.quantity,
       rate: r.rate,
       amount: r.amount,
-      candidates: (r.candidates as MatchCandidate[] | null) ?? null
+      candidates: r.candidates ?? null
     }));
   }
 
@@ -1138,7 +992,7 @@ export class InvoiceImportService extends DatabaseService {
     );
     const orphaned = unique.filter((id) => !referenced.has(id));
     if (orphaned.length > 0) {
-      await services.workActivityService.setStatus(orphaned, 'completed', tx);
+      await this.workActivityService.setStatus(orphaned, 'completed', tx);
     }
   }
 }
@@ -1170,4 +1024,36 @@ function toScoringActivity(activity: WorkActivity): ScoringActivity {
     notes: activity.notes ?? null,
     tasks: activity.tasks ?? null
   };
+}
+
+/**
+ * Material-line predicate: description matches fuzzily (exact, contains, or
+ * contained-by, case-insensitive) AND totalCost is within $0.01 of the line.
+ */
+function matchCharge(charge: OtherCharge, desc: string, amount: number): boolean {
+  const cd = charge.description?.toLowerCase() || '';
+  const ld = desc.toLowerCase();
+  if (!(cd === ld || cd.includes(ld) || ld.includes(cd))) return false;
+  return typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - amount) <= 0.01;
+}
+
+function tallyLabor(
+  decisions: Map<unknown, LaborDecision>,
+  result: { autoMatched: number; needsReview: number; unmatched: number }
+): void {
+  for (const d of decisions.values()) {
+    if (d.status === 'auto') result.autoMatched++;
+    else if (d.status === 'needs_review') result.needsReview++;
+    else result.unmatched++;
+  }
+}
+
+function tallyMaterial(
+  decisions: Map<unknown, MaterialDecision>,
+  result: { autoMatched: number; unmatched: number }
+): void {
+  for (const d of decisions.values()) {
+    if (d.status === 'auto') result.autoMatched++;
+    else result.unmatched++;
+  }
 }

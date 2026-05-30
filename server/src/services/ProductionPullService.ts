@@ -9,6 +9,7 @@ import {
   type Employee,
   type NewClient,
   type NewEmployee,
+  type WorkActivityStatus,
 } from '../db';
 import { eq, and, ilike } from 'drizzle-orm';
 
@@ -468,7 +469,7 @@ export class ProductionPullService extends DatabaseService {
       workActivity: {
         workType: activity.workType,
         date: activity.date,
-        status: activity.status,
+        status: activity.status as WorkActivityStatus,
         startTime: activity.startTime,
         endTime: activity.endTime,
         billableHours: activity.billableHours,

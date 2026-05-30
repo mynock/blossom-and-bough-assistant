@@ -410,11 +410,12 @@ router.post('/invoices/preview', async (req, res) => {
 });
 
 /**
- * Seed sandbox QuickBooks data. Dev-only: refuses to run in production.
+ * Seed sandbox QuickBooks data. Dev-only: only runs when NODE_ENV is explicitly
+ * 'development'. Refuses in production, staging, test, or undefined envs.
  */
 router.post('/seed', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ error: 'Seeding is disabled in production' });
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Seeding is only available in development' });
   }
   try {
     const { default: QBOSeedDataGenerator } = await import('../scripts/seedQBOData');

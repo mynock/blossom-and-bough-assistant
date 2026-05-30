@@ -55,6 +55,7 @@ import {
 } from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
+import { secureFetch } from '../services/csrf';
 
 interface Invoice {
   id: number;
@@ -171,7 +172,7 @@ const Invoices: React.FC = () => {
     try {
       setError(null);
       
-      const response = await fetch(`/api/qbo/invoices/${invoiceId}/sync`, {
+      const response = await secureFetch(`/api/qbo/invoices/${invoiceId}/sync`, {
         method: 'POST',
       });
       
@@ -193,7 +194,7 @@ const Invoices: React.FC = () => {
       setError(null);
       
       console.log('Making DELETE request to:', `/api/qbo/invoices/${invoiceId}`);
-      const response = await fetch(`/api/qbo/invoices/${invoiceId}`, {
+      const response = await secureFetch(`/api/qbo/invoices/${invoiceId}`, {
         method: 'DELETE',
       });
       
@@ -226,10 +227,9 @@ const Invoices: React.FC = () => {
       setSyncing(true);
       setError(null);
 
-      const response = await fetch('/api/qbo/invoices/sync-all', {
+      const response = await secureFetch('/api/qbo/invoices/sync-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({}),
       });
 

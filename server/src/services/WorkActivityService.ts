@@ -9,12 +9,13 @@ import {
   clients,
   projects,
   employees,
-  type WorkActivity, 
+  type WorkActivity,
   type NewWorkActivity,
   type OtherCharge,
   type NewOtherCharge,
   type PlantListItem,
-  type NewPlantListItem
+  type NewPlantListItem,
+  type WorkActivityStatus
 } from '../db';
 import { eq, desc, like, and, gte, lte, between, inArray, exists } from 'drizzle-orm';
 
@@ -112,7 +113,7 @@ export class WorkActivityService extends DatabaseService {
     }
     
     if (filters?.status) {
-      whereConditions.push(eq(workActivities.status, filters.status));
+      whereConditions.push(eq(workActivities.status, filters.status as WorkActivityStatus));
     }
     
     if (filters?.clientId) {
@@ -638,7 +639,7 @@ export class WorkActivityService extends DatabaseService {
    * transaction handle so callers can compose this with other writes atomically.
    * Returns early when ids is empty to avoid a no-op SQL error.
    */
-  async setStatus(ids: number[], status: string, tx?: DbOrTx): Promise<void> {
+  async setStatus(ids: number[], status: WorkActivityStatus, tx?: DbOrTx): Promise<void> {
     if (ids.length === 0) return;
     const conn = tx ?? this.db;
     await conn

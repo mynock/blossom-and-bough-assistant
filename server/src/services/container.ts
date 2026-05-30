@@ -124,7 +124,12 @@ class ServiceContainer {
   }
 
   get invoiceImportService(): InvoiceImportService {
-    return this._invoiceImportService ??= new InvoiceImportService();
+    return this._invoiceImportService ??= new InvoiceImportService(
+      this.quickBooksService,
+      this.invoiceService,
+      this.workActivityService,
+      this.notificationService
+    );
   }
 
   // Google services

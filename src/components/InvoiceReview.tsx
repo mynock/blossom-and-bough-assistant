@@ -24,6 +24,7 @@ import {
 } from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
+import { secureFetch } from '../services/csrf';
 
 // ---------------------------------------------------------------------------
 // Local types — mirror exactly what getReviewQueue() returns.
@@ -190,12 +191,11 @@ const EntryCard: React.FC<EntryCardProps> = ({
       };
       if (force) body.force = true;
 
-      const resp = await fetch(
+      const resp = await secureFetch(
         `/api/qbo/invoices/${entry.invoiceId}/line-items/${entry.lineItemId}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
           body: JSON.stringify(body),
         }
       );
