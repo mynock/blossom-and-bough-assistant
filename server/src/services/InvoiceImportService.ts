@@ -53,6 +53,21 @@ export type SyncResult = {
   // Per-invoice breakdown of what WOULD happen. Only populated on dry runs so
   // the operator can judge match quality before committing real writes.
   preview?: SyncPreviewInvoice[];
+  // Cross-invoice collisions: the same work activity strongly matched more than
+  // one invoice in this run. Only populated on dry runs. A real run resolves
+  // these by giving the activity to the older invoice (processed first) and
+  // leaving the newer one to manual review — so these are quality signals worth
+  // eyeballing, not hard failures.
+  duplicateMatches?: DuplicateMatch[];
+};
+
+export type DuplicateMatch = {
+  activityId: number;
+  lineDescription: string;
+  // The newer invoice that would NOT get the activity in a real run.
+  invoiceNumber: string;
+  // The older invoice that claims the activity first.
+  claimedByInvoiceNumber: string;
 };
 
 export type SyncPreviewLine = {
@@ -63,6 +78,9 @@ export type SyncPreviewLine = {
   // For auto/needs_review labor: the top candidate's activity id + score.
   matchedActivityId: number | null;
   matchScore: number | null;
+  // Set when this line's auto-match collides with an activity already claimed
+  // by an earlier (older) invoice in the same run — value is that invoice number.
+  duplicateOf?: string;
 };
 
 export type SyncPreviewInvoice = {
@@ -371,7 +389,7 @@ export class InvoiceImportService extends DatabaseService {
       needsReview: 0,
       unmatched: 0,
       errors: [],
-      ...(dryRun ? { dryRun: true, preview: [] } : {})
+      ...(dryRun ? { dryRun: true, preview: [], duplicateMatches: [] } : {})
     };
 
     let qboInvoices: QBOInvoice[];
@@ -395,10 +413,12 @@ export class InvoiceImportService extends DatabaseService {
     qboInvoices.sort((a, b) => (a.TxnDate || '').localeCompare(b.TxnDate || ''));
 
     // In a real run, cross-invoice dedup happens because each auto-match flips
-    // the activity to 'invoiced' before the next invoice's candidate query runs.
-    // A dry run commits nothing, so we track claimed ids in memory and exclude
-    // them from later invoices' candidate pools — making the preview faithful.
-    const claimedInRun = dryRun ? new Set<number>() : undefined;
+    // the activity to 'invoiced' before the next invoice's candidate query runs,
+    // so the older invoice (processed first) wins. A dry run commits nothing, so
+    // we track who claimed each activity in memory: activityId → claimer invoice
+    // number. Later invoices that also auto-match a claimed activity are flagged
+    // as duplicates rather than silently double-counting it.
+    const claimedInRun = dryRun ? new Map<number, string>() : undefined;
 
     for (const qboInvoice of qboInvoices) {
       try {
@@ -426,7 +446,7 @@ export class InvoiceImportService extends DatabaseService {
     qboInvoice: QBOInvoice,
     result: SyncResult,
     dryRun: boolean,
-    claimedInRun?: Set<number>
+    claimedInRun?: Map<number, string>
   ): Promise<void> {
     const clientId = await this.resolveClientId(qboInvoice, result, dryRun);
     if (clientId == null) {
@@ -486,7 +506,7 @@ export class InvoiceImportService extends DatabaseService {
         qty: line.SalesItemLineDetail?.Qty ?? null,
         amount: line.Amount
       }));
-      matcherResult = await this.runMatcher(lines, clientId, qboInvoice.TxnDate, claimedInRun);
+      matcherResult = await this.runMatcher(lines, clientId, qboInvoice.TxnDate);
     } catch (error) {
       result.errors.push({
         type: 'matcher_failed',
@@ -497,8 +517,31 @@ export class InvoiceImportService extends DatabaseService {
       matcherResult = { laborDecisions: new Map(), materialDecisions: new Map() };
     }
 
-    // Activities auto-matched on this invoice — flipped to 'invoiced' in a real
-    // run, or recorded as claimed in a dry run so later invoices skip them.
+    // Labor lines that auto-matched an activity already claimed by an earlier
+    // (older) invoice in this dry run. Keyed by line index → older claimer.
+    const invoiceNumber = qboInvoice.DocNumber || qboInvoice.Id;
+    const duplicateLines = new Map<number, string>();
+    if (dryRun && claimedInRun) {
+      for (const [lineIndex, decision] of matcherResult.laborDecisions) {
+        if (decision.status !== 'auto' || decision.workActivityId == null) continue;
+        const claimer = claimedInRun.get(decision.workActivityId);
+        if (claimer) {
+          // Already claimed by an older invoice → flag, don't re-claim.
+          duplicateLines.set(lineIndex, claimer);
+          result.duplicateMatches!.push({
+            activityId: decision.workActivityId,
+            lineDescription: qboInvoice.Line[lineIndex]?.Description || '',
+            invoiceNumber,
+            claimedByInvoiceNumber: claimer
+          });
+        } else {
+          // First (oldest) invoice to claim this activity wins it.
+          claimedInRun.set(decision.workActivityId, invoiceNumber);
+        }
+      }
+    }
+
+    // Activities auto-matched on this invoice — flipped to 'invoiced' in a real run.
     const autoActivityIds: number[] = [];
     for (const decision of matcherResult.laborDecisions.values()) {
       if (decision.status === 'auto' && decision.workActivityId != null) {
@@ -507,57 +550,61 @@ export class InvoiceImportService extends DatabaseService {
     }
 
     if (dryRun) {
-      autoActivityIds.forEach((id) => claimedInRun?.add(id));
-      result.preview!.push(buildPreviewInvoice(qboInvoice, matcherResult));
-    } else {
-      await this.db.transaction(async (tx) => {
-        const inserted = await tx
-          .insert(invoices)
-          .values({
-            qboInvoiceId: qboInvoice.Id,
-            qboCustomerId: qboInvoice.CustomerRef.value,
-            clientId,
-            invoiceNumber: qboInvoice.DocNumber,
-            status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
-            totalAmount: qboInvoice.TotalAmt,
-            invoiceDate: qboInvoice.TxnDate,
-            dueDate: qboInvoice.DueDate || null,
-            qboSyncAt: new Date()
-          })
-          .returning();
-        const localInvoiceId = inserted[0].id;
-
-        // Build line item rows from the QBO invoice. Decisions are keyed by
-        // lineIndex; labor and material maps are mutually exclusive per line.
-        const lineRows = qboInvoice.Line.map((line, lineIndex) => {
-          const labor = matcherResult.laborDecisions.get(lineIndex);
-          const material = matcherResult.materialDecisions.get(lineIndex);
-          return {
-            invoiceId: localInvoiceId,
-            workActivityId: labor?.workActivityId ?? null,
-            otherChargeId: material?.otherChargeId ?? null,
-            qboItemId: line.SalesItemLineDetail?.ItemRef?.value || null,
-            description: line.Description || '',
-            quantity: line.SalesItemLineDetail?.Qty ?? 0,
-            rate: line.SalesItemLineDetail?.UnitPrice ?? 0,
-            amount: line.Amount,
-            matchStatus: labor?.status ?? material?.status ?? ('unmatched' as const),
-            matchScore: labor?.matchScore ?? null,
-            matchCandidates: labor?.matchCandidates ?? null
-          };
-        });
-
-        if (lineRows.length > 0) {
-          await tx.insert(invoiceLineItems).values(lineRows);
-        }
-
-        // Flip status for any 'auto'-matched labor activities (materials don't
-        // flip activity status — they live on already-completed activities).
-        if (autoActivityIds.length > 0) {
-          await this.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
-        }
-      });
+      result.preview!.push(buildPreviewInvoice(qboInvoice, matcherResult, duplicateLines));
+      tallyLabor(matcherResult.laborDecisions, result, duplicateLines);
+      tallyMaterial(matcherResult.materialDecisions, result);
+      result.imported++;
+      return;
     }
+
+    // Real run: persist invoice + line items, flip activity statuses atomically.
+    await this.db.transaction(async (tx) => {
+      const inserted = await tx
+        .insert(invoices)
+        .values({
+          qboInvoiceId: qboInvoice.Id,
+          qboCustomerId: qboInvoice.CustomerRef.value,
+          clientId,
+          invoiceNumber: qboInvoice.DocNumber,
+          status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
+          totalAmount: qboInvoice.TotalAmt,
+          invoiceDate: qboInvoice.TxnDate,
+          dueDate: qboInvoice.DueDate || null,
+          qboSyncAt: new Date()
+        })
+        .returning();
+      const localInvoiceId = inserted[0].id;
+
+      // Build line item rows from the QBO invoice. Decisions are keyed by
+      // lineIndex; labor and material maps are mutually exclusive per line.
+      const lineRows = qboInvoice.Line.map((line, lineIndex) => {
+        const labor = matcherResult.laborDecisions.get(lineIndex);
+        const material = matcherResult.materialDecisions.get(lineIndex);
+        return {
+          invoiceId: localInvoiceId,
+          workActivityId: labor?.workActivityId ?? null,
+          otherChargeId: material?.otherChargeId ?? null,
+          qboItemId: line.SalesItemLineDetail?.ItemRef?.value || null,
+          description: line.Description || '',
+          quantity: line.SalesItemLineDetail?.Qty ?? 0,
+          rate: line.SalesItemLineDetail?.UnitPrice ?? 0,
+          amount: line.Amount,
+          matchStatus: labor?.status ?? material?.status ?? ('unmatched' as const),
+          matchScore: labor?.matchScore ?? null,
+          matchCandidates: labor?.matchCandidates ?? null
+        };
+      });
+
+      if (lineRows.length > 0) {
+        await tx.insert(invoiceLineItems).values(lineRows);
+      }
+
+      // Flip status for any 'auto'-matched labor activities (materials don't
+      // flip activity status — they live on already-completed activities).
+      if (autoActivityIds.length > 0) {
+        await this.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
+      }
+    });
 
     result.imported++;
     tallyLabor(matcherResult.laborDecisions, result);
@@ -644,21 +691,20 @@ export class InvoiceImportService extends DatabaseService {
    * order so the strongest match wins, and claimed activities are removed
    * from the candidate pool of subsequent lines.
    *
-   * `excludeActivityIds` removes activities already claimed earlier in the run.
-   * A real sync achieves this implicitly (claimed activities are flipped to
-   * 'invoiced' and so drop out of the next candidate query); a dry run passes
-   * the set explicitly because it commits nothing.
+   * This matches the full candidate pool every time. Cross-invoice dedup lives
+   * at the caller: a real sync flips claimed activities to 'invoiced' so they
+   * drop out of the next invoice's candidate query; a dry run reconciles claims
+   * in memory (see processInvoice) and flags collisions as duplicate matches.
    */
   private async runMatcher<K>(
     lines: NormalizedLine<K>[],
     clientId: number,
-    invoiceDate: string,
-    excludeActivityIds?: Set<number>
+    invoiceDate: string
   ): Promise<MatcherOutput<K>> {
     const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
 
     // Candidate activities: same client, completed, within window.
-    const candidateRows = (await this.db
+    const candidateActivities = (await this.db
       .select()
       .from(workActivities)
       .where(
@@ -669,9 +715,6 @@ export class InvoiceImportService extends DatabaseService {
           lte(workActivities.date, invoiceDate)
         )
       )) as WorkActivity[];
-    const candidateActivities = excludeActivityIds?.size
-      ? candidateRows.filter((a) => !excludeActivityIds.has(a.id))
-      : candidateRows;
     const scoringActivities = candidateActivities.map(toScoringActivity);
 
     // Resolve qbo_items types/names for the lines.
@@ -1130,11 +1173,16 @@ function matchCharge(charge: OtherCharge, desc: string, amount: number): boolean
   return typeof charge.totalCost === 'number' && Math.abs(charge.totalCost - amount) <= 0.01;
 }
 
-function tallyLabor(
-  decisions: Map<unknown, LaborDecision>,
-  result: { autoMatched: number; needsReview: number; unmatched: number }
+function tallyLabor<K>(
+  decisions: Map<K, LaborDecision>,
+  result: { autoMatched: number; needsReview: number; unmatched: number },
+  // Dry-run only: line keys whose auto-match collides with an older invoice.
+  // These are NOT counted as auto-matched (the older invoice keeps the
+  // activity); they're surfaced via result.duplicateMatches instead.
+  duplicateLines?: Map<K, string>
 ): void {
-  for (const d of decisions.values()) {
+  for (const [key, d] of decisions) {
+    if (duplicateLines?.has(key)) continue;
     if (d.status === 'auto') result.autoMatched++;
     else if (d.status === 'needs_review') result.needsReview++;
     else result.unmatched++;
@@ -1158,7 +1206,8 @@ function tallyMaterial(
  */
 function buildPreviewInvoice(
   qboInvoice: QBOInvoice,
-  matcherResult: MatcherOutput<number>
+  matcherResult: MatcherOutput<number>,
+  duplicateLines?: Map<number, string>
 ): SyncPreviewInvoice {
   const lines: SyncPreviewLine[] = qboInvoice.Line.map((line, lineIndex) => {
     const labor = matcherResult.laborDecisions.get(lineIndex);
@@ -1169,7 +1218,8 @@ function buildPreviewInvoice(
       kind: material ? 'material' : 'labor',
       status: labor?.status ?? material?.status ?? 'unmatched',
       matchedActivityId: labor?.workActivityId ?? null,
-      matchScore: labor?.matchScore ?? null
+      matchScore: labor?.matchScore ?? null,
+      ...(duplicateLines?.has(lineIndex) ? { duplicateOf: duplicateLines.get(lineIndex) } : {})
     };
   });
   return {

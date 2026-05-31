@@ -93,6 +93,7 @@ interface SyncPreviewLine {
   status: 'auto' | 'needs_review' | 'unmatched';
   matchedActivityId: number | null;
   matchScore: number | null;
+  duplicateOf?: string;
 }
 
 interface SyncPreviewInvoice {
@@ -101,6 +102,13 @@ interface SyncPreviewInvoice {
   customerName: string;
   action: 'import' | 'update' | 'skip';
   lines: SyncPreviewLine[];
+}
+
+interface DuplicateMatch {
+  activityId: number;
+  lineDescription: string;
+  invoiceNumber: string;
+  claimedByInvoiceNumber: string;
 }
 
 interface SyncResult {
@@ -112,6 +120,7 @@ interface SyncResult {
   errors: SyncResultError[];
   dryRun?: boolean;
   preview?: SyncPreviewInvoice[];
+  duplicateMatches?: DuplicateMatch[];
 }
 
 const Invoices: React.FC = () => {
@@ -134,6 +143,7 @@ const Invoices: React.FC = () => {
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [errorsExpanded, setErrorsExpanded] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [duplicatesExpanded, setDuplicatesExpanded] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -264,6 +274,7 @@ const Invoices: React.FC = () => {
       setSyncModalOpen(true);
       setErrorsExpanded(false);
       setPreviewExpanded(false);
+      setDuplicatesExpanded(false);
       // A dry run writes nothing, so the invoice list is unchanged.
       if (!dryRun) {
         await fetchInvoices();
@@ -298,6 +309,7 @@ const Invoices: React.FC = () => {
     setSyncResult(null);
     setErrorsExpanded(false);
     setPreviewExpanded(false);
+    setDuplicatesExpanded(false);
   };
 
   const handleSort = (property: keyof Invoice) => {
@@ -854,6 +866,18 @@ const Invoices: React.FC = () => {
                   </Typography>
                 </Box>
               </Grid>
+              {syncResult?.dryRun && (
+                <Grid item xs={6} sm={4}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color={(syncResult?.duplicateMatches?.length ?? 0) > 0 ? 'warning.main' : 'text.primary'}>
+                      {syncResult?.duplicateMatches?.length ?? 0}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Duplicate matches
+                    </Typography>
+                  </Box>
+                </Grid>
+              )}
             </Grid>
 
             {(syncResult?.errors?.length ?? 0) > 0 && (
@@ -892,6 +916,52 @@ const Invoices: React.FC = () => {
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           {err.message}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+
+            {syncResult?.dryRun && (syncResult.duplicateMatches?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  The same work activity strongly matched more than one invoice. In a
+                  real run the <strong>older</strong> invoice keeps the activity and the
+                  newer one is left for manual review — confirm that's the right call.
+                </Alert>
+                <Button
+                  size="small"
+                  variant="text"
+                  color="warning"
+                  startIcon={<AlertTriangle size={16} />}
+                  endIcon={duplicatesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setDuplicatesExpanded(prev => !prev)}
+                >
+                  {duplicatesExpanded ? 'Hide' : 'Show'} duplicate matches ({syncResult.duplicateMatches!.length})
+                </Button>
+                <Collapse in={duplicatesExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 240, overflowY: 'auto' }}>
+                    {syncResult.duplicateMatches!.map((dup, idx) => (
+                      <Box
+                        key={idx}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'warning.50',
+                          border: '1px solid',
+                          borderColor: 'warning.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium" color="warning.main">
+                          Activity #{dup.activityId} contested
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Invoice #{dup.invoiceNumber} would match it, but invoice{' '}
+                          #{dup.claimedByInvoiceNumber} (older) claims it first.
+                          {dup.lineDescription && ` — "${dup.lineDescription}"`}
                         </Typography>
                       </Box>
                     ))}
@@ -941,7 +1011,8 @@ const Invoices: React.FC = () => {
                             <Typography
                               variant="caption"
                               color={
-                                ln.status === 'auto' ? 'success.main'
+                                ln.duplicateOf ? 'warning.main'
+                                  : ln.status === 'auto' ? 'success.main'
                                   : ln.status === 'needs_review' ? 'warning.main'
                                   : 'text.disabled'
                               }
@@ -949,6 +1020,7 @@ const Invoices: React.FC = () => {
                               {ln.status}
                               {ln.matchedActivityId != null && ` → #${ln.matchedActivityId}`}
                               {ln.matchScore != null && ` (${ln.matchScore.toFixed(1)})`}
+                              {ln.duplicateOf && ` ⚠ dup of #${ln.duplicateOf}`}
                             </Typography>
                           </Box>
                         ))}
