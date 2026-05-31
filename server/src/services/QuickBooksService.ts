@@ -3,7 +3,7 @@
 import QuickBooksLib from 'node-quickbooks';
 import OAuthClientLib from 'intuit-oauth';
 import { DatabaseService } from './DatabaseService';
-import { qboItems, qboCredentials, invoices, invoiceLineItems } from '../db';
+import { qboItems, qboCredentials, invoices, invoiceLineItems, clients } from '../db';
 import { eq } from 'drizzle-orm';
 import { encryptToken, decryptToken } from '../utils/encryption';
 
@@ -47,6 +47,7 @@ export interface QBOInvoice {
     LineNum: number;
     Amount: number;
     DetailType: string;
+    Description?: string; // Per-line description returned by QBO at the line level
     SalesItemLineDetail?: {
       ItemRef: { value: string; name: string };
       Qty: number;
@@ -388,6 +389,20 @@ export class QuickBooksService extends DatabaseService {
     });
   }
 
+  /**
+   * Fetch all invoices from QuickBooks. Uses fetchAll: true so the library
+   * handles pagination automatically — no explicit page/offset needed.
+   */
+  async getAllInvoices(): Promise<QBOInvoice[]> {
+    await this.ensureClient();
+    return new Promise((resolve, reject) => {
+      this.qbo.findInvoices({ fetchAll: true }, (err: any, response: any) => {
+        if (err) return reject(err);
+        resolve(response.QueryResponse?.Invoice || []);
+      });
+    });
+  }
+
   async createCustomer(customerData: any): Promise<any> {
     await this.ensureClient();
     return new Promise((resolve, reject) => {
@@ -481,11 +496,30 @@ export class QuickBooksService extends DatabaseService {
           geoZone: '',
           isRecurringMaintenance: false,
           activeStatus: qboCustomer.Active ? 'active' : 'inactive',
+          qboCustomerId: qboCustomer.Id,
         };
         await clientService.createClient(newClient);
-        console.log(`Created local client from QuickBooks: ${qboCustomer.DisplayName}`);
+        console.log(`Created local client from QuickBooks: ${qboCustomer.DisplayName} (qboCustomerId=${qboCustomer.Id})`);
       } else {
-        console.log(`Customer already exists locally: ${qboCustomer.DisplayName}`);
+        // Backfill qboCustomerId on the existing local client if not already set.
+        // If a different non-null qboCustomerId is already present, log a warning
+        // rather than overwriting — two QBO customers mapping to one local client
+        // is a data-quality issue that needs manual review.
+        if (!existingClient.qboCustomerId) {
+          await this.db
+            .update(clients)
+            .set({ qboCustomerId: qboCustomer.Id, updatedAt: new Date() })
+            .where(eq(clients.id, existingClient.id));
+          console.log(`Backfilled qboCustomerId=${qboCustomer.Id} for existing client: ${qboCustomer.DisplayName}`);
+        } else if (existingClient.qboCustomerId !== qboCustomer.Id) {
+          console.warn(
+            `Data quality warning: local client "${qboCustomer.DisplayName}" (id=${existingClient.id}) ` +
+            `already has qboCustomerId="${existingClient.qboCustomerId}" but QBO customer has Id="${qboCustomer.Id}". ` +
+            `Skipping update — manual review required.`
+          );
+        } else {
+          console.log(`Customer already exists locally with matching qboCustomerId: ${qboCustomer.DisplayName}`);
+        }
       }
     } catch (error) {
       console.error(`Error upserting customer ${qboCustomer.DisplayName}:`, error);

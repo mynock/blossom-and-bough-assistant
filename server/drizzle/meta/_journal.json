@@ -99,6 +99,20 @@
       "when": 1779747023875,
       "tag": "0013_legal_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1779922781640,
+      "tag": "0014_magenta_rogue",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1780000000000,
+      "tag": "0015_invoice_matcher_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -34,6 +34,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Collapse,
 } from '@mui/material';
 import {
   Receipt,
@@ -48,9 +49,13 @@ import {
   CalendarDays as Schedule,
   ExternalLink as OpenInNew,
   Trash2 as Delete,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
 } from '../icons';
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
+import { secureFetch } from '../services/csrf';
 
 interface Invoice {
   id: number;
@@ -75,6 +80,49 @@ interface InvoiceStats {
   overdueCount: number;
 }
 
+interface SyncResultError {
+  type: 'unmatched_client' | 'qbo_fetch_failed' | 'invoice_persist_failed' | 'matcher_failed';
+  qboInvoiceId?: string;
+  message: string;
+}
+
+interface SyncPreviewLine {
+  description: string;
+  amount: number;
+  kind: 'labor' | 'material';
+  status: 'auto' | 'needs_review' | 'unmatched';
+  matchedActivityId: number | null;
+  matchScore: number | null;
+  duplicateOf?: string;
+}
+
+interface SyncPreviewInvoice {
+  qboInvoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  action: 'import' | 'update' | 'skip';
+  lines: SyncPreviewLine[];
+}
+
+interface DuplicateMatch {
+  activityId: number;
+  lineDescription: string;
+  invoiceNumber: string;
+  claimedByInvoiceNumber: string;
+}
+
+interface SyncResult {
+  imported: number;
+  updated: number;
+  autoMatched: number;
+  needsReview: number;
+  unmatched: number;
+  errors: SyncResultError[];
+  dryRun?: boolean;
+  preview?: SyncPreviewInvoice[];
+  duplicateMatches?: DuplicateMatch[];
+}
+
 const Invoices: React.FC = () => {
   const navigate = useNavigate();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -89,6 +137,13 @@ const Invoices: React.FC = () => {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncModalOpen, setSyncModalOpen] = useState(false);
+  const [errorsExpanded, setErrorsExpanded] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [duplicatesExpanded, setDuplicatesExpanded] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -148,7 +203,7 @@ const Invoices: React.FC = () => {
     try {
       setError(null);
       
-      const response = await fetch(`/api/qbo/invoices/${invoiceId}/sync`, {
+      const response = await secureFetch(`/api/qbo/invoices/${invoiceId}/sync`, {
         method: 'POST',
       });
       
@@ -170,7 +225,7 @@ const Invoices: React.FC = () => {
       setError(null);
       
       console.log('Making DELETE request to:', `/api/qbo/invoices/${invoiceId}`);
-      const response = await fetch(`/api/qbo/invoices/${invoiceId}`, {
+      const response = await secureFetch(`/api/qbo/invoices/${invoiceId}`, {
         method: 'DELETE',
       });
       
@@ -196,6 +251,65 @@ const Invoices: React.FC = () => {
       console.log('Delete operation finished, setting deleting to false');
       setDeleting(false);
     }
+  };
+
+  const runSync = async (dryRun: boolean) => {
+    const setBusy = dryRun ? setPreviewing : setSyncing;
+    try {
+      setBusy(true);
+      setError(null);
+
+      const response = await secureFetch('/api/qbo/invoices/sync-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`${dryRun ? 'Preview' : 'Sync'} failed: ${response.status}`);
+      }
+
+      const result: SyncResult = await response.json();
+      setSyncResult(result);
+      setSyncModalOpen(true);
+      setErrorsExpanded(false);
+      setPreviewExpanded(false);
+      setDuplicatesExpanded(false);
+      // A dry run writes nothing, so the invoice list is unchanged.
+      if (!dryRun) {
+        await fetchInvoices();
+      }
+    } catch (err) {
+      console.error('Error syncing invoices:', err);
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${dryRun ? 'preview' : 'sync'} invoices from QuickBooks`
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncAllInvoices = () => runSync(false);
+  const previewSync = () => runSync(true);
+
+  const humanizeErrorType = (type: SyncResultError['type']): string => {
+    switch (type) {
+      case 'unmatched_client': return 'Unmatched client';
+      case 'qbo_fetch_failed': return 'QuickBooks fetch failed';
+      case 'invoice_persist_failed': return 'Invoice save failed';
+      case 'matcher_failed': return 'Matcher failed';
+      default: return type;
+    }
+  };
+
+  const handleSyncModalClose = () => {
+    setSyncModalOpen(false);
+    setSyncResult(null);
+    setErrorsExpanded(false);
+    setPreviewExpanded(false);
+    setDuplicatesExpanded(false);
   };
 
   const handleSort = (property: keyof Invoice) => {
@@ -302,13 +416,31 @@ const Invoices: React.FC = () => {
               Manage and track your QuickBooks invoices
             </Typography>
           </Box>
-          <Button
-            variant="contained"
-            startIcon={<Add />}
-            onClick={() => navigate('/clients')}
-          >
-            Create Invoice
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              variant="text"
+              startIcon={previewing ? <CircularProgress size={16} /> : <Visibility size={16} />}
+              onClick={previewSync}
+              disabled={syncing || previewing}
+            >
+              {previewing ? 'Previewing...' : 'Preview sync'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
+              onClick={syncAllInvoices}
+              disabled={syncing || previewing}
+            >
+              {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => navigate('/clients')}
+            >
+              Create Invoice
+            </Button>
+          </Box>
         </Box>
 
         {error && (
@@ -664,6 +796,270 @@ const Invoices: React.FC = () => {
             >
               {deleting ? 'Deleting...' : 'Delete Invoice'}
             </Button>
+          </DialogActions>
+        </Dialog>
+        {/* Sync Results Modal */}
+        <Dialog
+          open={syncModalOpen}
+          onClose={handleSyncModalClose}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+            {syncResult?.dryRun ? 'QuickBooks sync preview' : 'QuickBooks sync complete'}
+          </DialogTitle>
+          <DialogContent>
+            {syncResult?.dryRun && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                This is a preview — <strong>no changes were made</strong>. The numbers
+                below show what a real sync would do.
+              </Alert>
+            )}
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color="success.main">
+                    {syncResult?.imported ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {syncResult?.dryRun ? 'Would import' : 'Imported'}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4">
+                    {syncResult?.updated ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {syncResult?.dryRun ? 'Would update' : 'Updated'}
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color="success.main">
+                    {syncResult?.autoMatched ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Auto-matched
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color={(syncResult?.needsReview ?? 0) > 0 ? 'warning.main' : 'text.primary'}>
+                    {syncResult?.needsReview ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Needs review
+                  </Typography>
+                </Box>
+              </Grid>
+              <Grid item xs={6} sm={4}>
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h4" color={(syncResult?.errors?.length ?? 0) > 0 ? 'error.main' : 'text.primary'}>
+                    {syncResult?.errors?.length ?? 0}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Errors
+                  </Typography>
+                </Box>
+              </Grid>
+              {syncResult?.dryRun && (
+                <Grid item xs={6} sm={4}>
+                  <Box sx={{ textAlign: 'center' }}>
+                    <Typography variant="h4" color={(syncResult?.duplicateMatches?.length ?? 0) > 0 ? 'warning.main' : 'text.primary'}>
+                      {syncResult?.duplicateMatches?.length ?? 0}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Duplicate matches
+                    </Typography>
+                  </Box>
+                </Grid>
+              )}
+            </Grid>
+
+            {(syncResult?.errors?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  color="error"
+                  startIcon={<AlertTriangle size={16} />}
+                  endIcon={errorsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setErrorsExpanded(prev => !prev)}
+                >
+                  {errorsExpanded ? 'Hide' : 'Show'} errors ({syncResult!.errors.length})
+                </Button>
+                <Collapse in={errorsExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 240, overflowY: 'auto' }}>
+                    {syncResult!.errors.map((err, idx) => (
+                      <Box
+                        key={idx}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'error.50',
+                          border: '1px solid',
+                          borderColor: 'error.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium" color="error.main">
+                          {humanizeErrorType(err.type)}
+                          {err.qboInvoiceId && (
+                            <Typography component="span" variant="body2" color="text.secondary" sx={{ ml: 1 }}>
+                              (QBO #{err.qboInvoiceId})
+                            </Typography>
+                          )}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {err.message}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+
+            {syncResult?.dryRun && (syncResult.duplicateMatches?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="warning" sx={{ mb: 1 }}>
+                  The same work activity strongly matched more than one invoice. In a
+                  real run the <strong>older</strong> invoice keeps the activity and the
+                  newer one is left for manual review — confirm that's the right call.
+                </Alert>
+                <Button
+                  size="small"
+                  variant="text"
+                  color="warning"
+                  startIcon={<AlertTriangle size={16} />}
+                  endIcon={duplicatesExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setDuplicatesExpanded(prev => !prev)}
+                >
+                  {duplicatesExpanded ? 'Hide' : 'Show'} duplicate matches ({syncResult.duplicateMatches!.length})
+                </Button>
+                <Collapse in={duplicatesExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 240, overflowY: 'auto' }}>
+                    {syncResult.duplicateMatches!.map((dup, idx) => (
+                      <Box
+                        key={idx}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'warning.50',
+                          border: '1px solid',
+                          borderColor: 'warning.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium" color="warning.main">
+                          Activity #{dup.activityId} contested
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Invoice #{dup.invoiceNumber} would match it, but invoice{' '}
+                          #{dup.claimedByInvoiceNumber} (older) claims it first.
+                          {dup.lineDescription && ` — "${dup.lineDescription}"`}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+
+            {syncResult?.dryRun && (syncResult.preview?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  endIcon={previewExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setPreviewExpanded(prev => !prev)}
+                >
+                  {previewExpanded ? 'Hide' : 'Show'} per-invoice breakdown ({syncResult.preview!.length})
+                </Button>
+                <Collapse in={previewExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 320, overflowY: 'auto' }}>
+                    {syncResult.preview!.map((inv) => (
+                      <Box
+                        key={inv.qboInvoiceId}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'grey.50',
+                          border: '1px solid',
+                          borderColor: 'grey.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium">
+                          #{inv.invoiceNumber} · {inv.customerName || '(unknown customer)'}
+                          <Chip
+                            label={inv.action}
+                            size="small"
+                            sx={{ ml: 1 }}
+                            color={inv.action === 'skip' ? 'error' : inv.action === 'update' ? 'default' : 'success'}
+                          />
+                        </Typography>
+                        {inv.lines.map((ln, lIdx) => (
+                          <Box key={lIdx} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mt: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                              {ln.description || '(no description)'} · ${ln.amount.toFixed(2)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color={
+                                ln.duplicateOf ? 'warning.main'
+                                  : ln.status === 'auto' ? 'success.main'
+                                  : ln.status === 'needs_review' ? 'warning.main'
+                                  : 'text.disabled'
+                              }
+                            >
+                              {ln.status}
+                              {ln.matchedActivityId != null && ` → #${ln.matchedActivityId}`}
+                              {ln.matchScore != null && ` (${ln.matchScore.toFixed(1)})`}
+                              {ln.duplicateOf && ` ⚠ dup of #${ln.duplicateOf}`}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleSyncModalClose}>
+              Close
+            </Button>
+            {syncResult?.dryRun ? (
+              <Button
+                variant="contained"
+                disabled={syncing}
+                startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
+                onClick={() => {
+                  handleSyncModalClose();
+                  syncAllInvoices();
+                }}
+              >
+                Run sync for real
+              </Button>
+            ) : (
+              (syncResult?.needsReview ?? 0) > 0 && (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    handleSyncModalClose();
+                    navigate('/invoices/review');
+                  }}
+                >
+                  Review {syncResult!.needsReview} match{syncResult!.needsReview === 1 ? '' : 'es'}
+                </Button>
+              )
+            )}
           </DialogActions>
         </Dialog>
       </Box>

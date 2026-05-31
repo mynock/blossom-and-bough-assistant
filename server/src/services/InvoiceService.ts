@@ -296,9 +296,7 @@ export class InvoiceService extends DatabaseService {
       // be re-offered for invoicing.
       const localInvoice = await this.db.transaction(async (tx) => {
         const inv = await this.saveInvoiceToLocal(qboInvoice, client.id, normalizedLineItems, tx);
-        if (invoicedWorkActivityIds.length > 0) {
-          await this.updateWorkActivitiesStatus(invoicedWorkActivityIds, 'invoiced', tx);
-        }
+        await this.workActivityService.setStatus(invoicedWorkActivityIds, 'invoiced', tx);
         return inv;
       });
 
@@ -557,15 +555,6 @@ export class InvoiceService extends DatabaseService {
   }
 
   private async findQBOItemForWorkType(workType: string): Promise<any> {
-    // Map work types to QBO items based on common naming
-    const workTypeMapping: { [key: string]: string[] } = {
-      'maintenance': ['Specialized garden care', 'Garden maintenance', 'Maintenance'],
-      'pruning': ['Specialized pruning', 'Pruning'],
-      'design': ['Design Consultation', 'Design'],
-      'consultation': ['Design Consultation', 'Garden coaching'],
-      'project': ['Project management']
-    };
-
     const possibleNames = workTypeMapping[workType.toLowerCase()] || [workType];
     
     for (const name of possibleNames) {
@@ -715,18 +704,12 @@ export class InvoiceService extends DatabaseService {
     return tx ? run(tx) : this.db.transaction(run);
   }
 
-  private async updateWorkActivitiesStatus(workActivityIds: number[], status: string, tx?: DbOrTx): Promise<void> {
-    const conn = tx ?? this.db;
-    await conn
-      .update(workActivities)
-      .set({
-        status: status,
-        updatedAt: new Date()
-      })
-      .where(inArray(workActivities.id, workActivityIds));
-  }
-
-  private mapQBOInvoiceStatus(qboInvoice: any): string {
+  /**
+   * Map a raw QBO invoice response to our local status enum.
+   * Public so InvoiceImportService can reuse the same status mapping when
+   * upserting imported invoices.
+   */
+  public mapQBOInvoiceStatus(qboInvoice: any): string {
     // Map QuickBooks invoice status to our local status
     if (qboInvoice.Balance === 0) return 'paid';
     if (qboInvoice.EmailStatus === 'EmailSent') return 'sent';
@@ -778,8 +761,8 @@ export class InvoiceService extends DatabaseService {
         console.log('Deleted invoice record');
 
         // 5. Revert work activities status back to 'completed'
+        await this.workActivityService.setStatus(workActivityIds, 'completed', tx);
         if (workActivityIds.length > 0) {
-          await this.updateWorkActivitiesStatus(workActivityIds, 'completed', tx);
           console.log(`Reverted ${workActivityIds.length} work activities to 'completed' status`);
         }
       });
@@ -837,6 +820,21 @@ export class InvoiceService extends DatabaseService {
     }
   }
 }
+
+/**
+ * Mapping from local `work_activities.workType` (lowercased) to the QBO Item
+ * names that typically represent that kind of labor. Exported so both the
+ * outbound `InvoiceService.findQBOItemForWorkType` and the inbound
+ * `InvoiceImportService` matcher (workType scoring bonus) share one source
+ * of truth.
+ */
+export const workTypeMapping: { [key: string]: string[] } = {
+  'maintenance': ['Specialized garden care', 'Garden maintenance', 'Maintenance'],
+  'pruning': ['Specialized pruning', 'Pruning'],
+  'design': ['Design Consultation', 'Design'],
+  'consultation': ['Design Consultation', 'Garden coaching'],
+  'project': ['Project management']
+};
 
 /**
  * Validate user-submitted line items and recompute `amount` server-side.

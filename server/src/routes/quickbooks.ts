@@ -221,6 +221,117 @@ router.get('/invoices', async (req, res) => {
   }
 });
 
+/**
+ * Fetch all QBO invoices and import / reconcile them against the local DB.
+ * Per-invoice errors are captured inside the SyncResult.errors array; only
+ * blanket failures (e.g. QBO token expired before any work begins) bubble up
+ * to the catch block and return 500.
+ */
+router.post('/invoices/sync-all', async (req, res) => {
+  try {
+    const { since, dryRun } = req.body ?? {};
+    if (since !== undefined) {
+      if (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
+        return res.status(400).json({ error: 'since must be a date string in YYYY-MM-DD format' });
+      }
+    }
+    if (dryRun !== undefined && typeof dryRun !== 'boolean') {
+      return res.status(400).json({ error: 'dryRun must be a boolean' });
+    }
+    const result = await services.invoiceImportService.syncAllInvoices({
+      since,
+      dryRun: dryRun === true
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error syncing all invoices:', error);
+    res.status(500).json({ error: 'Failed to sync invoices' });
+  }
+});
+
+/**
+ * Return the current review queue: invoices with line items whose match status
+ * is 'needs_review' or 'unmatched', along with their candidates.
+ */
+router.get('/invoices/review-queue', async (req, res) => {
+  try {
+    const queue = await services.invoiceImportService.getReviewQueue();
+    res.json(queue);
+  } catch (error) {
+    console.error('Error fetching review queue:', error);
+    res.status(500).json({ error: 'Failed to fetch review queue' });
+  }
+});
+
+/**
+ * Re-run the auto-matcher for a single invoice's line items, preserving any
+ * manual user decisions. Returns match-status counts for the invoice.
+ */
+router.post('/invoices/:invoiceId/rematch', async (req, res) => {
+  try {
+    const invoiceId = parseInt(req.params.invoiceId);
+    if (isNaN(invoiceId)) {
+      return res.status(400).json({ error: 'Invalid invoice ID' });
+    }
+    const result = await services.invoiceImportService.rematchInvoice(invoiceId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error rematching invoice:', error);
+    res.status(500).json({ error: 'Failed to rematch invoice' });
+  }
+});
+
+/**
+ * Manually link (or unlink) a line item to a work activity. Returns 409 when
+ * the activity is already linked to another invoice and `force` was not set.
+ */
+router.patch('/invoices/:invoiceId/line-items/:lineItemId', async (req, res) => {
+  try {
+    const invoiceId = parseInt(req.params.invoiceId);
+    if (isNaN(invoiceId)) {
+      return res.status(400).json({ error: 'Invalid invoice ID' });
+    }
+    const lineItemId = parseInt(req.params.lineItemId);
+    if (isNaN(lineItemId)) {
+      return res.status(400).json({ error: 'Invalid line item ID' });
+    }
+
+    const { workActivityId, force, source } = req.body ?? {};
+    if (workActivityId !== null && typeof workActivityId !== 'number') {
+      return res.status(400).json({ error: 'workActivityId must be a number or null' });
+    }
+
+    const existingLine = await invoiceService.db
+      .select({ invoiceId: invoiceLineItems.invoiceId })
+      .from(invoiceLineItems)
+      .where(eq(invoiceLineItems.id, lineItemId))
+      .limit(1);
+
+    if (!existingLine[0]) {
+      return res.status(404).json({ error: 'Line item not found' });
+    }
+    if (existingLine[0].invoiceId !== invoiceId) {
+      return res.status(404).json({ error: 'Line item does not belong to this invoice' });
+    }
+
+    const resolvedSource: 'review' | 'detail' =
+      source === 'detail' ? 'detail' : 'review';
+
+    const result = await services.invoiceImportService.relinkLineItem(lineItemId, workActivityId, {
+      source: resolvedSource,
+      force: force === true,
+    });
+
+    if ('warning' in result) {
+      return res.status(409).json(result);
+    }
+    res.json(result);
+  } catch (error) {
+    console.error('Error relinking line item:', error);
+    res.status(500).json({ error: 'Failed to relink line item' });
+  }
+});
+
 router.get('/invoices/:invoiceId', async (req, res) => {
   try {
     const invoiceId = parseInt(req.params.invoiceId);
@@ -305,11 +416,12 @@ router.post('/invoices/preview', async (req, res) => {
 });
 
 /**
- * Seed sandbox QuickBooks data. Dev-only: refuses to run in production.
+ * Seed sandbox QuickBooks data. Dev-only: only runs when NODE_ENV is explicitly
+ * 'development'. Refuses in production, staging, test, or undefined envs.
  */
 router.post('/seed', async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ error: 'Seeding is disabled in production' });
+  if (process.env.NODE_ENV !== 'development') {
+    return res.status(403).json({ error: 'Seeding is only available in development' });
   }
   try {
     const { default: QBOSeedDataGenerator } = await import('../scripts/seedQBOData');
