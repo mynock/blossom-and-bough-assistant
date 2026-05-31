@@ -229,13 +229,19 @@ router.get('/invoices', async (req, res) => {
  */
 router.post('/invoices/sync-all', async (req, res) => {
   try {
-    const { since } = req.body ?? {};
+    const { since, dryRun } = req.body ?? {};
     if (since !== undefined) {
       if (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
         return res.status(400).json({ error: 'since must be a date string in YYYY-MM-DD format' });
       }
     }
-    const result = await services.invoiceImportService.syncAllInvoices({ since });
+    if (dryRun !== undefined && typeof dryRun !== 'boolean') {
+      return res.status(400).json({ error: 'dryRun must be a boolean' });
+    }
+    const result = await services.invoiceImportService.syncAllInvoices({
+      since,
+      dryRun: dryRun === true
+    });
     res.json(result);
   } catch (error) {
     console.error('Error syncing all invoices:', error);

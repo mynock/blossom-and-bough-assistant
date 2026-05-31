@@ -48,6 +48,31 @@ export type SyncResult = {
     qboInvoiceId?: string;
     message: string;
   }>;
+  // Set to true when the run was a dry run — NO database changes were made.
+  dryRun?: boolean;
+  // Per-invoice breakdown of what WOULD happen. Only populated on dry runs so
+  // the operator can judge match quality before committing real writes.
+  preview?: SyncPreviewInvoice[];
+};
+
+export type SyncPreviewLine = {
+  description: string;
+  amount: number;
+  kind: 'labor' | 'material';
+  status: 'auto' | 'needs_review' | 'unmatched';
+  // For auto/needs_review labor: the top candidate's activity id + score.
+  matchedActivityId: number | null;
+  matchScore: number | null;
+};
+
+export type SyncPreviewInvoice = {
+  qboInvoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  // 'import' = new invoice would be created; 'update' = existing invoice's
+  // status/total would refresh (line items untouched); 'skip' = no client match.
+  action: 'import' | 'update' | 'skip';
+  lines: SyncPreviewLine[];
 };
 
 export type ReviewQueueEntry = {
@@ -332,15 +357,21 @@ export class InvoiceImportService extends DatabaseService {
    *
    * Errors on a single invoice never abort the whole sync — they get pushed
    * into `result.errors` and processing continues.
+   *
+   * When `dryRun` is true, NO database writes happen: the matcher still runs
+   * and the same counts are returned, plus a per-invoice `preview`, so the
+   * operator can evaluate match quality before committing.
    */
-  async syncAllInvoices(opts?: { since?: string }): Promise<SyncResult> {
+  async syncAllInvoices(opts?: { since?: string; dryRun?: boolean }): Promise<SyncResult> {
+    const dryRun = opts?.dryRun ?? false;
     const result: SyncResult = {
       imported: 0,
       updated: 0,
       autoMatched: 0,
       needsReview: 0,
       unmatched: 0,
-      errors: []
+      errors: [],
+      ...(dryRun ? { dryRun: true, preview: [] } : {})
     };
 
     let qboInvoices: QBOInvoice[];
@@ -363,9 +394,15 @@ export class InvoiceImportService extends DatabaseService {
     // Without this, matcher results vary with QBO's response order.
     qboInvoices.sort((a, b) => (a.TxnDate || '').localeCompare(b.TxnDate || ''));
 
+    // In a real run, cross-invoice dedup happens because each auto-match flips
+    // the activity to 'invoiced' before the next invoice's candidate query runs.
+    // A dry run commits nothing, so we track claimed ids in memory and exclude
+    // them from later invoices' candidate pools — making the preview faithful.
+    const claimedInRun = dryRun ? new Set<number>() : undefined;
+
     for (const qboInvoice of qboInvoices) {
       try {
-        await this.processInvoice(qboInvoice, result);
+        await this.processInvoice(qboInvoice, result, dryRun, claimedInRun);
       } catch (error) {
         result.errors.push({
           type: 'invoice_persist_failed',
@@ -381,10 +418,29 @@ export class InvoiceImportService extends DatabaseService {
   /**
    * Process one QBO invoice: resolve client, upsert invoice, run matcher for
    * inserts, flip activity statuses inside the same transaction.
+   *
+   * `dryRun` skips every write; `claimedInRun` (dry-run only) tracks activities
+   * already auto-claimed earlier in the run so the preview doesn't double-count.
    */
-  private async processInvoice(qboInvoice: QBOInvoice, result: SyncResult): Promise<void> {
-    const clientId = await this.resolveClientId(qboInvoice, result);
-    if (clientId == null) return;
+  private async processInvoice(
+    qboInvoice: QBOInvoice,
+    result: SyncResult,
+    dryRun: boolean,
+    claimedInRun?: Set<number>
+  ): Promise<void> {
+    const clientId = await this.resolveClientId(qboInvoice, result, dryRun);
+    if (clientId == null) {
+      if (dryRun) {
+        result.preview!.push({
+          qboInvoiceId: qboInvoice.Id,
+          invoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
+          customerName: qboInvoice.CustomerRef.name || '',
+          action: 'skip',
+          lines: []
+        });
+      }
+      return;
+    }
 
     const existing = await this.db
       .select()
@@ -395,17 +451,28 @@ export class InvoiceImportService extends DatabaseService {
     if (existing[0]) {
       // UPDATE path: refresh metadata only; do NOT rewrite line items so we
       // don't blow away 'manual' relinks the user has made since import.
-      await this.db
-        .update(invoices)
-        .set({
-          status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
-          totalAmount: qboInvoice.TotalAmt,
-          dueDate: qboInvoice.DueDate || null,
-          qboSyncAt: new Date(),
-          updatedAt: new Date()
-        })
-        .where(eq(invoices.id, existing[0].id));
+      if (!dryRun) {
+        await this.db
+          .update(invoices)
+          .set({
+            status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
+            totalAmount: qboInvoice.TotalAmt,
+            dueDate: qboInvoice.DueDate || null,
+            qboSyncAt: new Date(),
+            updatedAt: new Date()
+          })
+          .where(eq(invoices.id, existing[0].id));
+      }
       result.updated++;
+      if (dryRun) {
+        result.preview!.push({
+          qboInvoiceId: qboInvoice.Id,
+          invoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
+          customerName: qboInvoice.CustomerRef.name || '',
+          action: 'update',
+          lines: []
+        });
+      }
       return;
     }
 
@@ -419,7 +486,7 @@ export class InvoiceImportService extends DatabaseService {
         qty: line.SalesItemLineDetail?.Qty ?? null,
         amount: line.Amount
       }));
-      matcherResult = await this.runMatcher(lines, clientId, qboInvoice.TxnDate);
+      matcherResult = await this.runMatcher(lines, clientId, qboInvoice.TxnDate, claimedInRun);
     } catch (error) {
       result.errors.push({
         type: 'matcher_failed',
@@ -430,59 +497,67 @@ export class InvoiceImportService extends DatabaseService {
       matcherResult = { laborDecisions: new Map(), materialDecisions: new Map() };
     }
 
-    await this.db.transaction(async (tx) => {
-      const inserted = await tx
-        .insert(invoices)
-        .values({
-          qboInvoiceId: qboInvoice.Id,
-          qboCustomerId: qboInvoice.CustomerRef.value,
-          clientId,
-          invoiceNumber: qboInvoice.DocNumber,
-          status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
-          totalAmount: qboInvoice.TotalAmt,
-          invoiceDate: qboInvoice.TxnDate,
-          dueDate: qboInvoice.DueDate || null,
-          qboSyncAt: new Date()
-        })
-        .returning();
-      const localInvoiceId = inserted[0].id;
-
-      // Build line item rows from the QBO invoice. Decisions are keyed by
-      // lineIndex; labor and material maps are mutually exclusive per line.
-      const lineRows = qboInvoice.Line.map((line, lineIndex) => {
-        const labor = matcherResult.laborDecisions.get(lineIndex);
-        const material = matcherResult.materialDecisions.get(lineIndex);
-        return {
-          invoiceId: localInvoiceId,
-          workActivityId: labor?.workActivityId ?? null,
-          otherChargeId: material?.otherChargeId ?? null,
-          qboItemId: line.SalesItemLineDetail?.ItemRef?.value || null,
-          description: line.Description || '',
-          quantity: line.SalesItemLineDetail?.Qty ?? 0,
-          rate: line.SalesItemLineDetail?.UnitPrice ?? 0,
-          amount: line.Amount,
-          matchStatus: labor?.status ?? material?.status ?? ('unmatched' as const),
-          matchScore: labor?.matchScore ?? null,
-          matchCandidates: labor?.matchCandidates ?? null
-        };
-      });
-
-      if (lineRows.length > 0) {
-        await tx.insert(invoiceLineItems).values(lineRows);
+    // Activities auto-matched on this invoice — flipped to 'invoiced' in a real
+    // run, or recorded as claimed in a dry run so later invoices skip them.
+    const autoActivityIds: number[] = [];
+    for (const decision of matcherResult.laborDecisions.values()) {
+      if (decision.status === 'auto' && decision.workActivityId != null) {
+        autoActivityIds.push(decision.workActivityId);
       }
+    }
 
-      // Flip status for any 'auto'-matched labor activities (materials don't
-      // flip activity status — they live on already-completed activities).
-      const autoActivityIds: number[] = [];
-      for (const decision of matcherResult.laborDecisions.values()) {
-        if (decision.status === 'auto' && decision.workActivityId != null) {
-          autoActivityIds.push(decision.workActivityId);
+    if (dryRun) {
+      autoActivityIds.forEach((id) => claimedInRun?.add(id));
+      result.preview!.push(buildPreviewInvoice(qboInvoice, matcherResult));
+    } else {
+      await this.db.transaction(async (tx) => {
+        const inserted = await tx
+          .insert(invoices)
+          .values({
+            qboInvoiceId: qboInvoice.Id,
+            qboCustomerId: qboInvoice.CustomerRef.value,
+            clientId,
+            invoiceNumber: qboInvoice.DocNumber,
+            status: this.invoiceService.mapQBOInvoiceStatus(qboInvoice),
+            totalAmount: qboInvoice.TotalAmt,
+            invoiceDate: qboInvoice.TxnDate,
+            dueDate: qboInvoice.DueDate || null,
+            qboSyncAt: new Date()
+          })
+          .returning();
+        const localInvoiceId = inserted[0].id;
+
+        // Build line item rows from the QBO invoice. Decisions are keyed by
+        // lineIndex; labor and material maps are mutually exclusive per line.
+        const lineRows = qboInvoice.Line.map((line, lineIndex) => {
+          const labor = matcherResult.laborDecisions.get(lineIndex);
+          const material = matcherResult.materialDecisions.get(lineIndex);
+          return {
+            invoiceId: localInvoiceId,
+            workActivityId: labor?.workActivityId ?? null,
+            otherChargeId: material?.otherChargeId ?? null,
+            qboItemId: line.SalesItemLineDetail?.ItemRef?.value || null,
+            description: line.Description || '',
+            quantity: line.SalesItemLineDetail?.Qty ?? 0,
+            rate: line.SalesItemLineDetail?.UnitPrice ?? 0,
+            amount: line.Amount,
+            matchStatus: labor?.status ?? material?.status ?? ('unmatched' as const),
+            matchScore: labor?.matchScore ?? null,
+            matchCandidates: labor?.matchCandidates ?? null
+          };
+        });
+
+        if (lineRows.length > 0) {
+          await tx.insert(invoiceLineItems).values(lineRows);
         }
-      }
-      if (autoActivityIds.length > 0) {
-        await this.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
-      }
-    });
+
+        // Flip status for any 'auto'-matched labor activities (materials don't
+        // flip activity status — they live on already-completed activities).
+        if (autoActivityIds.length > 0) {
+          await this.workActivityService.setStatus(autoActivityIds, 'invoiced', tx);
+        }
+      });
+    }
 
     result.imported++;
     tallyLabor(matcherResult.laborDecisions, result);
@@ -494,7 +569,11 @@ export class InvoiceImportService extends DatabaseService {
    * case-insensitive name match (with opportunistic backfill). Returns null
    * and writes an `unmatched_client` notification when no match is found.
    */
-  private async resolveClientId(qboInvoice: QBOInvoice, result: SyncResult): Promise<number | null> {
+  private async resolveClientId(
+    qboInvoice: QBOInvoice,
+    result: SyncResult,
+    dryRun: boolean
+  ): Promise<number | null> {
     const qboCustomerId = qboInvoice.CustomerRef.value;
     const customerName = qboInvoice.CustomerRef.name || '';
 
@@ -515,10 +594,13 @@ export class InvoiceImportService extends DatabaseService {
         .limit(1);
       if (byName[0]) {
         if (!byName[0].qboCustomerId) {
-          await this.db
-            .update(clients)
-            .set({ qboCustomerId, updatedAt: new Date() })
-            .where(eq(clients.id, byName[0].id));
+          // Backfill is a write — skip it on a dry run.
+          if (!dryRun) {
+            await this.db
+              .update(clients)
+              .set({ qboCustomerId, updatedAt: new Date() })
+              .where(eq(clients.id, byName[0].id));
+          }
         } else if (byName[0].qboCustomerId !== qboCustomerId) {
           console.warn(
             `Client "${customerName.trim()}" (id=${byName[0].id}) already has qboCustomerId="${byName[0].qboCustomerId}" but invoice references qboCustomerId="${qboCustomerId}" — leaving existing mapping in place. Possible duplicate client.`
@@ -528,19 +610,21 @@ export class InvoiceImportService extends DatabaseService {
       }
     }
 
-    // 3) No match — record an error + notification.
+    // 3) No match — record an error (and, on a real run, a notification).
     const message = `No local client matches "${customerName}"`;
     result.errors.push({
       type: 'unmatched_client',
       qboInvoiceId: qboInvoice.Id,
       message
     });
-    await this.notificationService.notifyQBOUnmatchedClient({
-      qboInvoiceId: qboInvoice.Id,
-      qboInvoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
-      qboCustomerId,
-      customerName
-    });
+    if (!dryRun) {
+      await this.notificationService.notifyQBOUnmatchedClient({
+        qboInvoiceId: qboInvoice.Id,
+        qboInvoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
+        qboCustomerId,
+        customerName
+      });
+    }
     return null;
   }
 
@@ -559,16 +643,22 @@ export class InvoiceImportService extends DatabaseService {
    * Within-invoice dedup: labor lines are processed in descending top-score
    * order so the strongest match wins, and claimed activities are removed
    * from the candidate pool of subsequent lines.
+   *
+   * `excludeActivityIds` removes activities already claimed earlier in the run.
+   * A real sync achieves this implicitly (claimed activities are flipped to
+   * 'invoiced' and so drop out of the next candidate query); a dry run passes
+   * the set explicitly because it commits nothing.
    */
   private async runMatcher<K>(
     lines: NormalizedLine<K>[],
     clientId: number,
-    invoiceDate: string
+    invoiceDate: string,
+    excludeActivityIds?: Set<number>
   ): Promise<MatcherOutput<K>> {
     const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
 
     // Candidate activities: same client, completed, within window.
-    const candidateActivities = (await this.db
+    const candidateRows = (await this.db
       .select()
       .from(workActivities)
       .where(
@@ -579,6 +669,9 @@ export class InvoiceImportService extends DatabaseService {
           lte(workActivities.date, invoiceDate)
         )
       )) as WorkActivity[];
+    const candidateActivities = excludeActivityIds?.size
+      ? candidateRows.filter((a) => !excludeActivityIds.has(a.id))
+      : candidateRows;
     const scoringActivities = candidateActivities.map(toScoringActivity);
 
     // Resolve qbo_items types/names for the lines.
@@ -1056,4 +1149,34 @@ function tallyMaterial(
     if (d.status === 'auto') result.autoMatched++;
     else result.unmatched++;
   }
+}
+
+/**
+ * Build the per-invoice dry-run preview from a QBO invoice and its matcher
+ * output. Decisions are keyed by line index; a line is labor or material
+ * depending on which map holds it.
+ */
+function buildPreviewInvoice(
+  qboInvoice: QBOInvoice,
+  matcherResult: MatcherOutput<number>
+): SyncPreviewInvoice {
+  const lines: SyncPreviewLine[] = qboInvoice.Line.map((line, lineIndex) => {
+    const labor = matcherResult.laborDecisions.get(lineIndex);
+    const material = matcherResult.materialDecisions.get(lineIndex);
+    return {
+      description: line.Description || '',
+      amount: line.Amount,
+      kind: material ? 'material' : 'labor',
+      status: labor?.status ?? material?.status ?? 'unmatched',
+      matchedActivityId: labor?.workActivityId ?? null,
+      matchScore: labor?.matchScore ?? null
+    };
+  });
+  return {
+    qboInvoiceId: qboInvoice.Id,
+    invoiceNumber: qboInvoice.DocNumber || qboInvoice.Id,
+    customerName: qboInvoice.CustomerRef.name || '',
+    action: 'import',
+    lines
+  };
 }

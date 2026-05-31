@@ -86,6 +86,23 @@ interface SyncResultError {
   message: string;
 }
 
+interface SyncPreviewLine {
+  description: string;
+  amount: number;
+  kind: 'labor' | 'material';
+  status: 'auto' | 'needs_review' | 'unmatched';
+  matchedActivityId: number | null;
+  matchScore: number | null;
+}
+
+interface SyncPreviewInvoice {
+  qboInvoiceId: string;
+  invoiceNumber: string;
+  customerName: string;
+  action: 'import' | 'update' | 'skip';
+  lines: SyncPreviewLine[];
+}
+
 interface SyncResult {
   imported: number;
   updated: number;
@@ -93,6 +110,8 @@ interface SyncResult {
   needsReview: number;
   unmatched: number;
   errors: SyncResultError[];
+  dryRun?: boolean;
+  preview?: SyncPreviewInvoice[];
 }
 
 const Invoices: React.FC = () => {
@@ -110,9 +129,11 @@ const Invoices: React.FC = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [errorsExpanded, setErrorsExpanded] = useState(false);
+  const [previewExpanded, setPreviewExpanded] = useState(false);
 
   useEffect(() => {
     fetchInvoices();
@@ -222,33 +243,45 @@ const Invoices: React.FC = () => {
     }
   };
 
-  const syncAllInvoices = async () => {
+  const runSync = async (dryRun: boolean) => {
+    const setBusy = dryRun ? setPreviewing : setSyncing;
     try {
-      setSyncing(true);
+      setBusy(true);
       setError(null);
 
       const response = await secureFetch('/api/qbo/invoices/sync-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ dryRun }),
       });
 
       if (!response.ok) {
-        throw new Error(`Sync failed: ${response.status}`);
+        throw new Error(`${dryRun ? 'Preview' : 'Sync'} failed: ${response.status}`);
       }
 
       const result: SyncResult = await response.json();
       setSyncResult(result);
       setSyncModalOpen(true);
       setErrorsExpanded(false);
-      await fetchInvoices();
+      setPreviewExpanded(false);
+      // A dry run writes nothing, so the invoice list is unchanged.
+      if (!dryRun) {
+        await fetchInvoices();
+      }
     } catch (err) {
       console.error('Error syncing invoices:', err);
-      setError(err instanceof Error ? err.message : 'Failed to sync invoices from QuickBooks');
+      setError(
+        err instanceof Error
+          ? err.message
+          : `Failed to ${dryRun ? 'preview' : 'sync'} invoices from QuickBooks`
+      );
     } finally {
-      setSyncing(false);
+      setBusy(false);
     }
   };
+
+  const syncAllInvoices = () => runSync(false);
+  const previewSync = () => runSync(true);
 
   const humanizeErrorType = (type: SyncResultError['type']): string => {
     switch (type) {
@@ -264,6 +297,7 @@ const Invoices: React.FC = () => {
     setSyncModalOpen(false);
     setSyncResult(null);
     setErrorsExpanded(false);
+    setPreviewExpanded(false);
   };
 
   const handleSort = (property: keyof Invoice) => {
@@ -372,10 +406,18 @@ const Invoices: React.FC = () => {
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
+              variant="text"
+              startIcon={previewing ? <CircularProgress size={16} /> : <Visibility size={16} />}
+              onClick={previewSync}
+              disabled={syncing || previewing}
+            >
+              {previewing ? 'Previewing...' : 'Preview sync'}
+            </Button>
+            <Button
               variant="outlined"
               startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
               onClick={syncAllInvoices}
-              disabled={syncing}
+              disabled={syncing || previewing}
             >
               {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
             </Button>
@@ -751,8 +793,16 @@ const Invoices: React.FC = () => {
           maxWidth="sm"
           fullWidth
         >
-          <DialogTitle>QuickBooks sync complete</DialogTitle>
+          <DialogTitle>
+            {syncResult?.dryRun ? 'QuickBooks sync preview' : 'QuickBooks sync complete'}
+          </DialogTitle>
           <DialogContent>
+            {syncResult?.dryRun && (
+              <Alert severity="info" sx={{ mb: 2 }}>
+                This is a preview — <strong>no changes were made</strong>. The numbers
+                below show what a real sync would do.
+              </Alert>
+            )}
             <Grid container spacing={2} sx={{ mb: 2 }}>
               <Grid item xs={6} sm={4}>
                 <Box sx={{ textAlign: 'center' }}>
@@ -760,7 +810,7 @@ const Invoices: React.FC = () => {
                     {syncResult?.imported ?? 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Imported
+                    {syncResult?.dryRun ? 'Would import' : 'Imported'}
                   </Typography>
                 </Box>
               </Grid>
@@ -770,7 +820,7 @@ const Invoices: React.FC = () => {
                     {syncResult?.updated ?? 0}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Updated
+                    {syncResult?.dryRun ? 'Would update' : 'Updated'}
                   </Typography>
                 </Box>
               </Grid>
@@ -849,21 +899,94 @@ const Invoices: React.FC = () => {
                 </Collapse>
               </Box>
             )}
+
+            {syncResult?.dryRun && (syncResult.preview?.length ?? 0) > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Button
+                  size="small"
+                  variant="text"
+                  endIcon={previewExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  onClick={() => setPreviewExpanded(prev => !prev)}
+                >
+                  {previewExpanded ? 'Hide' : 'Show'} per-invoice breakdown ({syncResult.preview!.length})
+                </Button>
+                <Collapse in={previewExpanded}>
+                  <Box sx={{ mt: 1, maxHeight: 320, overflowY: 'auto' }}>
+                    {syncResult.preview!.map((inv) => (
+                      <Box
+                        key={inv.qboInvoiceId}
+                        sx={{
+                          mb: 1,
+                          p: 1.5,
+                          borderRadius: 1,
+                          bgcolor: 'grey.50',
+                          border: '1px solid',
+                          borderColor: 'grey.200',
+                        }}
+                      >
+                        <Typography variant="body2" fontWeight="medium">
+                          #{inv.invoiceNumber} · {inv.customerName || '(unknown customer)'}
+                          <Chip
+                            label={inv.action}
+                            size="small"
+                            sx={{ ml: 1 }}
+                            color={inv.action === 'skip' ? 'error' : inv.action === 'update' ? 'default' : 'success'}
+                          />
+                        </Typography>
+                        {inv.lines.map((ln, lIdx) => (
+                          <Box key={lIdx} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, mt: 0.5 }}>
+                            <Typography variant="caption" color="text.secondary" sx={{ flex: 1 }}>
+                              {ln.description || '(no description)'} · ${ln.amount.toFixed(2)}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              color={
+                                ln.status === 'auto' ? 'success.main'
+                                  : ln.status === 'needs_review' ? 'warning.main'
+                                  : 'text.disabled'
+                              }
+                            >
+                              {ln.status}
+                              {ln.matchedActivityId != null && ` → #${ln.matchedActivityId}`}
+                              {ln.matchScore != null && ` (${ln.matchScore.toFixed(1)})`}
+                            </Typography>
+                          </Box>
+                        ))}
+                      </Box>
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )}
           </DialogContent>
           <DialogActions>
             <Button onClick={handleSyncModalClose}>
               Close
             </Button>
-            {(syncResult?.needsReview ?? 0) > 0 && (
+            {syncResult?.dryRun ? (
               <Button
                 variant="contained"
+                disabled={syncing}
+                startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
                 onClick={() => {
                   handleSyncModalClose();
-                  navigate('/invoices/review');
+                  syncAllInvoices();
                 }}
               >
-                Review {syncResult!.needsReview} match{syncResult!.needsReview === 1 ? '' : 'es'}
+                Run sync for real
               </Button>
+            ) : (
+              (syncResult?.needsReview ?? 0) > 0 && (
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    handleSyncModalClose();
+                    navigate('/invoices/review');
+                  }}
+                >
+                  Review {syncResult!.needsReview} match{syncResult!.needsReview === 1 ? '' : 'es'}
+                </Button>
+              )
             )}
           </DialogActions>
         </Dialog>
