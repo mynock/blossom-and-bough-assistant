@@ -139,11 +139,15 @@ const Invoices: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [sinceDate, setSinceDate] = useState('');
+  const [untilDate, setUntilDate] = useState('');
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [errorsExpanded, setErrorsExpanded] = useState(false);
   const [previewExpanded, setPreviewExpanded] = useState(false);
   const [duplicatesExpanded, setDuplicatesExpanded] = useState(false);
+  // The date window in effect when the last sync/preview ran (for the modal).
+  const [syncWindowLabel, setSyncWindowLabel] = useState('');
 
   useEffect(() => {
     fetchInvoices();
@@ -253,16 +257,23 @@ const Invoices: React.FC = () => {
     }
   };
 
+  // Both dates are optional; an inverted range is blocked client-side too.
+  const rangeInvalid = !!sinceDate && !!untilDate && sinceDate > untilDate;
+
   const runSync = async (dryRun: boolean) => {
     const setBusy = dryRun ? setPreviewing : setSyncing;
     try {
       setBusy(true);
       setError(null);
 
+      const body: { dryRun: boolean; since?: string; until?: string } = { dryRun };
+      if (sinceDate) body.since = sinceDate;
+      if (untilDate) body.until = untilDate;
+
       const response = await secureFetch('/api/qbo/invoices/sync-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dryRun }),
+        body: JSON.stringify(body),
       });
 
       if (!response.ok) {
@@ -271,6 +282,11 @@ const Invoices: React.FC = () => {
 
       const result: SyncResult = await response.json();
       setSyncResult(result);
+      setSyncWindowLabel(
+        sinceDate || untilDate
+          ? `Invoice date ${sinceDate || 'start'} → ${untilDate || 'today'}`
+          : 'All invoices'
+      );
       setSyncModalOpen(true);
       setErrorsExpanded(false);
       setPreviewExpanded(false);
@@ -416,30 +432,59 @@ const Invoices: React.FC = () => {
               Manage and track your QuickBooks invoices
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button
-              variant="text"
-              startIcon={previewing ? <CircularProgress size={16} /> : <Visibility size={16} />}
-              onClick={previewSync}
-              disabled={syncing || previewing}
-            >
-              {previewing ? 'Previewing...' : 'Preview sync'}
-            </Button>
-            <Button
-              variant="outlined"
-              startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
-              onClick={syncAllInvoices}
-              disabled={syncing || previewing}
-            >
-              {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => navigate('/clients')}
-            >
-              Create Invoice
-            </Button>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <TextField
+                label="From"
+                type="date"
+                size="small"
+                value={sinceDate}
+                onChange={(e) => setSinceDate(e.target.value)}
+                disabled={syncing || previewing}
+                error={rangeInvalid}
+                InputLabelProps={{ shrink: true }}
+                sx={{ width: 160 }}
+              />
+              <TextField
+                label="To"
+                type="date"
+                size="small"
+                value={untilDate}
+                onChange={(e) => setUntilDate(e.target.value)}
+                disabled={syncing || previewing}
+                error={rangeInvalid}
+                InputLabelProps={{ shrink: true }}
+                sx={{ width: 160 }}
+              />
+              <Button
+                variant="text"
+                startIcon={previewing ? <CircularProgress size={16} /> : <Visibility size={16} />}
+                onClick={previewSync}
+                disabled={syncing || previewing || rangeInvalid}
+              >
+                {previewing ? 'Previewing...' : 'Preview sync'}
+              </Button>
+              <Button
+                variant="outlined"
+                startIcon={syncing ? <CircularProgress size={16} /> : <Sync />}
+                onClick={syncAllInvoices}
+                disabled={syncing || previewing || rangeInvalid}
+              >
+                {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => navigate('/clients')}
+              >
+                Create Invoice
+              </Button>
+            </Box>
+            <Typography variant="caption" color={rangeInvalid ? 'error' : 'text.secondary'}>
+              {rangeInvalid
+                ? '“From” must be on or before “To”.'
+                : 'Optional: limit sync to an invoice-date window. Leave blank to sync all.'}
+            </Typography>
           </Box>
         </Box>
 
@@ -809,6 +854,9 @@ const Invoices: React.FC = () => {
             {syncResult?.dryRun ? 'QuickBooks sync preview' : 'QuickBooks sync complete'}
           </DialogTitle>
           <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Scope: <strong>{syncWindowLabel}</strong>
+            </Typography>
             {syncResult?.dryRun && (
               <Alert severity="info" sx={{ mb: 2 }}>
                 This is a preview — <strong>no changes were made</strong>. The numbers
