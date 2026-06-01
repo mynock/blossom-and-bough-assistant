@@ -11,11 +11,12 @@ import {
   type OtherCharge,
   type MatchCandidateJSON
 } from '../db';
-import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne } from 'drizzle-orm';
+import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne, sql } from 'drizzle-orm';
 import type { QBOInvoice, QuickBooksService } from './QuickBooksService';
 import { workTypeMapping, type InvoiceService } from './InvoiceService';
 import type { WorkActivityService } from './WorkActivityService';
 import type { NotificationService } from './NotificationService';
+import { matchClientsByName } from './clientMatching';
 
 // ---------------------------------------------------------------------------
 // Scoring thresholds — top of file so they're easy to tune.
@@ -654,6 +655,31 @@ export class InvoiceImportService extends DatabaseService {
           );
         }
         return byName[0].id;
+      }
+    }
+
+    // 2.5) Surname fallback: CRM clients are stored by surname while QBO carries
+    // full names. Match the client name as a whole token inside the QBO name,
+    // considering only UNLINKED clients so explicit mappings are never
+    // overridden. Auto-link only on a unique match — a couple with two surnames,
+    // or two clients sharing a surname, is left for the client-mapping UI.
+    if (customerName.trim()) {
+      const candidates = (
+        await this.db
+          .select({ id: clients.id, name: clients.name, qboCustomerId: clients.qboCustomerId })
+          .from(clients)
+          .where(sql`lower(${customerName}) like '%' || lower(${clients.name}) || '%'`)
+      ).filter((c) => !c.qboCustomerId);
+      const matched = matchClientsByName(customerName, candidates);
+      if (matched.length === 1) {
+        // Backfill the link on a real run so future invoices match by id.
+        if (!dryRun) {
+          await this.db
+            .update(clients)
+            .set({ qboCustomerId, updatedAt: new Date() })
+            .where(eq(clients.id, matched[0].id));
+        }
+        return matched[0].id;
       }
     }
 

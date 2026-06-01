@@ -25,6 +25,7 @@ import { SettingsService } from './SettingsService';
 import { QuickBooksService } from './QuickBooksService';
 import { InvoiceService } from './InvoiceService';
 import { InvoiceImportService } from './InvoiceImportService';
+import { ClientLinkService } from './ClientLinkService';
 import { DataMigrationService } from './DataMigrationService';
 import { GoogleSheetsService } from './GoogleSheetsService';
 import { GoogleCalendarService } from './GoogleCalendarService';
@@ -52,6 +53,7 @@ class ServiceContainer {
   private _quickBooksService?: QuickBooksService;
   private _invoiceService?: InvoiceService;
   private _invoiceImportService?: InvoiceImportService;
+  private _clientLinkService?: ClientLinkService;
 
   // Google services
   private _googleSheetsService?: GoogleSheetsService;
@@ -130,6 +132,10 @@ class ServiceContainer {
       this.workActivityService,
       this.notificationService
     );
+  }
+
+  get clientLinkService(): ClientLinkService {
+    return this._clientLinkService ??= new ClientLinkService(this.quickBooksService);
   }
 
   // Google services

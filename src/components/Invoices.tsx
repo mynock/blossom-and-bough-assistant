@@ -56,6 +56,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { formatDateBriefPacific } from '../utils/dateUtils';
 import { secureFetch } from '../services/csrf';
+import ClientMappingDialog from './ClientMappingDialog';
 
 interface Invoice {
   id: number;
@@ -139,6 +140,7 @@ const Invoices: React.FC = () => {
   const [deleting, setDeleting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [mappingOpen, setMappingOpen] = useState(false);
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
   const [errorsExpanded, setErrorsExpanded] = useState(false);
@@ -434,6 +436,13 @@ const Invoices: React.FC = () => {
               {syncing ? 'Syncing...' : 'Sync from QuickBooks'}
             </Button>
             <Button
+              variant="text"
+              startIcon={<Business size={16} />}
+              onClick={() => setMappingOpen(true)}
+            >
+              Map clients
+            </Button>
+            <Button
               variant="contained"
               startIcon={<Add />}
               onClick={() => navigate('/clients')}
@@ -442,6 +451,8 @@ const Invoices: React.FC = () => {
             </Button>
           </Box>
         </Box>
+
+        <ClientMappingDialog open={mappingOpen} onClose={() => setMappingOpen(false)} />
 
         {error && (
           <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>

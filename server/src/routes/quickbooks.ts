@@ -151,6 +151,49 @@ router.post('/customers/sync', async (req, res) => {
   }
 });
 
+/**
+ * Mapping table for linking QBO customers to local clients: every QBO customer
+ * with its current link + a suggested client (confident surname match).
+ */
+router.get('/customers/mapping', async (req, res) => {
+  try {
+    const state = await services.clientLinkService.getMappingState();
+    res.json(state);
+  } catch (error) {
+    console.error('Error building client mapping:', error);
+    res.status(500).json({ error: 'Failed to load client mapping' });
+  }
+});
+
+/**
+ * Persist client↔QBO-customer mappings. Body: { mappings: [{ qboCustomerId,
+ * clientId }] } where clientId null clears the link.
+ */
+router.post('/customers/mapping', async (req, res) => {
+  try {
+    const { mappings } = req.body ?? {};
+    if (!Array.isArray(mappings)) {
+      return res.status(400).json({ error: 'mappings (array) is required' });
+    }
+    for (const m of mappings) {
+      if (!m || typeof m.qboCustomerId !== 'string') {
+        return res.status(400).json({ error: 'each mapping needs a string qboCustomerId' });
+      }
+      if (m.clientId !== null && !Number.isInteger(m.clientId)) {
+        return res.status(400).json({ error: 'clientId must be an integer or null' });
+      }
+    }
+    const result = await services.clientLinkService.applyMappings(mappings);
+    res.json(result);
+  } catch (error) {
+    console.error('Error applying client mapping:', error);
+    res.status(500).json({
+      error: 'Failed to apply client mapping',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 router.get('/items', async (req, res) => {
   try {
     const items = await invoiceService.getQBOItems();
