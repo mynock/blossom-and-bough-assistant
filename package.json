@@ -58,6 +58,7 @@
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "server": "cd server && npm run dev",
     "type-check": "tsc --noEmit",
+    "lint:csrf": "eslint --no-eslintrc --no-inline-config -c .eslintrc.csrf.json --ext .ts,.tsx src",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

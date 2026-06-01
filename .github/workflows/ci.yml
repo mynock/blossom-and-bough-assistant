@@ -27,7 +27,10 @@ jobs:
         
     - name: Install frontend dependencies
       run: npm ci
-      
+
+    - name: CSRF guard — no bare fetch() writes (must use secureFetch)
+      run: npm run lint:csrf
+
     - name: Run frontend tests
       run: npm test -- --watchAll=false --coverage --passWithNoTests
       
