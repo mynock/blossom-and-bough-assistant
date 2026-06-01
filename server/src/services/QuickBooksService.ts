@@ -32,6 +32,13 @@ export interface QBOItem {
   Active: boolean;
 }
 
+export interface QBOCustomer {
+  Id: string;
+  DisplayName: string;
+  Active?: boolean;
+  BillAddr?: { Line1?: string };
+}
+
 export interface QBOInvoice {
   Id: string;
   DocNumber: string;
@@ -433,12 +440,13 @@ export class QuickBooksService extends DatabaseService {
     });
   }
 
-  async getAllCustomers(): Promise<any[]> {
+  async getAllCustomers(): Promise<QBOCustomer[]> {
     await this.ensureClient();
     return new Promise((resolve, reject) => {
-      this.qbo.findCustomers({}, (err: any, customers: any) => {
+      // fetchAll so we page past QBO's default result cap.
+      this.qbo.findCustomers({ fetchAll: true }, (err: any, customers: any) => {
         if (err) return reject(err);
-        const customerList = customers.QueryResponse?.Customer || [];
+        const customerList = (customers.QueryResponse?.Customer || []) as QBOCustomer[];
         console.log(`getAllCustomers: Found ${customerList.length} customers`);
         resolve(customerList);
       });
