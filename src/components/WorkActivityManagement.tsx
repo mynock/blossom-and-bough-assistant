@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { secureFetch } from '../services/csrf';
 import {
   Box,
   Typography,
@@ -268,7 +269,7 @@ const WorkActivityManagement: React.FC = () => {
   const handleDelete = async (activity: WorkActivity) => {
     if (window.confirm(`Are you sure you want to delete this ${activity.workType} activity?`)) {
       try {
-        const response = await fetch(`/api/work-activities/${activity.id}`, {
+        const response = await secureFetch(`/api/work-activities/${activity.id}`, {
           method: 'DELETE',
         });
 
@@ -306,7 +307,7 @@ const WorkActivityManagement: React.FC = () => {
     const url = isCreating ? '/api/work-activities' : `/api/work-activities/${selectedActivity?.id}`;
     const method = isCreating ? 'POST' : 'PUT';
     
-    const response = await fetch(url, {
+    const response = await secureFetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',

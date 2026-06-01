@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { secureFetch } from '../services/csrf';
 import {
   Box,
   Container,
@@ -225,7 +226,7 @@ const WorkActivityReviewFlow: React.FC = () => {
   const fetchActivitiesNeedingReview = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}?status=needs_review`);
+      const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}?status=needs_review`);
       if (!response.ok) {
         throw new Error('Failed to fetch activities needing review');
       }
@@ -330,7 +331,7 @@ const WorkActivityReviewFlow: React.FC = () => {
   const handleApprove = async (activityId: number) => {
     try {
       setSaving(true);
-      const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${activityId}`, {
+      const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${activityId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -364,7 +365,7 @@ const WorkActivityReviewFlow: React.FC = () => {
   const handleUnapprove = async (activityId: number) => {
     try {
       setSaving(true);
-      const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${activityId}`, {
+      const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${activityId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -407,7 +408,7 @@ const WorkActivityReviewFlow: React.FC = () => {
       // Determine status based on whether it's already approved
       const newStatus = isCurrentActivityApproved ? 'completed' : 'completed';
       
-      const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${currentActivity.id}`, {
+      const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${currentActivity.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

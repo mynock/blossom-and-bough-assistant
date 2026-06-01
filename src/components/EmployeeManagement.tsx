@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { secureFetch } from '../services/csrf';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -84,7 +85,7 @@ const EmployeeManagement: React.FC = () => {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const response = await fetch('/api/employees');
+      const response = await secureFetch('/api/employees');
       const data = await response.json();
       setEmployees(data);
     } catch (error) {
@@ -177,7 +178,7 @@ const EmployeeManagement: React.FC = () => {
       const url = isCreating ? '/api/employees' : `/api/employees/${selectedEmployee?.id}`;
       const method = isCreating ? 'POST' : 'PUT';
       
-      const response = await fetch(url, {
+      const response = await secureFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -205,7 +206,7 @@ const EmployeeManagement: React.FC = () => {
   const handleDelete = async (employee: Employee) => {
     if (window.confirm(`Are you sure you want to delete ${employee.name}?`)) {
       try {
-        const response = await fetch(`/api/employees/${employee.id}`, {
+        const response = await secureFetch(`/api/employees/${employee.id}`, {
           method: 'DELETE',
         });
 

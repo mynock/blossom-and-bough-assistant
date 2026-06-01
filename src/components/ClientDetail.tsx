@@ -252,20 +252,20 @@ const ClientDetail: React.FC = () => {
         setError(null);
 
         // Fetch client details
-        const clientResponse = await fetch(`/api/clients/${id}`);
+        const clientResponse = await secureFetch(`/api/clients/${id}`);
         if (!clientResponse.ok) throw new Error('Failed to fetch client');
         const clientData = await clientResponse.json();
         setClient(clientData);
 
         // Fetch work activities and summary
-        const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+        const activitiesResponse = await secureFetch(`/api/clients/${id}/work-activities`);
         if (!activitiesResponse.ok) throw new Error('Failed to fetch work activities');
         const activitiesData = await activitiesResponse.json();
         setWorkActivities(activitiesData.activities);
         setSummary(activitiesData.summary);
 
         // Fetch upcoming schedule
-        const scheduleResponse = await fetch(`/api/clients/${id}/upcoming-schedule?days=30`);
+        const scheduleResponse = await secureFetch(`/api/clients/${id}/upcoming-schedule?days=30`);
         if (scheduleResponse.ok) {
           const scheduleData = await scheduleResponse.json();
           setUpcomingSchedule(scheduleData);
@@ -274,7 +274,7 @@ const ClientDetail: React.FC = () => {
         }
 
         // Fetch client notes
-        const notesResponse = await fetch(`/api/clients/${id}/notes`);
+        const notesResponse = await secureFetch(`/api/clients/${id}/notes`);
         if (notesResponse.ok) {
           const notesData = await notesResponse.json();
           setClientNotes(notesData.notes);
@@ -331,7 +331,7 @@ const ClientDetail: React.FC = () => {
 
   const handleSave = async () => {
     try {
-      const response = await fetch(`/api/clients/${id}`, {
+      const response = await secureFetch(`/api/clients/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -363,7 +363,7 @@ const ClientDetail: React.FC = () => {
     charges: Array<any>, 
     plants: Array<any>
   ) => {
-    const response = await fetch(`/api/work-activities/${selectedWorkActivity?.id}`, {
+    const response = await secureFetch(`/api/work-activities/${selectedWorkActivity?.id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -379,7 +379,7 @@ const ClientDetail: React.FC = () => {
     setWorkActivityEditOpen(false);
     // Refresh work activities data
     if (id) {
-      const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+      const activitiesResponse = await secureFetch(`/api/clients/${id}/work-activities`);
       if (activitiesResponse.ok) {
         const activitiesData = await activitiesResponse.json();
         setWorkActivities(activitiesData.activities);
@@ -391,7 +391,7 @@ const ClientDetail: React.FC = () => {
   const handleWorkActivityDelete = async (activity: WorkActivity) => {
     if (window.confirm(`Are you sure you want to delete this ${activity.workType} activity from ${formatDatePacific(activity.date)}?`)) {
       try {
-        const response = await fetch(`/api/work-activities/${activity.id}`, {
+        const response = await secureFetch(`/api/work-activities/${activity.id}`, {
           method: 'DELETE',
         });
 
@@ -399,7 +399,7 @@ const ClientDetail: React.FC = () => {
           setSnackbar({ open: true, message: 'Work activity deleted successfully', severity: 'success' });
           // Refresh work activities data
           if (id) {
-            const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+            const activitiesResponse = await secureFetch(`/api/clients/${id}/work-activities`);
             if (activitiesResponse.ok) {
               const activitiesData = await activitiesResponse.json();
               setWorkActivities(activitiesData.activities);
@@ -447,7 +447,7 @@ const ClientDetail: React.FC = () => {
   const handleNoteDelete = async (noteId: number) => {
     if (window.confirm('Are you sure you want to delete this note?')) {
       try {
-        const response = await fetch(`/api/clients/${id}/notes/${noteId}`, {
+        const response = await secureFetch(`/api/clients/${id}/notes/${noteId}`, {
           method: 'DELETE',
         });
 
@@ -471,7 +471,7 @@ const ClientDetail: React.FC = () => {
       
       const method = editingNote ? 'PUT' : 'POST';
       
-      const response = await fetch(url, {
+      const response = await secureFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -531,7 +531,7 @@ const ClientDetail: React.FC = () => {
 
     setPreviewLoading(true);
     try {
-      const response = await fetch('/api/qbo/invoices/preview', {
+      const response = await secureFetch('/api/qbo/invoices/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -554,7 +554,7 @@ const ClientDetail: React.FC = () => {
 
       if (availableQBOItems.length === 0) {
         try {
-          const itemsResponse = await fetch('/api/qbo/items');
+          const itemsResponse = await secureFetch('/api/qbo/items');
           if (itemsResponse.ok) {
             const items = await itemsResponse.json();
             setAvailableQBOItems(items.map((i: any) => ({
@@ -644,7 +644,7 @@ const ClientDetail: React.FC = () => {
         setSelectedActivitiesForInvoice([]);
 
         if (id) {
-          const activitiesResponse = await fetch(`/api/clients/${id}/work-activities`);
+          const activitiesResponse = await secureFetch(`/api/clients/${id}/work-activities`);
           if (activitiesResponse.ok) {
             const activitiesData = await activitiesResponse.json();
             setWorkActivities(activitiesData.activities);

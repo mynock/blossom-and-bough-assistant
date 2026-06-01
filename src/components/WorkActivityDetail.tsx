@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { secureFetch } from '../services/csrf';
 import {
   Container,
   Grid,
@@ -106,7 +107,7 @@ const WorkActivityDetail: React.FC = () => {
     const fetchActivity = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`);
+        const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`);
         if (!response.ok) {
           throw new Error('Failed to fetch work activity');
         }
@@ -134,7 +135,7 @@ const WorkActivityDetail: React.FC = () => {
       setResyncLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_ENDPOINTS.NOTION_SYNC_PAGE}/${activity.notionPageId}`, {
+      const response = await secureFetch(`${API_ENDPOINTS.NOTION_SYNC_PAGE}/${activity.notionPageId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,7 +151,7 @@ const WorkActivityDetail: React.FC = () => {
       }
 
       // Refresh the activity data to show updated sync timestamp
-      const activityResponse = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`);
+      const activityResponse = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`);
       if (activityResponse.ok) {
         const updatedActivity = await activityResponse.json();
         setActivity(updatedActivity);
@@ -205,7 +206,7 @@ const WorkActivityDetail: React.FC = () => {
   const handleDelete = async () => {
     if (window.confirm('Are you sure you want to delete this work activity?')) {
       try {
-        const response = await fetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`, {
+        const response = await secureFetch(`${API_ENDPOINTS.WORK_ACTIVITIES}/${id}`, {
           method: 'DELETE',
         });
         if (response.ok) {
