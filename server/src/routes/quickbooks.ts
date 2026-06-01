@@ -229,17 +229,27 @@ router.get('/invoices', async (req, res) => {
  */
 router.post('/invoices/sync-all', async (req, res) => {
   try {
-    const { since, dryRun } = req.body ?? {};
+    const { since, until, dryRun } = req.body ?? {};
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
     if (since !== undefined) {
-      if (typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(since)) {
+      if (typeof since !== 'string' || !isoDate.test(since)) {
         return res.status(400).json({ error: 'since must be a date string in YYYY-MM-DD format' });
       }
+    }
+    if (until !== undefined) {
+      if (typeof until !== 'string' || !isoDate.test(until)) {
+        return res.status(400).json({ error: 'until must be a date string in YYYY-MM-DD format' });
+      }
+    }
+    if (typeof since === 'string' && typeof until === 'string' && since > until) {
+      return res.status(400).json({ error: 'since must be on or before until' });
     }
     if (dryRun !== undefined && typeof dryRun !== 'boolean') {
       return res.status(400).json({ error: 'dryRun must be a boolean' });
     }
     const result = await services.invoiceImportService.syncAllInvoices({
       since,
+      until,
       dryRun: dryRun === true
     });
     res.json(result);

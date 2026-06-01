@@ -379,8 +379,13 @@ export class InvoiceImportService extends DatabaseService {
    * When `dryRun` is true, NO database writes happen: the matcher still runs
    * and the same counts are returned, plus a per-invoice `preview`, so the
    * operator can evaluate match quality before committing.
+   *
+   * `since` / `until` bound the run to invoices whose QBO TxnDate falls in
+   * [since, until] (either end optional). Both are 'YYYY-MM-DD'. NOTE: the
+   * window is applied after fetching all invoices from QBO, so it bounds what
+   * gets written locally — not the QBO API pull.
    */
-  async syncAllInvoices(opts?: { since?: string; dryRun?: boolean }): Promise<SyncResult> {
+  async syncAllInvoices(opts?: { since?: string; until?: string; dryRun?: boolean }): Promise<SyncResult> {
     const dryRun = opts?.dryRun ?? false;
     const result: SyncResult = {
       imported: 0,
@@ -406,6 +411,10 @@ export class InvoiceImportService extends DatabaseService {
     if (opts?.since) {
       const since = opts.since;
       qboInvoices = qboInvoices.filter((inv) => inv.TxnDate && inv.TxnDate >= since);
+    }
+    if (opts?.until) {
+      const until = opts.until;
+      qboInvoices = qboInvoices.filter((inv) => inv.TxnDate && inv.TxnDate <= until);
     }
 
     // Sort by TxnDate ASC so older invoices claim older work activities first.
