@@ -37,6 +37,7 @@ import {
   TableCell,
   IconButton,
   Autocomplete,
+  Tooltip,
 } from '@mui/material';
 import {
   ArrowLeft as ArrowBackIcon,
@@ -717,9 +718,30 @@ const ClientDetail: React.FC = () => {
             />
           </h1>
         </div>
-        <Button startIcon={<EditIcon />} variant="contained" onClick={handleEdit}>
-          Edit client
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+          <Tooltip
+            title={
+              readyToInvoiceActivities.length === 0
+                ? 'No completed work activities with billable hours to invoice'
+                : ''
+            }
+          >
+            {/* span wrapper so the tooltip works while the button is disabled */}
+            <span>
+              <Button
+                startIcon={<AttachMoneyIcon />}
+                variant="outlined"
+                onClick={() => setShowInvoiceDialog(true)}
+                disabled={readyToInvoiceActivities.length === 0}
+              >
+                Create Invoice
+              </Button>
+            </span>
+          </Tooltip>
+          <Button startIcon={<EditIcon />} variant="contained" onClick={handleEdit}>
+            Edit client
+          </Button>
+        </Box>
       </div>
 
       {/* Client Information */}
