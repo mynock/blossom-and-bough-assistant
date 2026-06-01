@@ -9,7 +9,8 @@ import {
   notifications,
   type WorkActivity,
   type OtherCharge,
-  type MatchCandidateJSON
+  type MatchCandidateJSON,
+  type WorkActivityStatus
 } from '../db';
 import { and, asc, eq, gte, ilike, inArray, isNotNull, lte, ne } from 'drizzle-orm';
 import type { QBOInvoice, QuickBooksService } from './QuickBooksService';
@@ -26,6 +27,14 @@ const MIN_THRESHOLD = 2;
 
 // 90-day candidate window around the invoice date.
 const CANDIDATE_WINDOW_DAYS = 90;
+
+// Work-activity statuses the matcher will consider as invoice candidates.
+// 'completed' = finished work; 'needs_review' = work logged but pending approval
+// (e.g. fresh Notion imports) — both represent work that actually happened.
+// Deliberately excludes 'invoiced' (already billed, must not re-match),
+// 'planned' and 'in_progress' (not done — billing those, and flipping them to
+// 'invoiced' on a match, would be wrong).
+const MATCHABLE_ACTIVITY_STATUSES: WorkActivityStatus[] = ['completed', 'needs_review'];
 
 // Stopwords used by the token-overlap scorer. Tiny on purpose — the matcher
 // needs to ignore noise words, not be a full NLP stack.
@@ -712,14 +721,14 @@ export class InvoiceImportService extends DatabaseService {
   ): Promise<MatcherOutput<K>> {
     const windowStart = shiftDate(invoiceDate, -CANDIDATE_WINDOW_DAYS);
 
-    // Candidate activities: same client, completed, within window.
+    // Candidate activities: same client, matchable status, within window.
     const candidateActivities = (await this.db
       .select()
       .from(workActivities)
       .where(
         and(
           eq(workActivities.clientId, clientId),
-          eq(workActivities.status, 'completed'),
+          inArray(workActivities.status, MATCHABLE_ACTIVITY_STATUSES),
           gte(workActivities.date, windowStart),
           lte(workActivities.date, invoiceDate)
         )
