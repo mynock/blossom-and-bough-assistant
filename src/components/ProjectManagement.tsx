@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { secureFetch } from '../services/csrf';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -78,7 +79,7 @@ const ProjectManagement: React.FC = () => {
 
   const fetchProjects = useCallback(async () => {
     try {
-      const response = await fetch('/api/projects');
+      const response = await secureFetch('/api/projects');
       const data = await response.json();
       setProjects(data);
     } catch (error) {
@@ -95,7 +96,7 @@ const ProjectManagement: React.FC = () => {
 
   const fetchClients = async () => {
     try {
-      const response = await fetch('/api/clients');
+      const response = await secureFetch('/api/clients');
       const data = await response.json();
       setClients(data.clients);
     } catch (error) {
@@ -127,7 +128,7 @@ const ProjectManagement: React.FC = () => {
       const url = isCreating ? '/api/projects' : `/api/projects/${selectedProject?.id}`;
       const method = isCreating ? 'POST' : 'PUT';
       
-      const response = await fetch(url, {
+      const response = await secureFetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
@@ -153,7 +154,7 @@ const ProjectManagement: React.FC = () => {
   const handleDelete = async (project: Project) => {
     if (window.confirm(`Are you sure you want to delete "${project.name}"?`)) {
       try {
-        const response = await fetch(`/api/projects/${project.id}`, {
+        const response = await secureFetch(`/api/projects/${project.id}`, {
           method: 'DELETE',
         });
 

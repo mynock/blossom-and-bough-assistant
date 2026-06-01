@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { secureFetch } from '../services/csrf';
 import {
   Box,
   Typography,
@@ -101,7 +102,7 @@ const ClientManagement: React.FC = () => {
 
   const fetchClients = useCallback(async () => {
     try {
-      const response = await fetch('/api/clients');
+      const response = await secureFetch('/api/clients');
       const data = await response.json();
       setClients(data.clients);
     } catch (error) {
@@ -133,7 +134,7 @@ const ClientManagement: React.FC = () => {
     try {
       const url = isCreating ? '/api/clients' : `/api/clients/${selectedClient?.id}`;
       const method = isCreating ? 'POST' : 'PUT';
-      const response = await fetch(url, {
+      const response = await secureFetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),

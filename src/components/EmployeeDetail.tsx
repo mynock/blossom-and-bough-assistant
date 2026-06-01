@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { secureFetch } from '../services/csrf';
 import {
   Box,
   Paper,
@@ -159,13 +160,13 @@ const EmployeeDetail: React.FC = () => {
         setError(null);
 
         // Fetch employee details
-        const employeeResponse = await fetch(`/api/employees/${id}`);
+        const employeeResponse = await secureFetch(`/api/employees/${id}`);
         if (!employeeResponse.ok) throw new Error('Failed to fetch employee');
         const employeeData = await employeeResponse.json();
         setEmployee(employeeData);
 
         // Fetch work activities and summary
-        const activitiesResponse = await fetch(`/api/employees/${id}/work-activities`);
+        const activitiesResponse = await secureFetch(`/api/employees/${id}/work-activities`);
         if (!activitiesResponse.ok) throw new Error('Failed to fetch work activities');
         const activitiesData = await activitiesResponse.json();
         setWorkActivities(activitiesData.activities);
@@ -240,7 +241,7 @@ const EmployeeDetail: React.FC = () => {
         regularWorkdays: selectedWorkdays.join(' '),
       };
 
-      const response = await fetch(`/api/employees/${id}`, {
+      const response = await secureFetch(`/api/employees/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
