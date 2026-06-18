@@ -1,0 +1,19 @@
+{
+  "root": true,
+  "ignorePatterns": ["src/config/api.ts", "src/services/csrf.ts", "src/services/api.ts"],
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2021,
+    "sourceType": "module",
+    "ecmaFeatures": { "jsx": true }
+  },
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "CallExpression[callee.name='fetch'] > ObjectExpression > Property[key.name='method']",
+        "message": "Use secureFetch from src/services/csrf.ts for state-changing requests. A bare fetch() with a method sends no X-CSRF-Token header and returns 403 (EBADCSRFTOKEN) in production."
+      }
+    ]
+  }
+}
