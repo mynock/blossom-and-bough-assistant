@@ -50,7 +50,7 @@ import {
 import BreakdownChart from './charts/BreakdownChart';
 import TimeSeriesChart from './charts/TimeSeriesChart';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE,

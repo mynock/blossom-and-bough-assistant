@@ -1,8 +1,8 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 import { fetchCsrfToken, invalidateCsrfToken, CSRF_SAFE_METHODS } from './csrf';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
-const isDevelopment = process.env.NODE_ENV === 'development';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const isDevelopment = import.meta.env.DEV;
 
 /**
  * Main API client using Axios.

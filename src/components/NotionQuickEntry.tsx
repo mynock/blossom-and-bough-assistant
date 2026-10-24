@@ -370,7 +370,7 @@ const NotionQuickEntry: React.FunctionComponent = () => {
       )}
 
       {/* Visual Debug Info - only in development */}
-      {process.env.NODE_ENV === 'development' && debugInfo.length > 0 && (
+      {import.meta.env.DEV && debugInfo.length > 0 && (
         <Box sx={{ 
           position: 'fixed', 
           bottom: 0, 
