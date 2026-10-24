@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
 import { debugLog } from '../utils/logger';
-import { ANTHROPIC_MODEL } from '../constants';
+import { ANTHROPIC_CHAT_EFFORT, ANTHROPIC_MODEL, ANTHROPIC_PARSE_EFFORT } from '../constants';
 import { getCompleteResponseText, getResponseText } from '../utils/anthropicResponse';
 
 export interface ParsedWorkActivity {
@@ -109,7 +109,8 @@ export class AnthropicService {
       
       let currentMessage = await this.client.messages.create({
         model: ANTHROPIC_MODEL,
-        max_tokens: 4000,
+        max_tokens: 8000, // thinking counts toward this; kept tight for the 55s chat timeout
+        output_config: { effort: ANTHROPIC_CHAT_EFFORT },
         system: systemPrompt,
         tools: tools,
         messages: messages
@@ -170,7 +171,8 @@ export class AnthropicService {
         // Continue conversation - no conversation trimming
         currentMessage = await this.client.messages.create({
           model: ANTHROPIC_MODEL,
-          max_tokens: 4000,
+          max_tokens: 8000,
+          output_config: { effort: ANTHROPIC_CHAT_EFFORT },
           system: systemPrompt,
           tools: tools,
           messages: messages
@@ -224,7 +226,7 @@ export class AnthropicService {
    */
   private getChatStopResponse(message: Anthropic.Message): SchedulingResponse | null {
     if (message.stop_reason === 'refusal') {
-      console.warn('⚠️ Claude declined the chat request (stop_reason: refusal)');
+      console.warn(`⚠️ Claude declined the chat request (refusal category: ${message.stop_details?.category ?? 'uncategorized'})`);
       return {
         response: "Sorry, I can't help with that request. Try asking it a different way.",
         reasoning: 'Claude declined the request',
@@ -871,7 +873,8 @@ Return the processed data as a JSON object with this exact structure:
 
       const response = await this.client.messages.create({
         model: ANTHROPIC_MODEL,
-        max_tokens: 4000,
+        max_tokens: 16000,
+        output_config: { effort: ANTHROPIC_PARSE_EFFORT },
         messages: [
           {
             role: 'user',
@@ -1179,7 +1182,8 @@ CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extr
 
     const response = await this.client.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 8000, // Smaller batches = less tokens needed
+      max_tokens: 16000, // includes thinking tokens
+      output_config: { effort: ANTHROPIC_PARSE_EFFORT },
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
@@ -1374,7 +1378,8 @@ Return ONLY a JSON object (not an array) in this exact shape. Preserve quantity,
     try {
       const response = await this.client.messages.create({
         model: ANTHROPIC_MODEL,
-        max_tokens: 4000,
+        max_tokens: 16000,
+        output_config: { effort: ANTHROPIC_PARSE_EFFORT },
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
       });

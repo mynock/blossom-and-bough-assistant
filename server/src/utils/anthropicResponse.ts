@@ -18,10 +18,11 @@ export function getResponseText(response: Anthropic.Message): string {
  */
 export function getCompleteResponseText(response: Anthropic.Message, task: string): string {
   if (response.stop_reason === 'refusal') {
-    throw new Error(`Claude declined to ${task} (stop_reason: refusal)`);
+    const category = response.stop_details?.category ?? 'uncategorized';
+    throw new Error(`Claude declined to ${task} (refusal category: ${category})`);
   }
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(`Claude's response was cut off at max_tokens while trying to ${task}`);
+  if (response.stop_reason === 'max_tokens' || response.stop_reason === 'model_context_window_exceeded') {
+    throw new Error(`Claude's response was cut off (${response.stop_reason}) while trying to ${task}`);
   }
 
   const text = getResponseText(response);

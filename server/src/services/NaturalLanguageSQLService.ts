@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { debugLog } from '../utils/logger';
-import { ANTHROPIC_MODEL } from '../constants';
+import { ANTHROPIC_MODEL, ANTHROPIC_PARSE_EFFORT } from '../constants';
 import { getCompleteResponseText } from '../utils/anthropicResponse';
 
 export interface SQLQueryResult {
@@ -85,7 +85,8 @@ export class NaturalLanguageSQLService {
 
     const response = await this.client!.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 2000,
+      max_tokens: 16000, // includes thinking tokens
+      output_config: { effort: ANTHROPIC_PARSE_EFFORT },
       system: systemPrompt,
       messages: [
         {
@@ -166,7 +167,8 @@ Only include chartConfig if the data is suitable for visualization (has numeric 
 
     const response = await this.client!.messages.create({
       model: ANTHROPIC_MODEL,
-      max_tokens: 1500,
+      max_tokens: 16000, // includes thinking tokens
+      output_config: { effort: ANTHROPIC_PARSE_EFFORT },
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
