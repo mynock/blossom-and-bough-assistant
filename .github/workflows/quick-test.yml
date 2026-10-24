@@ -32,9 +32,9 @@ jobs:
       run: npm ci
         
     - name: Run frontend tests
-      run: npm test -- --watchAll=false --passWithNoTests
+      run: npm test
         
-    - name: Build frontend
+    - name: Type-check and build frontend
       run: npm run build
         
     - name: Install backend dependencies
