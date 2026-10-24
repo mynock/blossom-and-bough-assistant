@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { SchedulingContext, SchedulingResponse } from '../types';
 import { debugLog } from '../utils/logger';
 import { ANTHROPIC_MODEL } from '../constants';
+import { getCompleteResponseText, getResponseText } from '../utils/anthropicResponse';
 
 export interface ParsedWorkActivity {
   date: string;
@@ -109,7 +110,6 @@ export class AnthropicService {
       let currentMessage = await this.client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 4000,
-        temperature: 0.3,
         system: systemPrompt,
         tools: tools,
         messages: messages
@@ -117,12 +117,17 @@ export class AnthropicService {
 
       console.log(`⏱️ Initial response: ${Date.now() - startTime}ms`);
       console.log(`📈 Usage: ${currentMessage.usage?.input_tokens} in, ${currentMessage.usage?.output_tokens} out`);
-      
+
       // Handle tool calls naturally - no interference
       let toolRound = 1;
       const maxRounds = 10;
-      
+
       while (toolRound <= maxRounds) {
+        const stoppedResponse = this.getChatStopResponse(currentMessage);
+        if (stoppedResponse) {
+          return stoppedResponse;
+        }
+
         const toolUseContent = currentMessage.content.filter((content: any) => content.type === 'tool_use');
         
         if (toolUseContent.length === 0) {
@@ -166,7 +171,6 @@ export class AnthropicService {
         currentMessage = await this.client.messages.create({
           model: ANTHROPIC_MODEL,
           max_tokens: 4000,
-          temperature: 0.3,
           system: systemPrompt,
           tools: tools,
           messages: messages
@@ -174,10 +178,15 @@ export class AnthropicService {
 
         console.log(`⏱️ Round ${toolRound} response: ${Date.now() - startTime}ms total`);
         console.log(`📈 Usage: ${currentMessage.usage?.input_tokens} in, ${currentMessage.usage?.output_tokens} out`);
-        
+
         toolRound++;
       }
-      
+
+      const stoppedResponse = this.getChatStopResponse(currentMessage);
+      if (stoppedResponse) {
+        return stoppedResponse;
+      }
+
       // If we hit max rounds, return what we have
       const textResponse = currentMessage.content.find((content: any) => content.type === 'text');
       if (textResponse && textResponse.type === 'text') {
@@ -206,6 +215,36 @@ export class AnthropicService {
       
       throw error;
     }
+  }
+
+  /**
+   * A user-facing response for a chat turn that ended without a usable answer:
+   * Claude declined (refusal) or ran out of tokens, possibly mid tool call, so
+   * its tool calls must not be run. Returns null when the turn ended normally.
+   */
+  private getChatStopResponse(message: Anthropic.Message): SchedulingResponse | null {
+    if (message.stop_reason === 'refusal') {
+      console.warn('⚠️ Claude declined the chat request (stop_reason: refusal)');
+      return {
+        response: "Sorry, I can't help with that request. Try asking it a different way.",
+        reasoning: 'Claude declined the request',
+        suggestions: []
+      };
+    }
+
+    if (message.stop_reason === 'max_tokens') {
+      console.warn('⚠️ Claude hit max_tokens in the chat loop');
+      const partialText = getResponseText(message);
+      return {
+        response: partialText
+          ? `${partialText}\n\n(This answer was cut short. Try a narrower question.)`
+          : 'Sorry, that answer ran too long to finish. Try a narrower question.',
+        reasoning: 'Claude hit the max_tokens limit',
+        suggestions: []
+      };
+    }
+
+    return null;
   }
 
   private getSchedulingTools() {
@@ -844,10 +883,7 @@ Return the processed data as a JSON object with this exact structure:
       console.log('✅ Anthropic API response received');
       console.log('📊 Usage:', response.usage);
 
-      const content = response.content[0];
-      if (content.type !== 'text') {
-        throw new Error('Unexpected response type from Anthropic API');
-      }
+      const responseText = getCompleteResponseText(response, 'process this Notion page');
 
       console.log('🔍 === ANTHROPIC API REQUEST END (SUCCESS) ===');
 
@@ -855,12 +891,12 @@ Return the processed data as a JSON object with this exact structure:
       let parsedResponse;
       try {
         // Extract JSON from response (handle potential markdown code blocks)
-        const jsonMatch = content.text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-        const jsonText = jsonMatch ? jsonMatch[1] : content.text;
+        const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        const jsonText = jsonMatch ? jsonMatch[1] : responseText;
         parsedResponse = JSON.parse(jsonText);
       } catch (parseError) {
         console.error('❌ Failed to parse AI response as JSON:', parseError);
-        console.error('📄 Raw response:', content.text);
+        console.error('📄 Raw response:', responseText);
         throw new Error(`Failed to parse AI response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
       }
 
@@ -870,154 +906,6 @@ Return the processed data as a JSON object with this exact structure:
       console.error('❌ Anthropic API request failed:', error);
       console.log('🔍 === ANTHROPIC API REQUEST END (FAILED) ===');
       throw error;
-    }
-  }
-
-  /**
-   * Parse free-form work notes into structured work activities (LEGACY METHOD - UNUSED)
-   * 
-   * @deprecated This method is replaced by processStructuredNotionData() and is no longer used.
-   * It will be removed in a future cleanup.
-   */
-  async parseWorkNotes(workNotesText: string): Promise<WorkNotesParseResult> {
-    if (!this.client) {
-      throw new Error('Anthropic client not initialized');
-    }
-
-    const prompt = `You are an expert at parsing landscaping work logs into structured data. 
-
-Parse the following work notes and extract individual work activities. Each activity should represent work done for a specific client on a specific date.
-
-IMPORTANT PATTERNS TO RECOGNIZE:
-
-TIME FORMATS:
-- "8:45-3:10 w Virginia inc 22x2 min drive" = start 8:45, end 3:10, with Virginia, including 44min drive
-- "9:05-12:45 w Andrea & Anne inc 45 min drive" = start 9:05, end 12:45, with Andrea & Anne, including 45min drive
-- "2:00 pm-4:35 pm w Andrea & Megan & Anne" = start 2:00 pm, end 4:35 pm, with Andrea, Megan, and Anne
-- "on site 9/9:25-11:45 inc lil break, add .5 drive" = on site 9:00-9:25 to 11:45, add 30min drive
-
-EMPLOYEE NAMES:
-- Names are provided directly (e.g., "Andrea", "Megan", "Anne", "Virginia", "Rebecca")
-- "solo" = solo work (Andrea working alone)
-- "me" or "Me" = Andrea (the business owner)
-
-BUSINESS CONTEXT:
-- Andrea Wilson is the business owner of this landscaping company
-- When notes mention "me", "Me", or "I", this refers to Andrea Wilson
-- Andrea often works alongside her employees or solo on client sites
-
-CLIENT NAMES:
-- Direct client names like "Stoller", "Nadler", "Kurzweil", "Silver", etc.
-
-CHARGES:
-- "charge 1 debris bag" 
-- "Charge: Sluggo, fert, 2-3 bags debris, 3 aspidistra (60 pdxn)"
-
-WORK TYPES:
-- maintenance (most common)
-- installation/planting
-- design/consultation
-- pruning
-- weeding
-- cleanup
-
-CRITICAL DATE PARSING RULES:
-- The current year is 2025 (Pacific Time zone)
-- For partial dates like "6/3", "5/13", "2/24", etc., ALWAYS assume the year 2025
-- All dates should be interpreted as Pacific Time (US West Coast)
-- Convert all dates to YYYY-MM-DD format using 2025 as the year unless explicitly specified otherwise
-- Examples: "6/3" becomes "2025-06-03", "12/15" becomes "2025-12-15"
-
-For each work activity, extract:
-- date (YYYY-MM-DD format, always assume 2025 unless specified otherwise)
-- clientName (convert any nicknames/codes to full client names if you can determine them)
-- workType (maintenance/installation/design/etc.)
-- employees (array of full employee names, include Andrea Wilson when "me"/"I" is mentioned)
-- startTime (HH:MM format, 24-hour)
-- endTime (HH:MM format, 24-hour)
-- totalHours (calculated from time range and number of employees)
-- travelTimeMinutes (extract from phrases like "inc 22x2 min drive", "inc 45 min drive", "add .5 drive")
-- lunchTime (extract break time if mentioned)
-- workDescription (summary of work performed)
-- charges (array of materials/services to charge)
-- confidence (0.0-1.0 score for how confident you are in the parsing)
-
-EMPLOYEE NAME PROCESSING:
-- Use employee names as provided in the text
-- Convert "me", "Me", "I" → "Andrea"
-- Keep all other names as-is (Andrea, Megan, Anne, Virginia, Rebecca, etc.)
-
-CLIENT NAME EXAMPLES (use exact spelling):
-- Stoller, Nadler, Kurzweil, Silver, Chen, Kumar, Patel, etc.
-
-IMPORTANT CALCULATION RULES:
-1. totalHours = (end time - start time in hours) × number of employees
-2. If multiple employees work different time ranges, calculate each person's hours separately then sum
-3. Travel time and break time are separate from work hours
-4. For "inc drive" mentions, extract the drive time in minutes
-5. Convert time mentions like ".5 drive" to 30 minutes, "22x2 min" to 44 minutes
-
-Return the data as a JSON object with this exact structure:
-{
-  "activities": [
-    {
-      "date": "2025-06-03",
-      "clientName": "Stoller", 
-      "workType": "maintenance",
-      "employees": ["Andrea", "Virginia"],
-      "startTime": "08:45",
-      "endTime": "15:10", 
-      "totalHours": 12.83,
-      "travelTimeMinutes": 44,
-      "lunchTime": 30,
-      "workDescription": "General maintenance work",
-      "charges": ["1 debris bag"],
-      "confidence": 0.95
-    }
-  ],
-  "summary": {
-    "totalActivities": 1,
-    "dateRange": "2025-06-03 to 2025-06-03",
-    "totalHours": 12.83,
-    "clients": ["Stoller"]
-  }
-}`;
-
-    try {
-      console.log('🤖 === ANTHROPIC API REQUEST START ===');
-      console.log('🎯 Method: parseWorkNotes (for Notion sync)');
-      console.log('📝 Input length:', workNotesText.length, 'characters');
-
-      const response = await this.client.messages.create({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 8000,
-        messages: [
-          {
-            role: 'user',
-            content: `${prompt}\n\nWork Notes to Parse:\n${workNotesText}`
-          }
-        ]
-      });
-
-      console.log('✅ Anthropic API response received');
-      console.log('📊 Usage:', response.usage);
-      console.log('🔍 === ANTHROPIC API REQUEST END (SUCCESS) ===');
-
-      if (response.content[0].type === 'text') {
-        const responseText = response.content[0].text;
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          return parsed;
-        }
-      }
-
-      throw new Error('Failed to parse AI response');
-    } catch (error) {
-      console.error('💥 Error in Anthropic API request:', error);
-      console.log('🔍 === ANTHROPIC API REQUEST END (ERROR) ===');
-      throw new Error('Failed to parse work notes with AI');
     }
   }
 
@@ -1287,23 +1175,17 @@ CRITICAL DATE FORMATTING:
 
 CRITICAL: Return ONLY a valid JSON array starting with [ and ending with ]. Extract ALL activities from this batch - do not truncate.`;
 
-    console.log(`🤖 Calling Claude Sonnet 4 for batch ${batchNumber}...`);
-    
+    console.log(`🤖 Calling ${ANTHROPIC_MODEL} for batch ${batchNumber}...`);
+
     const response = await this.client.messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: 8000, // Smaller batches = less tokens needed
-      temperature: 0.1,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
 
     // Extract and parse the JSON response
-    const textContent = response.content.find((c: any) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Claude');
-    }
-
-    const responseText = (textContent as any).text;
+    const responseText = getCompleteResponseText(response, `parse historical batch ${batchNumber}`);
     console.log(`📝 Claude batch ${batchNumber} response: ${responseText.length} characters`);
     
     // Extract JSON from response
@@ -1493,17 +1375,11 @@ Return ONLY a JSON object (not an array) in this exact shape. Preserve quantity,
       const response = await this.client.messages.create({
         model: ANTHROPIC_MODEL,
         max_tokens: 4000,
-        temperature: 0.3,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }]
       });
 
-      const textContent = response.content.find((c: any) => c.type === 'text');
-      if (!textContent || textContent.type !== 'text') {
-        throw new Error('No text response from Claude');
-      }
-
-      const responseText = (textContent as any).text;
+      const responseText = getCompleteResponseText(response, 'write invoice line items');
       console.log(`📝 Claude AI invoice response: ${responseText.length} characters`);
 
       // Extract a JSON object (preferred) — fall back to a bare array for safety if the

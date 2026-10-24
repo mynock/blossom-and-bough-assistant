@@ -3,6 +3,7 @@ import { db } from '../db';
 import { sql } from 'drizzle-orm';
 import { debugLog } from '../utils/logger';
 import { ANTHROPIC_MODEL } from '../constants';
+import { getCompleteResponseText } from '../utils/anthropicResponse';
 
 export interface SQLQueryResult {
   query: string;
@@ -85,7 +86,6 @@ export class NaturalLanguageSQLService {
     const response = await this.client!.messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: 2000,
-      temperature: 0.1,
       system: systemPrompt,
       messages: [
         {
@@ -95,12 +95,7 @@ export class NaturalLanguageSQLService {
       ]
     });
 
-    const textContent = response.content.find((c: any) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Anthropic API');
-    }
-
-    const responseText = (textContent as any).text;
+    const responseText = getCompleteResponseText(response, 'write a SQL query');
     
     // Extract SQL from response (handle potential markdown code blocks)
     const sqlMatch = responseText.match(/```sql\s*([\s\S]*?)\s*```/) || 
@@ -172,17 +167,11 @@ Only include chartConfig if the data is suitable for visualization (has numeric 
     const response = await this.client!.messages.create({
       model: ANTHROPIC_MODEL,
       max_tokens: 1500,
-      temperature: 0.3,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
 
-    const textContent = response.content.find((c: any) => c.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No analysis response from Anthropic API');
-    }
-
-    const responseText = (textContent as any).text;
+    const responseText = getCompleteResponseText(response, 'analyze the query results');
     
     try {
       // Extract JSON from response
