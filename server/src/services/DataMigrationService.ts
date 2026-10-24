@@ -12,7 +12,9 @@ import {
   workActivityEmployees,
   otherCharges,
   plantList,
-  clientNotes
+  clientNotes,
+  invoices,
+  invoiceLineItems
 } from '../db';
 import { type Helper, type Client } from '../types';
 
@@ -203,6 +205,8 @@ export class DataMigrationService extends DatabaseService {
 
     await this.db.transaction(async (tx) => {
       // Delete in order to respect foreign key constraints
+      await tx.delete(invoiceLineItems);
+      await tx.delete(invoices);
       await tx.delete(otherCharges);
       await tx.delete(plantList);
       await tx.delete(workActivityEmployees);

@@ -3,11 +3,11 @@ import { promisify } from 'util';
 import path from 'path';
 import { debugLog } from '../utils/logger';
 import { DataMigrationService } from './DataMigrationService';
-import { DatabaseService } from './DatabaseService';
+import { DatabaseService, type DbOrTx } from './DatabaseService';
 import { GoogleSheetsHistoricalDataService } from './GoogleSheetsHistoricalDataService';
 import { AnthropicService } from './AnthropicService';
 import { WorkActivityService } from './WorkActivityService';
-import { workActivities, workActivityEmployees, otherCharges, plantList, projects, clientNotes, clients, employees } from '../db/index';
+import { workActivities, workActivityEmployees, otherCharges, plantList, projects, clientNotes, clients, employees, invoiceLineItems } from '../db/index';
 import { like } from 'drizzle-orm';
 
 const execAsync = promisify(exec);
@@ -101,6 +101,21 @@ export class AdminService {
   }
 
   /**
+   * Invoices mirror QuickBooks, so partial clears keep them and only drop their links
+   * to the work activities and charges being deleted.
+   */
+  private async unlinkInvoiceLines(tx: DbOrTx): Promise<void> {
+    await tx.update(invoiceLineItems).set({
+      workActivityId: null,
+      otherChargeId: null,
+      matchStatus: 'unmatched',
+      matchScore: null,
+      matchCandidates: null,
+      updatedAt: new Date()
+    });
+  }
+
+  /**
    * Clear work activities only (keeps clients, employees, projects)
    */
   async clearWorkActivities(): Promise<ScriptResult> {
@@ -111,6 +126,7 @@ export class AdminService {
 
       await this.dbService.db.transaction(async (tx) => {
         // Delete in correct order to respect foreign key constraints
+        await this.unlinkInvoiceLines(tx);
         await tx.delete(otherCharges);
         await tx.delete(plantList);
         await tx.delete(workActivityEmployees);
@@ -149,6 +165,7 @@ export class AdminService {
 
       await this.dbService.db.transaction(async (tx) => {
         // Delete in correct order to respect foreign key constraints
+        await this.unlinkInvoiceLines(tx);
         await tx.delete(otherCharges);
         await tx.delete(plantList);
         await tx.delete(workActivityEmployees);

@@ -657,7 +657,7 @@ export class AnthropicService {
 
 You are Andrea's intelligent scheduling assistant. Handle queries naturally - whether specific or broad. For complex analysis, use multiple tools as needed to provide comprehensive insights.
 
-**IMPORTANT: All times and dates are in Pacific Time (US West Coast). Current year is 2025.**
+**IMPORTANT: All times and dates are in Pacific Time (US West Coast). Today is ${currentDate}.**
 
 ## Business Rules
 - Each helper needs 7-8 hours on workdays | **Andrea targets 3 field days/week**

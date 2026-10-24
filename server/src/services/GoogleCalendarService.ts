@@ -32,8 +32,15 @@ export class GoogleCalendarService {
   }
 
   async getEvents(daysAhead: number = 7): Promise<CalendarEvent[]> {
-    const events = await this.getAllEvents(daysAhead);
-    return events.filter(event => event !== null);
+    if (!this.calendar) {
+      return this.getMockEvents();
+    }
+
+    // getAllEvents stays raw for CronService's all-day helper detection; everyone else needs parsed events
+    const rawEvents = await this.getAllEvents(daysAhead);
+    return rawEvents
+      .map(event => this.parseGoogleEvent(event))
+      .filter((event): event is CalendarEvent => event !== null);
   }
 
   async getAllEvents(daysAhead: number = 7): Promise<any[]> {
@@ -66,17 +73,6 @@ export class GoogleCalendarService {
 
       const rawEvents = response.data.items || [];
       console.log(`📅 Raw events from Google Calendar API: ${rawEvents.length}`);
-      
-      // Log raw events for debugging
-      rawEvents.forEach((event: any, index: number) => {
-        console.log(`📋 Raw Event ${index + 1}:`);
-        console.log(`   ID: ${event.id}`);
-        console.log(`   Summary: "${event.summary}"`);
-        console.log(`   Start: ${JSON.stringify(event.start)}`);
-        console.log(`   End: ${JSON.stringify(event.end)}`);
-        console.log(`   Status: ${event.status}`);
-        console.log(`   Full Event: ${JSON.stringify(event, null, 2)}`);
-      });
 
       // Return ALL raw events (including all-day events) for helper assignment detection
       return rawEvents;
@@ -314,39 +310,6 @@ CLIENT NOTIFIED: No`,
         },
       },
     ];
-  }
-
-  // Helper method to generate calendar event templates
-  generateEventTemplate(clientId: string, helperId: string, serviceType: string, options: any = {}): string {
-    // Updated format to match calendar enhancer: [Status] Client - WorkType (Helper) | Notes
-    const helperInfo = options.helperName ? `(${options.helperName})` : '';
-    const statusLabel = options.status || 'C'; // Default to Confirmed
-    const notesSection = options.notes ? ` | ${options.notes}` : '';
-    const title = `[${statusLabel}] ${options.clientName || '[Client Name]'} - ${serviceType}${helperInfo}${notesSection}`;
-    
-    // Enhanced description matching calendar enhancer format
-    const description = `CLIENT: ${options.clientName || '[Client Name]'} (${clientId})
-SERVICE: ${serviceType}
-
-${options.helperName ? `HELPER: ${options.helperName} (${helperId})` : ''}
-${options.hours ? `ESTIMATED HOURS: ${options.hours}` : ''}
-${options.priority ? `PRIORITY: ${options.priority}` : ''}
-${options.flexibility ? `FLEXIBILITY: ${options.flexibility}` : ''}
-
-${options.zone ? `ZONE: ${options.zone}` : ''}
-
-${options.notes ? `NOTES: ${options.notes}` : ''}
-
-PREFERENCES:
-${options.clientNotified ? 'CLIENT NOTIFIED: Yes' : 'CLIENT NOTIFIED: No'}
-${options.weatherSensitive ? 'WEATHER SENSITIVE: Yes' : 'WEATHER SENSITIVE: No'}`;
-
-    return `TITLE: ${title}
-
-DESCRIPTION:
-${description}
-
-LOCATION: ${options.location || '[Full Address]'}`;
   }
 
   // Helper method to determine work type from event content (matching calendar enhancer logic)

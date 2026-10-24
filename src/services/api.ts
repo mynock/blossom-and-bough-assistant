@@ -383,16 +383,6 @@ export const notionApi = {
       throw error;
     }
   },
-  
-  healthCheck: async (): Promise<{
-    status: string;
-    notion_token_configured: boolean;
-    notion_database_configured: boolean;
-    ready: boolean;
-  }> => {
-    const response = await apiClient.get('/notion/health');
-    return response.data;
-  },
 };
 
 // Reports API

@@ -40,6 +40,7 @@ import dataExportRouter from './routes/dataExport';
 import notificationsRouter from './routes/notifications';
 import { requireAuth } from './middleware/auth';
 import { noStore } from './middleware/noStore';
+import { isCronTokenValid } from './utils/cronAuth';
 
 // Load environment variables from root directory .env file
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
@@ -473,40 +474,11 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   }
 });
 
-// Generate calendar event template
-app.post('/api/calendar/template', async (req, res) => {
-  try {
-    const { clientId, helperId, serviceType, options } = req.body;
-    
-    if (!clientId || !helperId || !serviceType) {
-      return res.status(400).json({ 
-        error: 'clientId, helperId, and serviceType are required' 
-      });
-    }
-
-    const template = services.googleCalendarService.generateEventTemplate(
-      clientId, 
-      helperId, 
-      serviceType, 
-      options || {}
-    );
-    
-    res.json({ template });
-  } catch (error) {
-    console.error('Error generating calendar template:', error);
-    res.status(500).json({
-      error: 'Failed to generate calendar template',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    });
-  }
-});
-
 // Maintenance entry cron job endpoint (for Railway cron service + manual testing)
 app.post('/api/cron/maintenance-entries', async (req, res) => {
   try {
     // Check authentication - either Railway cron token or user auth
-    const cronToken = req.headers.authorization?.replace('Bearer ', '');
-    const isRailwayCron = cronToken === process.env.CRON_AUTH_TOKEN;
+    const isRailwayCron = isCronTokenValid(req.headers.authorization);
     const hasUserAuth = req.user; // From passport/session
     
     if (!isRailwayCron && !hasUserAuth) {
@@ -558,8 +530,7 @@ app.post('/api/cron/maintenance-entries', async (req, res) => {
 app.post('/api/cron/notion-sync', async (req, res) => {
   try {
     // Check authentication - either Railway cron token or user auth
-    const cronToken = req.headers.authorization?.replace('Bearer ', '');
-    const isRailwayCron = cronToken === process.env.CRON_AUTH_TOKEN;
+    const isRailwayCron = isCronTokenValid(req.headers.authorization);
     const hasUserAuth = req.user; // From passport/session
     
     if (!isRailwayCron && !hasUserAuth) {

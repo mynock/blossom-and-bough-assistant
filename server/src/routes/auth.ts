@@ -164,31 +164,4 @@ router.get('/status', (req, res) => {
   });
 });
 
-/**
- * GET /api/auth/test-session
- * Test session functionality
- */
-router.get('/test-session', (req, res) => {
-  // Set a test value in session
-  const session = req.session as any;
-  if (!session.testValue) {
-    session.testValue = 'session-working-' + Date.now();
-  }
-  
-  res.json({
-    message: 'Session test',
-    sessionId: req.sessionID,
-    testValue: session.testValue,
-    sessionData: req.session
-  });
-});
-
-/**
- * GET /api/auth/test
- * Simple test route to verify auth routes are working
- */
-router.get('/test', (req, res) => {
-  res.json({ message: 'Auth routes are working!', sessionId: req.sessionID });
-});
-
 export default router; 
