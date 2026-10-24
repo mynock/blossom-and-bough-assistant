@@ -23,6 +23,7 @@ import {
   Settings,
   RefreshCw as Sync,
   Database as Storage,
+  LogOut,
 } from '../icons';
 import { secureFetch } from '../services/csrf';
 
@@ -177,6 +178,34 @@ const QuickBooksIntegration: React.FC = () => {
     }
   };
 
+  const disconnect = async () => {
+    if (!window.confirm('Disconnect QuickBooks? This revokes access and deletes the stored tokens. You can reconnect at any time.')) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await secureFetch('/api/qbo/auth/disconnect', {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        setSuccess('Disconnected from QuickBooks');
+        checkAuthStatus();
+      } else {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to disconnect from QuickBooks');
+      }
+    } catch (error) {
+      console.error('Error disconnecting QuickBooks:', error);
+      setError('Failed to disconnect from QuickBooks');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const syncItems = async () => {
     setIsLoading(true);
     setError(null);
@@ -325,14 +354,25 @@ const QuickBooksIntegration: React.FC = () => {
                 </Box>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   {authStatus?.isValid ? (
-                    <Button
-                      onClick={refreshToken}
-                      variant="outlined"
-                      startIcon={isLoading ? <CircularProgress size={16} /> : <Refresh />}
-                      disabled={isLoading}
-                    >
-                      Refresh Token
-                    </Button>
+                    <>
+                      <Button
+                        onClick={refreshToken}
+                        variant="outlined"
+                        startIcon={isLoading ? <CircularProgress size={16} /> : <Refresh />}
+                        disabled={isLoading}
+                      >
+                        Refresh Token
+                      </Button>
+                      <Button
+                        onClick={disconnect}
+                        variant="outlined"
+                        color="error"
+                        startIcon={<LogOut />}
+                        disabled={isLoading}
+                      >
+                        Disconnect
+                      </Button>
+                    </>
                   ) : authStatus?.credentialsConfigured === false ? (
                     <Button
                       variant="outlined"

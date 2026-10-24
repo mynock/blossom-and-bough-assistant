@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import {
   Container,
   Card,
@@ -42,15 +41,10 @@ import {
 } from '../icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+// Shared client: carries the session cookie and the CSRF token the sync POSTs need
+import { apiClient as api } from '../services/api';
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
-const api = axios.create({
-  baseURL: API_BASE,
-  timeout: 60000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
 
 interface SyncStats {
   created: number;
