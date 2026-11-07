@@ -299,7 +299,6 @@ export class CronService {
         debugLog.info(`   Start: ${event.start}`);
         debugLog.info(`   Event Type: ${event.eventType}`);
         debugLog.info(`   Is Timed Event: ${event.start.includes('T')}`);
-        debugLog.info(`   Event Object: ${JSON.stringify(event, null, 2)}`);
       });
       
       // First, extract helper information from all-day events (orange staff assignments)

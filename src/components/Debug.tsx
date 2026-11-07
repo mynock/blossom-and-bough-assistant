@@ -289,29 +289,31 @@ const Debug: React.FC = () => {
             )}
           </Grid>
           
-          {/* Actions */}
-          <Grid item xs={12} md={4}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Button
-                variant="contained"
-                startIcon={<CloudDownload />}
-                onClick={() => showConfirmDialog(
-                  'Reset and Seed Database',
-                  'This will DELETE ALL existing data and replace it with fresh data from Google Sheets. This action cannot be undone.',
-                  handleSeedReset
-                )}
-                disabled={migrationLoading}
-                color="warning"
-                fullWidth
-              >
-                Seed/Reset from Sheets
-              </Button>
-              
-              <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
-                Clears database and imports fresh data from Google Sheets
-              </Typography>
-            </Box>
-          </Grid>
+          {/* Actions: the server refuses seed-reset in production, so don't offer it there */}
+          {process.env.NODE_ENV !== 'production' && (
+            <Grid item xs={12} md={4}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Button
+                  variant="contained"
+                  startIcon={<CloudDownload />}
+                  onClick={() => showConfirmDialog(
+                    'Reset and Seed Database',
+                    'This will DELETE ALL existing data and replace it with fresh data from Google Sheets. This action cannot be undone.',
+                    handleSeedReset
+                  )}
+                  disabled={migrationLoading}
+                  color="warning"
+                  fullWidth
+                >
+                  Seed/Reset from Sheets
+                </Button>
+                
+                <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center' }}>
+                  Clears database and imports fresh data from Google Sheets
+                </Typography>
+              </Box>
+            </Grid>
+          )}
         </Grid>
       </Paper>
 

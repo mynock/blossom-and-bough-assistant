@@ -4,6 +4,14 @@ import { services } from '../services/container';
 const router = express.Router();
 const migrationService = services.dataMigrationService;
 
+// Wiping every table is for local seeding only; never against production data.
+const blockInProduction: express.RequestHandler = (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'This operation is disabled in production' });
+  }
+  next();
+};
+
 /**
  * GET /api/migration/status
  * Get current migration status
@@ -51,7 +59,7 @@ router.post('/migrate', async (req, res) => {
  * POST /api/migration/clear
  * Clear all data from database
  */
-router.post('/clear', async (req, res) => {
+router.post('/clear', blockInProduction, async (req, res) => {
   try {
     const { confirm } = req.body;
     
@@ -118,7 +126,7 @@ router.post('/clients', async (req, res) => {
  * POST /api/migration/seed-reset
  * Clear database and import fresh data from Google Sheets
  */
-router.post('/seed-reset', async (req, res) => {
+router.post('/seed-reset', blockInProduction, async (req, res) => {
   try {
     const { confirm } = req.body;
     

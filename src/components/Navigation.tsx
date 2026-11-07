@@ -90,7 +90,7 @@ const Navigation: React.FC = () => {
       label: 'Tools',
       Icon: Wrench,
       items: [
-        { path: '/ask-data', label: 'Ask the assistant', Icon: Sparkles },
+        { path: '/chat', label: 'Ask the assistant', Icon: Sparkles },
         { path: '/notion-sync', label: 'Notion sync', Icon: RefreshCw },
         { path: '/quickbooks', label: 'QuickBooks', Icon: Banknote },
       ],
