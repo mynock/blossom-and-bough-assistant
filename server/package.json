@@ -32,7 +32,7 @@
     "clear-db": "tsx scripts/clear-work-activities.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.54.0",
+    "@anthropic-ai/sdk": "^1.3.0",
     "@google-cloud/local-auth": "^3.0.1",
     "@notionhq/client": "^3.1.3",
     "@types/express-session": "^1.18.2",
