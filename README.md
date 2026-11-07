@@ -169,7 +169,7 @@ See [Testing Documentation](server/README_TESTING.md) for detailed information.
 ## 🔧 Environment Setup
 
 ### Prerequisites
-- Node.js 18.x or 20.x
+- Node.js 22.x (what CI uses; the frontend's Vitest suite needs 20+)
 - npm 8+
 - PostgreSQL (for production)
 
@@ -313,7 +313,7 @@ cd server && npm run build
 ### Frontend Deployment
 1. Build: `npm run build`
 2. Deploy `build/` folder to static hosting (Netlify, Vercel, etc.)
-3. Set `REACT_APP_API_URL` to your backend URL
+3. Set `VITE_API_URL` to your backend URL at build time (Vite inlines it into the bundle)
 
 ## 🤝 Usage with Your Data
 

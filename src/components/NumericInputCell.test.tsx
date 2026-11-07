@@ -1,4 +1,5 @@
 import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { NumericInputCell } from './NumericInputCell';
 
@@ -14,7 +15,7 @@ describe('NumericInputCell', () => {
   });
 
   it('commits a parseable new value', () => {
-    const onCommit = jest.fn();
+    const onCommit = vi.fn();
     render(<NumericInputCell value={0} onCommit={onCommit} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '75' } });
@@ -22,7 +23,7 @@ describe('NumericInputCell', () => {
   });
 
   it('does NOT commit 0 when the field is cleared mid-edit', () => {
-    const onCommit = jest.fn();
+    const onCommit = vi.fn();
     render(<NumericInputCell value={75} onCommit={onCommit} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '' } });
@@ -32,7 +33,7 @@ describe('NumericInputCell', () => {
   });
 
   it('lets the user clear and retype without losing the committed value', () => {
-    const onCommit = jest.fn();
+    const onCommit = vi.fn();
     render(<NumericInputCell value={75} onCommit={onCommit} />);
 
     const input = screen.getByRole('spinbutton') as HTMLInputElement;
@@ -47,7 +48,7 @@ describe('NumericInputCell', () => {
   });
 
   it('does not commit values below `min`', () => {
-    const onCommit = jest.fn();
+    const onCommit = vi.fn();
     render(<NumericInputCell value={10} min={0} onCommit={onCommit} />);
 
     fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '-5' } });
@@ -55,7 +56,7 @@ describe('NumericInputCell', () => {
   });
 
   it('restores the displayed value on blur if the field was left empty', () => {
-    const onCommit = jest.fn();
+    const onCommit = vi.fn();
     render(<NumericInputCell value={75} onCommit={onCommit} />);
 
     const input = screen.getByRole('spinbutton') as HTMLInputElement;

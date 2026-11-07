@@ -96,7 +96,7 @@ useEffect(() => {
 }, []);
 
 // In render:
-{process.env.NODE_ENV === 'development' && (
+{import.meta.env.DEV && (
   <Box sx={{ 
     position: 'fixed', 
     bottom: 0, 
@@ -134,7 +134,7 @@ Add a mobile debugging console directly to your page:
 ```typescript
 // Add to NotionEmbedPage.tsx for development
 useEffect(() => {
-  if (process.env.NODE_ENV === 'development') {
+  if (import.meta.env.DEV) {
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/eruda';
     script.onload = () => {

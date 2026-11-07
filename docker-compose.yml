@@ -81,7 +81,7 @@ services:
     container_name: blossom-frontend
     environment:
       PORT: 3000
-      # REACT_APP_API_URL: http://localhost:3000
+      # VITE_API_URL: http://localhost:3000/api
       # Custom proxy target for Docker networking
       PROXY_TARGET: http://backend:3001
     ports:
@@ -89,6 +89,8 @@ services:
     volumes:
       - ./src:/app/src
       - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
       - ./package.json:/app/package.json
       - /app/node_modules  # Use anonymous volume for node_modules to prevent platform conflicts
     depends_on:

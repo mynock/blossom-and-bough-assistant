@@ -5,7 +5,7 @@ import NotionQuickEntry from './NotionQuickEntry';
 const NotionEmbedPage: React.FunctionComponent = () => {
   useEffect(() => {
     // Add mobile debugging console for development
-    if (process.env.NODE_ENV === 'development') {
+    if (import.meta.env.DEV) {
       const script = document.createElement('script');
       script.src = 'https://cdn.jsdelivr.net/npm/eruda';
       script.onload = () => {

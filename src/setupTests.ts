@@ -1,4 +1,8 @@
-// Basic test setup - no additional imports needed for now
-// When we add @testing-library/jest-dom later, we can import it here
+import '@testing-library/jest-dom/vitest';
+import { afterEach } from 'vitest';
+import { cleanup } from '@testing-library/react';
 
-export {};
+// Vitest globals are off, so RTL can't register its own afterEach cleanup.
+afterEach(() => {
+  cleanup();
+});

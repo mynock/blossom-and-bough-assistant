@@ -59,8 +59,8 @@ import {
 } from '../icons';
 
 // Use proxy in development, direct URL in production
-const API_BASE = process.env.NODE_ENV === 'production' 
-  ? (process.env.REACT_APP_API_URL || '/api')
+const API_BASE = import.meta.env.PROD 
+  ? (import.meta.env.VITE_API_URL || '/api')
   : '/api'; // Use proxy in development
 
 interface DatabaseStatus {
@@ -1026,7 +1026,7 @@ const Admin: React.FC = () => {
                 fullWidth
                 variant="contained"
                 color="info"
-                onClick={() => window.open(process.env.REACT_APP_NOTION_DATABASE_URL || '#', '_blank')}
+                onClick={() => window.open(import.meta.env.VITE_NOTION_DATABASE_URL || '#', '_blank')}
                 sx={{ p: 2, height: 80 }}
               >
                 <Box sx={{ textAlign: 'left', width: '100%' }}>

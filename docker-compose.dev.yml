@@ -113,6 +113,8 @@ services:
       # Mount source code for live development
       - ./src:/app/src
       - ./public:/app/public
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
       # Mount package.json files specifically
       - ./package.json:/app/package.json
       - ./package-lock.json:/app/package-lock.json

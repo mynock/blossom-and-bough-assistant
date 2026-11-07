@@ -2,7 +2,7 @@
 // Both the axios client (services/api.ts) and the deprecated fetch client (config/api.ts)
 // pull the token from here so every state-changing request carries X-CSRF-Token.
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 let csrfTokenPromise: Promise<string> | null = null;
 

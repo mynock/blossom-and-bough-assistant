@@ -11,13 +11,17 @@ npm start
 
 # Build for production
 npm run build
-npm run build:production  # CI=false version
+npm run build:production  # alias of build, used by the root Dockerfile
+
+# Preview the production build locally
+npm run preview
 
 # Type checking
 npm run type-check
 
-# Testing
-npm test
+# Testing (Vitest + React Testing Library, jsdom)
+npm test            # single run
+npm run test:watch  # watch mode
 ```
 
 ### Backend (Node.js/TypeScript)
@@ -87,7 +91,7 @@ docker-compose exec backend npm run db:studio
 
 ### Project Structure
 - **Full-stack TypeScript application** for landscaping business management
-- **Frontend**: React SPA with Material-UI using Create React App
+- **Frontend**: React SPA with Material-UI, built with Vite (`vite.config.ts`, entry `index.html` -> `src/index.tsx`); the dev server on 3000 proxies `/api` to the backend on 3001 (override with `PROXY_TARGET`)
 - **Backend**: Express API server with comprehensive business services
 - **Database**: PostgreSQL with Drizzle ORM for type-safe queries
 - **Authentication**: Google OAuth with allowlist-based access control
@@ -173,6 +177,14 @@ GOOGLE_SHEETS_ID=your_sheets_id
 NOTION_TOKEN=secret_your_notion_token
 NOTION_DATABASE_ID=your_database_id
 ```
+
+Optional frontend vars (Vite reads the same root `.env`; only `VITE_*` keys reach the browser bundle, so never put secrets in them):
+```
+VITE_API_URL=/api                     # API base URL, read as import.meta.env.VITE_API_URL
+VITE_NOTION_DATABASE_URL=https://...  # Notion link on the Admin page
+PROXY_TARGET=http://localhost:3001    # dev-server /api proxy target (Docker: http://backend:3001)
+```
+Use `import.meta.env.DEV` / `import.meta.env.PROD` in frontend code, not `process.env`.
 
 ## Development Patterns
 

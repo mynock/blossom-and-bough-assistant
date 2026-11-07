@@ -16,9 +16,9 @@ import { fetchCsrfToken } from '../services/csrf';
 // API Configuration
 // This handles the difference between development and production environments
 
-const isDevelopment = process.env.NODE_ENV === 'development';
+const isDevelopment = import.meta.env.DEV;
 
-// Check if we're using Create React App's proxy (package.json has "proxy" field)
+// In development the Vite dev server proxies /api to the backend (vite.config.ts)
 // In development with proxy: Use relative URLs (proxy handles routing to backend)
 // In development without proxy: Use full URLs to backend server
 // In production: Use relative URLs (same origin)
