@@ -24,12 +24,10 @@ two; Kevin sends them. This skill runs that whole loop.
   invoice is saved and open but unsent, and Kevin sends it himself.
 - **Andrea's guidance wins** over Kevin's when they differ (Kevin's own rule). Apply
   hers without asking, and note in the rules doc that hers replaced his.
-- **The rules doc is authoritative.** Read the Notion "Invoicing process — rules &
-  checklist" (40389559-0126-81e7-b0cb-d6952291951e) and its comments at the start of
-  every session; Andrea edits it. `references/drafting.md` summarizes it. If the two
-  disagree, follow the doc and fix the summary. When a new rule comes out of a comment
-  or a chat, add it to the doc (right section, who and when), and to memory
-  (`feedback_invoice_drafting.md`, or `feedback_invoice_descriptions.md` for wording).
+- **The rules doc holds the rules.** Every billing and wording rule lives in the
+  Notion "Invoicing process — rules & checklist"
+  (40389559-0126-81e7-b0cb-d6952291951e). Read it and its comments at the start of
+  every session; Andrea edits it. This skill holds only the procedure.
 - **Never overwrite Andrea's edits.** Before any `update_invoice`, re-read the invoice
   and diff it against what you last wrote. A line update replaces every line, so
   resending old text erases her hand edits.
@@ -42,26 +40,31 @@ two; Kevin sends them. This skill runs that whole loop.
 - **Never edit a sent invoice.** If Kevin or Andrea has sent an invoice (QuickBooks
   shows it sent, or it's paid), leave it as it is, even if a later change would affect
   it. Note the difference in the log and flag it for Andrea.
-- **Name invoices by the work they cover** (Andrea, 2026-11-06). She doesn't know what
-  the numbers mean, so in logs, questions and replies write "the July–August invoice
-  (#2236)", never just "#2236".
-- **Payment reminders are Andrea's.** Flag an unpaid previous invoice in the log, but
-  don't ask whether to send a reminder.
 
-## Client data lives in a Google Sheet
+## Where things live, and where feedback goes
 
-This skill is checked into a public repo, so it holds no client-specific data.
-Per-client rates, typical drive, Sluggo habits, debris habits and one-off billing notes
-are in the private sheet **"Invoicing — client billing notes"**
-(spreadsheet `12qe999erBf8vC6Leh0yiFufzSGFiJ11VG61scF5v67s`, tab `Clients`; read it with the
-Google Sheets connector's `get_values`, range `Clients!A1:G100`). Client names in
-these files (Alder, Birch, Cedar…) are made-up examples.
+| What | Where |
+|---|---|
+| Billing and wording rules (hours, drive, rounding, lines, descriptions, log wording) | Notion rules doc, id above |
+| Client facts (design rate, typical drive, Sluggo and debris habits, held work, notes) | Private sheet **"Invoicing — client billing notes"**: spreadsheet `12qe999erBf8vC6Leh0yiFufzSGFiJ11VG61scF5v67s`, tab `Clients`; read it with the Google Sheets connector's `get_values`, range `Clients!A1:G100` |
+| Procedure: batch steps, log layout, watch jobs, state file, tool quirks | This skill (a public GitHub repo) |
 
-- Read the sheet at the start of every session, alongside the rules doc.
-- When Andrea or Kevin gives a client-specific rule or fact (a rate, a usual drive, a
-  habit, held work), add or update that client's row with who and when in `Source`,
-  instead of writing it here. General rules go in the rules doc and `drafting.md`.
-- Never put client names, addresses or amounts into this skill's files.
+Keep this skill up to date as you learn, by sending each piece of feedback to the
+right place as soon as it comes up, whether from a Notion comment, a hand edit or chat:
+
+- **A billing or wording rule:** add it to the rules doc in the right section, with
+  who said it and when (e.g. "(Andrea, Nov 6)"). If it replaces an older rule, change
+  that rule rather than adding a second one. Andrea's hand edits that show a wording
+  pattern go in section 9.
+- **A client fact:** add or update that client's row in the sheet, with who and when in
+  `Source`.
+- **A change to the procedure or a tool quirk** (a new step, an API behaving
+  unexpectedly): edit these skill files, then tell Kevin so he can commit it in a PR.
+  These should be rare.
+- Don't copy rules into memory or into these files. Memory only points at the doc and
+  the sheet.
+- The repo is public: never put client names, addresses or amounts in these files.
+  Examples use made-up names (Alder, Birch, Cedar).
 
 Read `references/tool-notes.md` before your first Notion or QuickBooks call in a
 session. It covers the query limit, dropped comment threads, the full-replace line
@@ -72,11 +75,8 @@ updates and Ship-to, which caused most of the rework so far.
 Kevin gives clients and rates ("Alder 60, Birch 55, …"), sometimes with a
 cutoff date. The batch is named by the date the invoices are created.
 
-1. Read the rules doc and its open comments, the client sheet, then memory's invoicing files
-   (`feedback_invoice_drafting.md`, `feedback_invoice_descriptions.md` and
-   `feedback_andrea_precedence.md`, in
-   `~/.claude/projects/-Users-kevinmehlbrech-Development-blossom-and-bough-assistant/memory/`).
-   Also read the previous batch's snapshot page for work **held for later**.
+1. Read the rules doc and its open comments, and the client sheet. Also read the
+   previous batch's snapshot page for work **held for later**.
 2. Under the Notion page "Invoicing" (40389559-0126-8122-94b2-fee44c2c1328), create:
    - **"YYYY-MM-DD — Invoice log"**: status table, "Before sending" checklist, a section
      per client and Revisions.

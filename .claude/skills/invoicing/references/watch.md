@@ -120,12 +120,13 @@ Whatever the trigger (a comment, a log edit, an entry edit or a hand edit):
 Andrea's decisions. Keep them, record them in **Andrea's edits** and Revisions, and
 update the log's numbers to match. Ask only if one looks like a slip, such as a total
 that no longer matches the lines. Her wording changes are also style lessons: add the
-pattern to `feedback_invoice_descriptions.md`.
+pattern to section 9 of the rules doc.
 
 **Andrea's log edits** (a deleted line, reworded text) are kept too; don't restore what
 she removed.
 
-**New rules** from Andrea go into the rules doc, memory and the reply. If a rule changes
+**New rules** from Andrea go into the rules doc (client-specific ones into the client
+sheet) and the reply; see "Where things live" in `SKILL.md`. If a rule changes
 amounts already billed, recompute those invoices, in every batch that's still open.
 
 ## Several batches at once
