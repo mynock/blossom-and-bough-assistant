@@ -5,6 +5,10 @@ directly, fixes or adds Work Log entries, and edits invoices by hand in QuickBoo
 watch keeps the invoices, the log and the snapshot page in step with her, without
 losing her edits or missing her comments.
 
+This is the Notion way to review. The other way is a live chat with Andrea
+(`review-chat.md`). Never run both on the same batch at once: stop the watch before a
+chat review starts.
+
 ## The helper script
 
 `scripts/watch.py STATE <command>` reads the newest tool results straight out of this
@@ -103,7 +107,9 @@ Whatever the trigger (a comment, a log edit, an entry edit or a hand edit):
 4. **Update the log:**
    - Status table row and batch total, the client's lines table, Hours table and flags.
    - Mark answered questions "Settled: …" inside their existing span.
-   - Add a dated **Revisions** bullet with old → new amounts.
+   - For a small edit, change things in place as if the invoice had been run that way
+     from the start; Andrea finds a Revisions entry per amendment chaotic (rules doc
+     section 10). Add a dated **Revisions** bullet only for a bigger change.
    - Put open questions in that client's **Questions** list.
 5. **Update the snapshot page:**
    - The invoice's lines and total, and the batch total.

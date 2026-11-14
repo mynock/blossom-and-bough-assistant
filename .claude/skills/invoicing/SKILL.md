@@ -1,21 +1,27 @@
 ---
 name: invoicing
-description: Run Blossom & Bough's invoicing end to end. It turns the Notion work logs and Google calendars into draft QuickBooks invoices, one client at a time; writes the batch's Notion "Invoice log" and "Invoice snapshot" pages; then watches the batch and applies Andrea's comments, log edits, Work Log changes and QuickBooks hand edits until Kevin sends the invoices. Use this whenever Kevin asks to invoice or bill clients (often a list of clients and rates like "Alder 50, Birch 55"), draft or redo an invoice, start a new batch, process Andrea's comments or updates on an invoice log, watch or loop on a batch, check whether something was billed, or start or stop the invoice watch jobs, even if he doesn't say "invoice". Never sends invoices.
+description: Run Blossom & Bough's invoicing end to end. It turns the Notion work logs and Google calendars into draft QuickBooks invoices, one client at a time; writes the batch's Notion "Invoice log" and "Invoice snapshot" pages; then takes Andrea through the review, either live in chat or by watching her Notion comments, log edits, Work Log changes and QuickBooks hand edits, until the invoices are sent. Use this whenever Kevin asks to invoice or bill clients (often a list of clients and rates like "Alder 50, Birch 55"), draft or redo an invoice, start a new batch, process Andrea's comments or updates on an invoice log, watch or loop on a batch, check whether something was billed, or start or stop the invoice watch jobs. Also use it whenever Andrea wants to review, go through, check or fix invoices or an invoice log ("let's do the November invoices", "go through Birch's invoice", "pick up where we left off"), even if nobody says "invoice". Never sends invoices.
 ---
 
 # Invoicing
 
 Blossom & Bough bills garden-care clients from Andrea's Notion work logs and Google
-calendars. Claude drafts the invoices in QuickBooks; Andrea reviews them over a day or
-two; Kevin sends them. This skill runs that whole loop.
+calendars. Claude drafts the invoices in QuickBooks. Andrea reviews them, either in a
+chat with Claude or through comments on the Notion log over a day or two, and then
+they're sent from QuickBooks. This skill runs that whole loop.
 
 1. **Set up the batch.** Read the rules, then create the log page, snapshot page and
    state file.
 2. **Draft each client:** find the unbilled work, compute the hours and lines, and
    create the invoice.
 3. **Write it up:** the client's log section, snapshot page and a chat summary.
-4. **Watch:** apply Andrea's comments and edits as they arrive.
-5. **Close out:** stop the jobs and carry anything held into the next batch.
+4. **Review:** go through the invoices with Andrea in chat (`references/review-chat.md`),
+   or watch the Notion log for her comments and edits (`references/watch.md`).
+5. **Close out:** stop any watch jobs, and carry anything held into the next batch.
+
+**Who you're working with** decides where to start. Kevin usually sets up and drafts
+(sections 1–3). Andrea usually reviews (section 4), often in her own Claude, without
+Kevin's files or cron jobs.
 
 ## Ground rules
 
@@ -34,9 +40,11 @@ two; Kevin sends them. This skill runs that whole loop.
 - **Ask; don't guess.** On gaps, conflicts or wavering notes ("don't bill all?",
   "upcharge a little?"), bill only what's clear, and put the question in that client's
   **Questions** list with what each answer would cost. In an interactive session,
-  stop and ask Kevin instead. If he said he'll be away, record it and keep going.
-- **Replies start with "🤖 Claude:".** The Notion connector is signed in as Andrea,
-  so the prefix is the only way to tell your comments from hers.
+  stop and ask the person you're working with instead. If Kevin said he'll be away,
+  record it and keep going.
+- **Notion comments start with "🤖 Claude:".** The Notion connector is signed in as
+  Andrea, so the prefix is the only way to tell your comments from hers. Chat
+  messages don't need it.
 - **Never edit a sent invoice.** If Kevin or Andrea has sent an invoice (QuickBooks
   shows it sent, or it's paid), leave it as it is, even if a later change would affect
   it. Note the difference in the log and flag it for Andrea.
@@ -47,10 +55,12 @@ two; Kevin sends them. This skill runs that whole loop.
 |---|---|
 | Billing and wording rules (hours, drive, rounding, lines, descriptions, log wording) | Notion rules doc, id above |
 | Client facts (design rate, typical drive, Sluggo and debris habits, held work, notes) | Private sheet **"Invoicing — client billing notes"**: spreadsheet `12qe999erBf8vC6Leh0yiFufzSGFiJ11VG61scF5v67s`, tab `Clients`; read it with the Google Sheets connector's `get_values`, range `Clients!A1:G100` |
-| Procedure: batch steps, log layout, watch jobs, state file, tool quirks | This skill (a public GitHub repo) |
+| Procedure: batch steps, log layout, chat review, watch jobs, state file, tool quirks | This skill (a public GitHub repo) |
 
 Keep this skill up to date as you learn, by sending each piece of feedback to the
-right place as soon as it comes up, whether from a Notion comment, a hand edit or chat:
+right place as soon as it comes up, whether from a Notion comment, a hand edit or chat.
+In a chat review, ask "Rule going forward, or just this time?" whenever it isn't clear
+(`review-chat.md`, section 5).
 
 - **A billing or wording rule:** add it to the rules doc in the right section, with
   who said it and when (e.g. "(Andrea, Nov 6)"). If it replaces an older rule, change
@@ -119,10 +129,30 @@ After each client's invoice exists:
   and the total vs the previous invoice and the 6-month average (state the window and
   exclude the new invoice).
 
-When every client is done, finish the "Before sending" checklist and ask Kevin
-whether to start the watch.
+When every client is done, finish the "Before sending" checklist. Then ask Kevin how
+Andrea will review: in chat (the default while the chat review is being piloted), or
+in Notion with a watch running.
 
-## 4. Watch
+## 4. Review
+
+### In chat with Andrea
+
+Follow `references/review-chat.md`. In short:
+
+1. **Catch up.** Re-read everything, and catch up on anything that changed since the
+   draft.
+2. **One card per invoice.** Show the lines, a one-line hours summary, and numbered
+   flags and questions with costed options.
+3. **Apply each answer.** Update QuickBooks right away and show old → new.
+4. **Check for rules.** When an answer sounds general, ask whether it's a rule, and
+   record it in the rules doc or client sheet straight away.
+5. **Checkpoint.** Update the log and snapshot after every approved invoice, so a
+   stopped chat can resume.
+6. **Close.** End with a summary and one Revisions bullet for the session.
+
+No watch runs during a chat review. If one is running, it has to be stopped first.
+
+### In Notion, with a watch
 
 Start the watch only when Kevin asks. Follow `references/watch.md`:
 
@@ -158,3 +188,14 @@ Lead with what changed:
 
 Use plain words. A quiet watch check is two sentences. End every report with
 "Nothing was sent."
+
+## Talking to Andrea
+
+See `review-chat.md`, section 8. In short:
+
+- Her word is final.
+- Show one invoice at a time.
+- Name invoices by the work they cover.
+- Give money as old → new.
+- Leave ids and tool names out.
+- Never send, even if she asks. She sends from QuickBooks.
