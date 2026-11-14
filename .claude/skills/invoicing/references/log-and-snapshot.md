@@ -21,7 +21,7 @@ One line linking the snapshot page and the rules doc.
 
 | Client | Invoice | Total | vs previous | vs 6-mo avg | Ready/Sent? |
 |---|---|---|---|---|---|
-| Alder | [#2272](https://qbo.intuit.com/app/login?pagereq=invoice%3FtxnId%3D5364&deeplinkcompanyid=193514884543959) | \$550.75 | +24% (\$444) | +7% (\$512.70) | Sent |
+| Alder | [#2272](…) | \$550.75 | +24% (\$444) | +7% (\$512.70) | Sent |
 | Birch | [#2280](…) | \$260.00 | +18% (\$220) | — | Reviewed 11/14 |
 | Cedar | — | — | — | No invoice: Oct 14 visit can't be priced yet | |
 | **Total** | | **\$4,156.65** | | | |
@@ -112,7 +112,7 @@ Your latest version of every invoice, so changes made directly in QuickBooks can
 found by comparison. Linked from the log header.
 
 ```
-Claude's last read of the batch's invoices… Read <date> <time> UTC. Log: @log · Rules: @rules
+Claude's last read of the batch's invoices… Read <date> <time> UTC. Entries checked <date> <time> UTC. Log: @log · Rules: @rules
 
 ## Snapshot
 ### #2272 Alder (Sep) · $550.75 · dated Oct 26

@@ -7,7 +7,8 @@ QuickBooks and the Notion pages right away. This replaces the comment-and-watch 
 
 She may be in her own Claude, without Kevin's machine. Don't rely on the local state
 file, `watch.py` or cron jobs. The Notion log and snapshot pages hold everything you
-need. If a state file is there, keep it up to date as well.
+need, including the line service dates QuickBooks doesn't return. If a state file is
+there, keep it up to date as well.
 
 ## Contents
 
@@ -22,40 +23,69 @@ need. If a state file is there, keep it up to date as well.
 
 ## 1. Before you start
 
-- **No watch at the same time.** If a watch is running on this batch, it has to be
-  stopped first, or two Claudes will edit the same invoices. If you can't tell, ask
-  her whether Kevin has stopped it.
+- **No watch at the same time.** A watch and a chat review editing the same batch
+  will overwrite each other. Treat a watch or Kevin's session as live if either of
+  these happened in the last 30 minutes:
+  - a "🤖 Claude:" comment appeared on the log;
+  - the log was edited, and the edit isn't one Andrea describes as hers.
+
+  If it looks live, ask her to have Kevin stop it, and don't edit anything until he
+  has. Her Claude can't stop Kevin's jobs.
 - **Connectors she needs:** Notion, QuickBooks and Google Sheets (the client sheet).
   Google Calendar is needed only to recompute visits from the Work 2 calendar. If one
   is missing, say which, and work with what you have.
-- Read `tool-notes.md`. The QuickBooks quirks (full line replacement, Ship-to) apply
-  here unchanged.
+- Read `tool-notes.md`. The QuickBooks quirks (full line replacement, no service dates
+  in read-backs, Ship-to) and the Notion query limit apply here unchanged.
 
 ## 2. Opening the session
 
 She'll say something like "let's review the November invoices" or "go through
 Birch's invoice".
 
-1. **Find the batch.** Use the log she names. Otherwise, use the newest
-   "YYYY-MM-DD — Invoice log" under "Invoicing"
-   (40389559-0126-8122-94b2-fee44c2c1328), and confirm it with her in one line.
+1. **Find the batch.** Use the log she names. Batches are named by the date the
+   invoices were created, but she'll usually name the month of work ("the October
+   invoices"); match it to the batch whose invoices cover that month. If nothing is
+   named, use the newest "YYYY-MM-DD — Invoice log" under "Invoicing"
+   (40389559-0126-8122-94b2-fee44c2c1328). Either way, confirm it with her in one line.
 2. **Read, in parallel:**
    - the rules doc and its open comments;
    - the client sheet;
    - the log page;
-   - the snapshot page;
-   - `qbo_sales_get_invoices` for every invoice in the log's status table.
+   - the snapshot page.
+
+   Take the batch's invoice list from the snapshot's `### #NNNN Client (Mon)`
+   headings. A client can have two invoices (September and October), and the status
+   table has one row per client. Then run `qbo_sales_get_invoices` for every invoice
+   on that list.
 3. **Catch up on what changed since the last write.**
-   - Compare QuickBooks with the snapshot. Hand edits are hers, so keep them, record
-     them on the snapshot page, and mention them in the opening summary.
-   - Run one Work Log Entries query for entries edited since the snapshot's "Read"
-     time, and keep the batch's clients and dates. Recompute anything that changed
-     before you show that invoice.
-   - Pick up any comment threads still waiting on her. An answer she gave in a comment
-     counts.
+   - **Hand edits.** Compare QuickBooks with the snapshot. Hand edits are hers: keep
+     them, record them under **Andrea's edits** on the snapshot, and mention them in
+     the opening summary. QuickBooks doesn't show service dates, so a date she changed
+     there can't be seen. Use hers if she mentions one.
+   - **Work Log entries.** Run **one** rows query on Work Log Entries:
+     - filter `Last edited` on or after the snapshot's "Entries checked" date (or its
+       "Read" date if there's no "Entries checked" line yet);
+     - limit 50;
+     - the filter is date-only, so compare the times yourself (`tool-notes.md`).
+
+     Keep entries for the batch's clients and for every service date in the
+     snapshot; a same-day entry for another client can change the drive split.
+     Recompute anything that changed before you show that invoice.
+     - On `usage_limit_reached`, tell her entries weren't re-checked and carry on.
+       Don't retry.
+     - **A new visit for a batch client:** offer to add it to that month's invoice,
+       or to draft a new invoice per `drafting.md` section 8. With a new invoice,
+       leave Ship-to blank and ask her to check the addresses. Don't add either one
+       without her yes.
+     - When the check is done, write "Entries checked <time> UTC" on the snapshot.
+   - **Comments.** The page-wide `get_comments` call drops threads, and `watch.py` isn't
+     available. Collect every `discussion-urls` id from the log fetch yourself, and
+     fetch each thread by `discussion_id`. A thread whose last comment doesn't start
+     with "🤖 Claude:" is waiting on her answer, or she already answered in it. An
+     answer she gave there counts.
 4. **Give the opening summary:**
    - how many invoices there are and the batch total;
-   - which are already sent (skip those, and never edit them);
+   - which are already sent or paid (skip those, and never edit them);
    - which have questions;
    - anything that changed since the draft.
 
@@ -63,14 +93,15 @@ Birch's invoice".
    Example: "12 invoices, $3,912.60. 9 are sent, so 3 to review: Alder's October
    (2 questions), Birch's October (1), Cedar's October (clean). Start with Alder?"
 
-**Resuming.** "Pick up where we left off" means starting with the first invoice whose
-status isn't "Reviewed" yet (see section 6).
+**Resuming.** "Pick up where we left off" means starting with the first invoice, in
+the snapshot's order, whose Ready/Sent? status is still empty. When a client has two
+invoices, the status is kept per invoice ("Sep: Sent · Oct: Reviewed 11/14").
 
 ## 3. One invoice at a time
 
 Show one card, then stop and wait for her.
 
-> **Alder — October · $612.40** · last invoice $498.00 · 6-mo avg $476.10 (Apr 25 – Oct 24)
+> **Alder — October (#2277) · $612.40** · last invoice $498.00 · 6-mo avg $476.10 (Apr 25 – Oct 24)
 >
 > | Line | Qty | Amount |
 > |---|---|---|
@@ -86,7 +117,7 @@ Show one card, then stop and wait for her.
 > 2. ❓ Potting soil: bill your 1.5× upcharge ($13.50) or cost ($9)? Default $13.50.
 > 3. Wording OK, or change anything?
 
-- **Header:** the client and the work it covers, never the invoice number alone. Give
+- **Header:** the client, the work it covers, and the invoice number in brackets. Give
   the total, the previous invoice, and the 6-month average with its window.
 - **Lines** with full descriptions. Shorten only plant lists.
 - **Hours:** one line per visit with on-site time, drive and rounding. Give the full
@@ -105,14 +136,23 @@ Show one card, then stop and wait for her.
 
 She'll answer in shorthand: "1 fine 2 cost 3 say 'leaf clean up' at the end". Match
 each answer to its item. Anything she didn't answer stays open. Don't assume your
-default.
+default. If she approves ("looks good") while a ❓ is still unanswered, confirm in one
+line: "Default on 2 ($13.50)?"
 
 - **A decision or rewording:**
-  1. Re-read the invoice.
-  2. Update it with every line, keeping her wording.
-  3. Re-read it and show the result as old → new: "Alder's October invoice: $612.40 →
-     $607.90 (potting soil at cost)."
-  4. Answer anything else on the card in the same message.
+  1. **Re-read the invoice and compare it with the snapshot.**
+     - If it's now sent or paid, stop and tell her; don't edit it.
+     - If anything differs that you didn't write, it's her hand edit. Build the
+       update from the fresh read, not from the card, and mention the edit.
+  2. **Update it with every line.** Use the line ids from the re-read and her current
+     wording. Take each line's service date from the snapshot page (`null` only for
+     design and project-management lines). A line update replaces every line, so a
+     missing date or line gets wiped.
+  3. **Re-read it, then record it.** Rewrite that invoice on the snapshot page, and
+     update its Read time, before doing anything else. Otherwise the next catch-up
+     would mistake your change for her hand edit.
+  4. **Show the result** as old → new: "Alder's October invoice: $612.40 → $607.90
+     (potting soil at cost)." Answer anything else on the card in the same message.
 - **"I fixed the Notion entry" / "rerun":** re-fetch that entry and the same-day
   entries for the same crew. Recompute per `drafting.md`, then show the updated card.
 - **A Notion fix she describes but hasn't made** ("her end time was 3:15"):
@@ -144,8 +184,8 @@ she's already said which.
     that rule rather than adding a second one.
   - A client-specific fact goes in the client sheet instead, with who and when in
     `Source`.
-  - Then check the other unsent invoices in the batch. If the rule changes one, say how
-    much and offer to apply it there too.
+  - Then check the unsent invoices in every batch that's still open. If the rule
+    changes one, say how much and offer to apply it there too.
 - **One-off:** apply it to this invoice only. Note it in the log section as a decision
   ("Andrea, Nov 14: potting soil at cost this time").
 - **A wording pattern** (she rewrites a description the same way twice, or says "I
@@ -153,21 +193,24 @@ she's already said which.
 
 ## 6. Finishing an invoice
 
-When she approves ("looks good", "next"), do these before you show the next card:
+When she approves ("looks good", "next"), do these before you show the next card. The
+snapshot is already current from section 4.
 
-1. **Log:**
-   - Update the client's section in place: lines table, Hours, flags (ticked), and
-     settled questions. Show only the current numbers. Don't leave old figures or add a
+1. **Log, in place:**
+   - Update the client's section: the lines table, Hours, ticked flags and settled
+     questions.
+   - Show only the current numbers. Don't leave old figures, and don't add a
      Revisions entry per change.
-   - Update the status table row.
-   - Set **Ready/Sent?** to "Reviewed <date>", or to what she tells you ("ready, send
-     11/15").
-2. **Snapshot:** her approved lines and total, plus any hand edits under **Andrea's
-   edits**.
-3. **Batch total**, if it changed.
+2. **Status:**
+   - Update the status table row and set Ready/Sent? to "Reviewed <date>", or to what
+     she tells you ("ready, send 11/15").
+   - When the client has two invoices, give each one its own status ("Sep: Sent · Oct:
+     Reviewed 11/14").
+   - Update the client heading's status suffix to match.
+3. **Batch total,** if it changed, in the status table and on the snapshot.
 
 This is the checkpoint. If the chat ends now, nothing is lost, and the next session
-resumes at the next unreviewed invoice.
+resumes at the next invoice with no status.
 
 ## 7. Ending (or pausing) the session
 
@@ -180,7 +223,8 @@ When the batch is done, or she stops:
    - which invoices are reviewed and ready to send.
 2. **Log:** one dated Revisions bullet for the whole session ("Nov 14, review with
    Andrea: Alder's October invoice $612.40 → $607.90; 2 new rules; Birch still open"),
-   so Kevin can see what happened.
+   so Kevin can see what happened. Add: "Kevin: rebuild the state file from the
+   snapshot before restarting a watch on this batch."
 3. **Always end with:** "Nothing was sent. Send them from QuickBooks when you're
    ready."
 
@@ -189,9 +233,10 @@ When the batch is done, or she stops:
 - **She owns the business**, and her word is final. Kevin's rules give way to hers.
   Don't ask Kevin to confirm her decisions.
 - **Plain words, short messages.** One invoice per message.
-- **Name invoices by the work they cover** ("Birch's October invoice").
-- **Give money as dollars and old → new**, and minutes as minutes. Don't use ids,
-  transaction numbers or tool names.
+- **Name invoices by the work they cover,** with the number in brackets so she can
+  find it in QuickBooks ("Birch's October invoice (#2280)").
+- **Give money as dollars and old → new**, and minutes as minutes. Don't show
+  QuickBooks ids or tool names.
 - **Never send, even if she asks.** Explain that she sends from QuickBooks. You can
   mark the log's Ready/Sent? column when she says she has sent one.
 - **No "🤖 Claude:" prefix in chat.** The prefix is only for Notion comments. If you

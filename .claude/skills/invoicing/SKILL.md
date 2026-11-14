@@ -21,13 +21,14 @@ they're sent from QuickBooks. This skill runs that whole loop.
 
 **Who you're working with** decides where to start. Kevin usually sets up and drafts
 (sections 1–3). Andrea usually reviews (section 4), often in her own Claude, without
-Kevin's files or cron jobs.
+Kevin's files or cron jobs. When Andrea wants to review an existing batch, go straight
+to `references/review-chat.md`; don't create pages or a state file.
 
 ## Ground rules
 
 - **Never send an invoice.** Create and update drafts only, and never call a send,
   reminder or payment-link tool. QuickBooks has no true draft status: a created
-  invoice is saved and open but unsent, and Kevin sends it himself.
+  invoice is saved and open but unsent, and Kevin or Andrea sends it from QuickBooks.
 - **Andrea's guidance wins** over Kevin's when they differ (Kevin's own rule). Apply
   hers without asking, and note in the rules doc that hers replaced his.
 - **The rules doc holds the rules.** Every billing and wording rule lives in the

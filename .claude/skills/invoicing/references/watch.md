@@ -9,6 +9,14 @@ This is the Notion way to review. The other way is a live chat with Andrea
 (`review-chat.md`). Never run both on the same batch at once: stop the watch before a
 chat review starts.
 
+**After a chat review**, the state file and log baseline are out of date, so the first
+`qbo-diff` and `log-diff` would report the chat's changes as hand edits. Before
+starting or restarting a watch on that batch:
+
+1. Rebuild the state file from the snapshot page and a fresh QuickBooks read
+   (`state-file.md`).
+2. Fetch the log and run `log-save`.
+
 ## The helper script
 
 `scripts/watch.py STATE <command>` reads the newest tool results straight out of this
@@ -123,7 +131,7 @@ Whatever the trigger (a comment, a log edit, an entry edit or a hand edit):
    - Fix any `UNKNOWN` service dates, and add a `handled` entry to the state file.
 
 **Hand edits in QuickBooks** (a changed description, date, price or removed line) are
-Andrea's decisions. Keep them, record them in **Andrea's edits** and Revisions, and
+Andrea's decisions. Keep them, record them in **Andrea's edits**, and
 update the log's numbers to match. Ask only if one looks like a slip, such as a total
 that no longer matches the lines. Her wording changes are also style lessons: add the
 pattern to section 9 of the rules doc.
