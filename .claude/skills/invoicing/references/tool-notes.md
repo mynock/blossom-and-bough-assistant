@@ -52,8 +52,8 @@ Learned the hard way while watching the 10-24 and 10-25 batches.
   `summarized_description`; the created invoice gets the short text, so follow up
   with an update that restores the full description.
 - **Ship-to:** create auto-fills it from the customer. In the follow-up update send
-  `shipping_address: ""`. The read-back can't confirm addresses, so ask Kevin to
-  eyeball Ship-to on new invoices.
+  `shipping_address: ""`. The read-back can't confirm addresses, so ask whoever
+  approved the invoice (usually Andrea) to eyeball Ship-to before sending.
 - Ids: invoice `djQuMToxOTM1MTQ4ODQ1NDM5NTk6ODAyNzFlZGQ4YQ:<txnId>`, product
   `djQuMToxOTM1MTQ4ODQ1NDM5NTk6MTEyZGU3NDY5OQ:<item>`, customer
   `djQuMToxOTM1MTQ4ODQ1NDM5NTk6OWQ2OTllOTYwOA:<n>`. Items: Specialized garden care 55,
@@ -62,3 +62,6 @@ Learned the hard way while watching the 10-24 and 10-25 batches.
 - `qbo_contact_search_customer` takes `customer_name`.
 - Never call `qbo_sales_get_transaction_document`, and never call anything that
   sends (send_invoice_reminder, send_payment_link, create_payment_link, ...).
+- Never delete, void or duplicate an invoice (`qbo_sales_delete_invoice`,
+  `qbo_sales_duplicate_invoice`), even to fix a bad create or a duplicate. Tell
+  Andrea and let her decide.

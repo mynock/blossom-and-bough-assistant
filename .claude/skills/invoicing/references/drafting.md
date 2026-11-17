@@ -6,6 +6,9 @@ live in the Notion rules doc, "Invoicing process — rules & checklist"
 (see `SKILL.md`). Read both at the start of the session; the steps below say which
 section of the doc applies. Client names here are made-up examples.
 
+Sections 1–7 build the draft, which is saved to the log and shown to Andrea
+(`review-chat.md`). Section 8 runs only after she approves it.
+
 ## Contents
 
 1. Sources
@@ -41,7 +44,7 @@ Rules: doc section 2.
 
 1. Find the **last billed visit** by matching the client's recent invoice lines to
    Notion visits by tasks and hours.
-2. Set the **range**: the day after it through today, or Kevin's cutoff. Split by
+2. Set the **range**: the day after it through today, or the cutoff Andrea or Kevin gave. Split by
    calendar month, and check the client sheet for work Andrea asked to hold.
 3. Collect the client's Notion entries, scan Work 2 for the client's name, and
    cross-check the Work calendar's blocks against the entries.
@@ -99,13 +102,29 @@ order.
 
 ## 8. Create the invoice
 
+**Only after Andrea approves this draft in chat** (`review-chat.md`, section 6). Until
+then the draft lives in the log, and nothing is written to QuickBooks. Kevin can
+approve a draft only if he says he's approving it for her. Background agents never
+create invoices.
+
 Rules: doc section 8. Call shapes and ids: `tool-notes.md`.
 
-1. `qbo_sales_create_invoice`, dated today, Net 30. Every line is non-taxable and
-   carries its service date (design and PM lines are undated).
-2. Straight after, `qbo_sales_update_invoice` with every line (ids `<txnId>-<n>`) and
-   full descriptions, plus `shipping_address: ""`.
+1. **Check for a duplicate** (same steps as `review-chat.md`, section 6):
+   - Run `qbo_sales_get_invoices` with the client's `customer_id` and a
+     `transaction_date` range starting at their last billed invoice's date.
+   - Match invoices to this draft by line amounts and descriptions.
+   - If the match is the invoice this draft's "Creating #NNNN" marker points to,
+     finish that one from step 3 instead of creating another.
+   - If someone else made it, stop and ask.
+2. **Create it** with `qbo_sales_create_invoice`, dated today, Net 30. Every line is
+   non-taxable and carries its service date (design and PM lines are undated). Right
+   after the create, put "Creating #NNNN <time>" on the draft's log section.
+3. **Update it straight after** with `qbo_sales_update_invoice`: every line (ids
+   `<txnId>-<n>`), full descriptions, and `shipping_address: ""`.
    - Bill-to is name + street + "City, ST  ZIP", the text QuickBooks auto-puts in Ship-to.
-   - Neither address shows in the read-back, so ask Kevin to check them in QuickBooks.
-3. Re-read the invoice, confirm the lines and total, and save it to the state file with
-   its service dates.
+   - Neither address shows in the read-back, so ask whoever approved it to check them
+     in QuickBooks before sending.
+4. **Re-read it** and check it against the approved draft: lines, quantities, rates,
+   descriptions and total.
+5. **Record it:** the snapshot page (lines with service dates), the log, and the state
+   file if there is one.

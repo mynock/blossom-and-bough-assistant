@@ -1,6 +1,8 @@
 # Batch state file
 
-One JSON file per watched batch. Keep it somewhere that survives session restarts,
+One JSON file per batch, on Kevin's machine only. `invoices` lists only invoices that
+have been created after Andrea approved them; drafts live in the Notion log. Keep the
+file somewhere that survives session restarts,
 `~/.claude/invoice-watch/<batch-date>/state.json` (the session scratchpad is wiped).
 The log baseline (`log-baseline.md`) is written next to it by `watch.py log-save`.
 
@@ -22,13 +24,13 @@ QuickBooks read (`qbo-save`), then set service dates from the snapshot.
   },
 
   "invoices": {
-    "2272": {
-      "txn_id": "5364",
-      "customer_id": "djQuMToxOTM1MTQ4ODQ1NDM5NTk6OWQ2OTllOTYwOA:30",
-      "total": 550.75, "txn_date": "2026-10-26", "due_date": "2026-11-25",
+    "1001": {
+      "txn_id": "1001",
+      "customer_id": "djQuMToxOTM1MTQ4ODQ1NDM5NTk6OWQ2OTllOTYwOA:1",
+      "total": 500.00, "txn_date": "2026-10-26", "due_date": "2026-11-25",
       "lines": [
         {"id": "1", "item": "Specialized garden care", "item_id": "55", "qty": 3.25, "rate": 55.0,
-         "amount": 178.75, "service_date": "2026-09-10", "description": "Weeding and horsetail removal, ..."}
+         "amount": 178.75, "service_date": "2026-09-10", "description": "Weeding and perennial care, ..."}
       ]
     }
   },
@@ -44,7 +46,7 @@ QuickBooks read (`qbo-save`), then set service dates from the snapshot.
 
   "held": {"Cedar": "October work held until Andrea fills in dates"},
   "pending": [{"what": "Andrea: Alder Oct 27 raking deduction? shrub price?"}],
-  "handled": [{"at": "2026-10-28T04:35Z", "what": "Birch Sep 30 logged -> new #2280 ..."}],
+  "handled": [{"at": "2026-10-28T04:35Z", "what": "Birch Sep 30 logged -> new #1003 ..."}],
   "comments_handled_through": "2026-10-28T05:25Z",
   "jobs": "RUNNING: 5afea4fd '3-59/10' comments+log+QBO; 35e2ed4f '22,52' entries + thread sweep"
 }
@@ -66,9 +68,10 @@ Field notes:
 
 ## Setting up a new batch
 
-1. Create the folder and state file. Fill `invoices` by reading the batch's invoices
-   (`qbo_sales_get_invoices` with `doc_numbers`), then `watch.py STATE qbo-save`, then
-   fill in each line's `service_date` from what you wrote (or the snapshot page).
+1. Create the folder and state file with `invoices: {}`. Each time an approved
+   invoice is created, read it (`qbo_sales_get_invoices` with `doc_numbers`), run
+   `watch.py STATE qbo-save`, then fill in each line's `service_date` from what you
+   wrote (or the snapshot page).
 2. Fetch the log page, then `watch.py STATE log-save` (baseline + thread ids).
 3. If the batch has no snapshot page yet, create "YYYY-MM-DD — Invoice snapshot"
    under Invoicing (parent 40389559-0126-8122-94b2-fee44c2c1328): one table per
