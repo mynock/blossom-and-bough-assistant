@@ -1,9 +1,22 @@
 # Watching a batch
 
-After the drafts exist, Andrea reviews them. She comments on the log, edits the log
-directly, fixes or adds Work Log entries, and edits invoices by hand in QuickBooks. The
-watch keeps the invoices, the log and the snapshot page in step with her, without
-losing her edits or missing her comments.
+The older, Notion way to follow up on invoices that already exist. Use it only when
+Kevin asks. Andrea comments on the log, edits the log directly, fixes or adds Work Log
+entries, and edits invoices by hand in QuickBooks. The watch keeps the invoices, the
+log and the snapshot page in step with her, without losing her edits or missing her
+comments.
+
+The default now is a live chat with Andrea (`review-chat.md`). She approves each
+draft before it's created, and later changes happen in chat too. Never run a watch
+and a chat session on the same batch at once: stop the watch before a chat starts.
+
+**After a chat review**, the state file and log baseline are out of date, so the first
+`qbo-diff` and `log-diff` would report the chat's changes as hand edits. Before
+starting or restarting a watch on that batch:
+
+1. Rebuild the state file from the snapshot page and a fresh QuickBooks read
+   (`state-file.md`).
+2. Fetch the log and run `log-save`.
 
 ## The helper script
 
@@ -75,9 +88,12 @@ days and die with the session; tell Kevin when you create them.
      rest under `pending`.
    - For each settled date, fetch the entry pages, plus the same-day entries for the
      same crew, which share the drive. Fetch them directly; don't run more queries.
-   - A newly logged visit means adding a line to that month's invoice, or creating a new
-     invoice for a client with nothing in the batch. Draft it per `drafting.md`. An
-     edited visit means recomputing its line.
+   - **A newly logged visit** means adding a line to that month's invoice, if it
+     exists. If that month is still a draft, or has nothing yet, add the visit to the
+     draft, or start one, per `drafting.md` and save it to the log. Tell Kevin that
+     Andrea needs a chat session, with the watch stopped, to approve it
+     (`review-chat.md`, section 6).
+   - **An edited visit** means recomputing its line.
    - Move `processed_through` to the newest `Last edited` you handled.
 2. **Thread sweep.**
    - Call `notion-get-comments` for the whole log page, then run `watch.py STATE threads`.
@@ -92,18 +108,23 @@ Whatever the trigger (a comment, a log edit, an entry edit or a hand edit):
 
 1. **Pull the latest:** the comment thread, the entry page and the invoice. Re-read the
    invoice even if you read it a minute ago.
+   - If it's sent or paid, stop and note the difference in the log; don't edit it.
+   - If that month is still a draft, change the draft in the log only. Don't touch
+     QuickBooks.
 2. **Recompute** per `drafting.md`, and show the hours the way the log does (see
    `log-and-snapshot.md`).
 3. **Update the invoice.** Send every line with its id, service date and current
-   description, which may be Andrea's wording. For a new invoice, create it, then update
-   it straight away to restore any summarized descriptions and set
-   `shipping_address: ""`.
-   - Add the new invoice to the state file and to job A's invoice list.
+   description, which may be Andrea's wording. The watch never creates an invoice. A
+   new one starts as a draft that Andrea approves in chat. Once an approved invoice has
+   been created:
+   - Add it to the state file and to job A's invoice list.
    - If job A's prompt names invoice numbers, recreate the job.
 4. **Update the log:**
    - Status table row and batch total, the client's lines table, Hours table and flags.
    - Mark answered questions "Settled: …" inside their existing span.
-   - Add a dated **Revisions** bullet with old → new amounts.
+   - For a small edit, change things in place as if the invoice had been run that way
+     from the start; Andrea finds a Revisions entry per amendment chaotic (rules doc
+     section 10). Add a dated **Revisions** bullet only for a bigger change.
    - Put open questions in that client's **Questions** list.
 5. **Update the snapshot page:**
    - The invoice's lines and total, and the batch total.
@@ -117,7 +138,7 @@ Whatever the trigger (a comment, a log edit, an entry edit or a hand edit):
    - Fix any `UNKNOWN` service dates, and add a `handled` entry to the state file.
 
 **Hand edits in QuickBooks** (a changed description, date, price or removed line) are
-Andrea's decisions. Keep them, record them in **Andrea's edits** and Revisions, and
+Andrea's decisions. Keep them, record them in **Andrea's edits**, and
 update the log's numbers to match. Ask only if one looks like a slip, such as a total
 that no longer matches the lines. Her wording changes are also style lessons: add the
 pattern to section 9 of the rules doc.
@@ -127,7 +148,8 @@ she removed.
 
 **New rules** from Andrea go into the rules doc (client-specific ones into the client
 sheet) and the reply; see "Where things live" in `SKILL.md`. If a rule changes
-amounts already billed, recompute those invoices, in every batch that's still open.
+amounts already billed, recompute the unsent invoices and drafts it affects, in every
+batch that's still open.
 
 ## Several batches at once
 
